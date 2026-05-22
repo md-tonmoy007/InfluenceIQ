@@ -1,6 +1,7 @@
 # Claude Code working file — local guidance, not committed
 CLAUDE.md
 .claude/
+.antigravitycli/
 
 # Python
 __pycache__/

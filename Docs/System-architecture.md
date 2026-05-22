@@ -4,22 +4,22 @@ Brands today spend enormous amounts of time and money trying to find the right i
 
 A major problem in influencer marketing is the lack of trust-aware discovery systems. Brands often struggle with issues such as:
 
-* Fake followers and fake engagement
-* Influencers promoting unrelated or misleading products
-* Lack of professional credibility in sensitive niches like healthcare, finance, or fitness
-* Poor audience trust and negative sentiment
-* Controversial or unsafe content that can damage brand reputation
-* Difficulty discovering niche experts across platforms
-* Manual research taking hours or days
+- Fake followers and fake engagement
+- Influencers promoting unrelated or misleading products
+- Lack of professional credibility in sensitive niches like healthcare, finance, or fitness
+- Poor audience trust and negative sentiment
+- Controversial or unsafe content that can damage brand reputation
+- Difficulty discovering niche experts across platforms
+- Manual research taking hours or days
 
 For example, a healthcare brand may accidentally collaborate with a fitness creator who has large reach but no actual medical or nutritional expertise. Similarly, a financial brand may partner with creators who spread misinformation or have low audience trust.
 
 Current systems do not deeply analyze:
 
-* Whether the influencer is actually qualified to speak on a topic
-* Whether audiences genuinely trust the creator
-* Whether engagement is organic or manipulated
-* Whether the influencer presents brand safety risks
+- Whether the influencer is actually qualified to speak on a topic
+- Whether audiences genuinely trust the creator
+- Whether engagement is organic or manipulated
+- Whether the influencer presents brand safety risks
 
 As influencer marketing grows, brands increasingly need a system that does not just discover influencers, but evaluates how trustworthy and credible they are.
 
@@ -27,11 +27,11 @@ The goal of this project is to build an AI-powered trust-aware influencer discov
 
 The system should:
 
-* Automatically discover influencers from the web
-* Analyze their public content and audience engagement
-* Detect credibility indicators and risk factors
-* Generate explainable trust scores
-* Recommend the best influencers for a specific campaign
+- Automatically discover influencers from the web
+- Analyze their public content and audience engagement
+- Detect credibility indicators and risk factors
+- Generate explainable trust scores
+- Recommend the best influencers for a specific campaign
 
 Instead of simply answering:
 
@@ -85,17 +85,17 @@ Dashboard & Real-Time Visualization
 
 The system is designed as a:
 
-* Fast-shipping modular monolith
-* Real-time streaming pipeline
-* AI-assisted hybrid analysis system
-* Fault-tolerant async task system (Celery + Redis)
+- Fast-shipping modular monolith
+- Real-time streaming pipeline
+- AI-assisted hybrid analysis system
+- Fault-tolerant async task system (Celery + Redis)
 
 Instead of building a distributed microservice infrastructure, the project will prioritize:
 
-* Faster development
-* Easier debugging
-* Simpler deployment
-* Better hackathon execution
+- Faster development
+- Easier debugging
+- Simpler deployment
+- Better hackathon execution
 
 The architecture follows a modular monolith approach where all components exist inside a single backend system while remaining logically separated. Async processing is handled via Celery with Redis as the message broker, giving fault tolerance and task observability without microservice complexity.
 
@@ -105,21 +105,21 @@ The architecture follows a modular monolith approach where all components exist 
 
 ## Technology Stack
 
-* Next.js
-* TailwindCSS
-* React
-* WebSockets
-* shadcn/ui
+- Next.js
+- TailwindCSS
+- React
+- WebSockets
+- shadcn/ui
 
 ## Responsibilities
 
 The frontend acts as the main interface for brands to:
 
-* Submit campaign details
-* View live workflow progress (with reconnection-safe event replay)
-* Explore influencer recommendations
-* Understand trust score explanations
-* Review brand safety warnings
+- Submit campaign details
+- View live workflow progress (with reconnection-safe event replay)
+- Explore influencer recommendations
+- Understand trust score explanations
+- Review brand safety warnings
 
 ---
 
@@ -129,12 +129,12 @@ The frontend acts as the main interface for brands to:
 
 Brands provide:
 
-* Product information
-* Industry/niche
-* Campaign goals
-* Target audience
-* Preferred platforms
-* Budget range
+- Product information
+- Industry/niche
+- Campaign goals
+- Target audience
+- Preferred platforms
+- Budget range
 
 Example:
 
@@ -169,14 +169,14 @@ All pipeline events are stored in Redis (TTL: 1 hour) keyed by campaign ID. On W
 
 Displays:
 
-* Influencer ranking
-* Trust grades
-* Engagement quality
-* Audience sentiment
-* Credibility indicators
-* Brand safety flags
-* Platform links
-* Score freshness indicator (when score was last computed)
+- Influencer ranking
+- Trust grades
+- Engagement quality
+- Audience sentiment
+- Credibility indicators
+- Brand safety flags
+- Platform links
+- Score freshness indicator (when score was last computed)
 
 ---
 
@@ -208,19 +208,19 @@ This creates explainability and transparency.
 
 ## Technology Stack
 
-* FastAPI
-* Python
-* Celery (async task processing)
-* Redis (message broker + pipeline state cache + URL cache)
-* PostgreSQL + pgvector
+- FastAPI
+- Python
+- Celery (async task processing)
+- Redis (message broker + pipeline state cache + URL cache)
+- PostgreSQL + pgvector
 
 The backend acts as:
 
-* Workflow orchestrator
-* AI coordinator
-* Scraping manager
-* Scoring engine
-* Real-time event streamer
+- Workflow orchestrator
+- AI coordinator
+- Scraping manager
+- Scoring engine
+- Real-time event streamer
 
 ---
 
@@ -228,18 +228,18 @@ The backend acts as:
 
 The backend exposes:
 
-* REST APIs
-* WebSocket streams
+- REST APIs
+- WebSocket streams
 
 ## REST APIs
 
 Used for:
 
-* Campaign creation
-* Influencer retrieval
-* Dashboard data
-* Exporting reports
-* Pipeline state polling (fallback if WebSocket is unavailable)
+- Campaign creation
+- Influencer retrieval
+- Dashboard data
+- Exporting reports
+- Pipeline state polling (fallback if WebSocket is unavailable)
 
 ---
 
@@ -247,9 +247,9 @@ Used for:
 
 Used for:
 
-* Real-time scraping updates
-* Pipeline progress
-* Live trust score updates
+- Real-time scraping updates
+- Pipeline progress
+- Live trust score updates
 
 ### Reconnection Handling
 
@@ -294,18 +294,18 @@ best fitness product reviewers
 
 LLMs are used for:
 
-* Query generation
-* Semantic understanding
-* Score explanation
-* Brand safety content classification
-* Identity resolution edge cases (low-confidence deduplication)
+- Query generation
+- Semantic understanding
+- Score explanation
+- Brand safety content classification
+- Identity resolution edge cases (low-confidence deduplication)
 
 Deterministic systems are used for:
 
-* Extraction
-* Crawling
-* Pattern matching
-* First-pass keyword filtering (brand safety blocklist before LLM)
+- Extraction
+- Crawling
+- Pattern matching
+- First-pass keyword filtering (brand safety blocklist before LLM)
 
 This hybrid architecture reduces cost and improves speed.
 
@@ -321,19 +321,19 @@ Discover relevant web pages containing influencer references.
 
 ## APIs Used
 
-* OpenSerp
-* Brave Search API
+- OpenSerp
+- Brave Search API
 
 ---
 
 ## Search Targets
 
-* Blog articles
-* YouTube profiles
-* Instagram pages
-* Review websites
-* Creator rankings
-* Authority articles
+- Blog articles
+- YouTube profiles
+- Instagram pages
+- Review websites
+- Creator rankings
+- Authority articles
 
 ---
 
@@ -341,10 +341,10 @@ Discover relevant web pages containing influencer references.
 
 The search layer returns:
 
-* URLs
-* Titles
-* Snippets
-* Relevance scores
+- URLs
+- Titles
+- Snippets
+- Relevance scores
 
 ---
 
@@ -376,10 +376,10 @@ Referenced Social Profile
 
 This prevents:
 
-* crawler explosion
-* excessive runtime
-* duplicate data
-* noisy extraction
+- crawler explosion
+- excessive runtime
+- duplicate data
+- noisy extraction
 
 ---
 
@@ -403,11 +403,11 @@ This eliminates redundant scraping of the same pages across campaigns and dramat
 
 Social platforms aggressively block scrapers. The crawler implements:
 
-* Per-domain request throttling stored in Redis (1 request per 2 seconds for social platforms)
-* Rotating user-agent headers
-* Playwright headless fingerprint randomization
-* Exponential backoff on 429 and 403 responses (initial delay: 2s, max: 60s)
-* Fallback to web-archived versions of pages when blocked
+- Per-domain request throttling stored in Redis (1 request per 2 seconds for social platforms)
+- Rotating user-agent headers
+- Playwright headless fingerprint randomization
+- Exponential backoff on 429 and 403 responses (initial delay: 2s, max: 60s)
+- Fallback to web-archived versions of pages when blocked
 
 Per-domain throttle state is stored in Redis as `rate_limit:{domain}` with a sliding window counter.
 
@@ -415,9 +415,9 @@ Per-domain throttle state is stored in Redis as `rate_limit:{domain}` with a sli
 
 ## Technologies
 
-* Playwright (JavaScript-rendered pages, fingerprint randomization)
-* BeautifulSoup (static HTML parsing)
-* HTTPX (async HTTP requests)
+- Playwright (JavaScript-rendered pages, fingerprint randomization)
+- BeautifulSoup (static HTML parsing)
+- HTTPX (async HTTP requests)
 
 ---
 
@@ -425,12 +425,12 @@ Per-domain throttle state is stored in Redis as `rate_limit:{domain}` with a sli
 
 The crawler:
 
-* checks URL cache before fetching
-* fetches page HTML with rate limit enforcement
-* extracts readable content
-* discovers social profile links
-* collects metadata
-* streams crawl progress via WebSocket
+- checks URL cache before fetching
+- fetches page HTML with rate limit enforcement
+- extracts readable content
+- discovers social profile links
+- collects metadata
+- streams crawl progress via WebSocket
 
 ---
 
@@ -444,12 +444,12 @@ Extract clean text and metadata from webpages.
 
 ## Extracted Data
 
-* Article title
-* Main content
-* Author names
-* Social links
-* Mentioned creators
-* Embedded profiles
+- Article title
+- Main content
+- Author names
+- Social links
+- Mentioned creators
+- Embedded profiles
 
 ---
 
@@ -483,12 +483,12 @@ Identify influencers mentioned in content.
 
 Extract:
 
-* influencer names
-* Instagram handles
-* YouTube channels
-* profile URLs
-* creator descriptions
-* credentials
+- influencer names
+- Instagram handles
+- YouTube channels
+- profile URLs
+- creator descriptions
+- credentials
 
 ---
 
@@ -496,14 +496,14 @@ Extract:
 
 ### Deterministic Extraction
 
-* Regex
-* URL parsing
-* Pattern matching
+- Regex
+- URL parsing
+- Pattern matching
 
 ### NLP-Based Extraction
 
-* spaCy
-* LLM extraction for edge cases
+- spaCy
+- LLM extraction for edge cases
 
 ---
 
@@ -557,6 +557,7 @@ For low-confidence cases (0.6–0.84 similarity), a lightweight LLM prompt decid
 **Data Model**
 
 Each resolved influencer stores:
+
 ```json
 {
   "influencer_id": "canonical-uuid",
@@ -586,22 +587,22 @@ Analyze influencer quality and audience trust.
 
 ### Engagement Metrics
 
-* likes
-* comments
-* views
-* posting frequency
+- likes
+- comments
+- views
+- posting frequency
 
 ### Audience Metrics
 
-* follower counts
-* engagement ratios
-* audience interaction quality
+- follower counts
+- engagement ratios
+- audience interaction quality
 
 ### Sentiment Signals
 
-* positive comments
-* spam comments
-* toxicity indicators
+- positive comments
+- spam comments
+- toxicity indicators
 
 ---
 
@@ -636,8 +637,8 @@ Amazing ❤️
 
 Flags:
 
-* huge follower counts
-* extremely low engagement
+- huge follower counts
+- extremely low engagement
 
 ---
 
@@ -674,15 +675,15 @@ This is the core differentiator of the platform.
 
 A fitness creator discussing:
 
-* medical advice
-* nutrition
-* supplements
+- medical advice
+- nutrition
+- supplements
 
 should ideally have:
 
-* certifications
-* educational credentials
-* authority mentions
+- certifications
+- educational credentials
+- authority mentions
 
 ---
 
@@ -739,13 +740,13 @@ Results are stored with the source URL for auditability.
 
 ## Detected Risks
 
-* controversial content
-* hate speech
-* misinformation
-* scams
-* toxic engagement
-* political extremism
-* excessive sponsorship behavior
+- controversial content
+- hate speech
+- misinformation
+- scams
+- toxic engagement
+- political extremism
+- excessive sponsorship behavior
 
 ---
 
@@ -820,10 +821,10 @@ Final Score =
 
 Every score record stores:
 
-* `score_version` — formula version that produced this score
-* `computed_at` — timestamp
-* `data_source_count` — number of sources used
-* `confidence_level` — High / Medium / Low
+- `score_version` — formula version that produced this score
+- `computed_at` — timestamp
+- `data_source_count` — number of sources used
+- `confidence_level` — High / Medium / Low
 
 This allows scores to be re-computed when the formula updates without losing historical data, and surfaces freshness to the user on the dashboard.
 
@@ -861,10 +862,10 @@ Return the best influencers for the campaign.
 
 Sort influencers by:
 
-* trust
-* relevance
-* authority
-* engagement quality
+- trust
+- relevance
+- authority
+- engagement quality
 
 ---
 
@@ -872,11 +873,11 @@ Sort influencers by:
 
 Brands can filter by:
 
-* platform
-* niche
-* region
-* follower size
-* trust grade
+- platform
+- niche
+- region
+- follower size
+- trust grade
 
 ---
 
@@ -940,21 +941,21 @@ Stores canonical influencer records with `influencer_id`, `canonical_name`, `pla
 
 Stores one record per scoring run. Never overwritten.
 
-| Column            | Type      | Notes                          |
-| ----------------- | --------- | ------------------------------ |
-| score_id          | UUID      | Primary key                    |
-| influencer_id     | UUID      | Foreign key → influencers      |
-| campaign_id       | UUID      | Foreign key → campaigns        |
-| final_score       | FLOAT     | Weighted final score [0–100]   |
-| relevance_score   | FLOAT     | Normalized sub-score           |
-| credibility_score | FLOAT     | Normalized sub-score           |
-| engagement_score  | FLOAT     | Normalized sub-score           |
-| sentiment_score   | FLOAT     | Normalized sub-score           |
-| brand_safety_score| FLOAT     | Normalized sub-score           |
-| confidence_level  | TEXT      | High / Medium / Low            |
-| data_source_count | INT       | Sources used in scoring        |
-| score_version     | TEXT      | Formula version                |
-| computed_at       | TIMESTAMP |                                |
+| Column             | Type      | Notes                        |
+| ------------------ | --------- | ---------------------------- |
+| score_id           | UUID      | Primary key                  |
+| influencer_id      | UUID      | Foreign key → influencers    |
+| campaign_id        | UUID      | Foreign key → campaigns      |
+| final_score        | FLOAT     | Weighted final score [0–100] |
+| relevance_score    | FLOAT     | Normalized sub-score         |
+| credibility_score  | FLOAT     | Normalized sub-score         |
+| engagement_score   | FLOAT     | Normalized sub-score         |
+| sentiment_score    | FLOAT     | Normalized sub-score         |
+| brand_safety_score | FLOAT     | Normalized sub-score         |
+| confidence_level   | TEXT      | High / Medium / Low          |
+| data_source_count  | INT       | Sources used in scoring      |
+| score_version      | TEXT      | Formula version              |
+| computed_at        | TIMESTAMP |                              |
 
 ### crawl_sources
 
@@ -968,13 +969,13 @@ Stores per-influencer flags with source URL, risk type, and LLM-generated reason
 
 ## Redis Key Design
 
-| Key Pattern                        | Type   | TTL    | Purpose                                  |
-| ---------------------------------- | ------ | ------ | ---------------------------------------- |
-| `url_cache:{url_sha256}`           | String | 48h    | Cached page content, skip re-scrape      |
-| `pipeline_events:{campaign_id}`    | List   | 1h     | WebSocket event log for reconnect replay |
-| `pipeline_state:{campaign_id}`     | Hash   | 2h     | Phase, counts, progress for polling      |
-| `rate_limit:{domain}`              | String | 10s    | Sliding window request counter           |
-| `celery_task:{task_id}`            | String | 6h     | Celery task metadata                     |
+| Key Pattern                     | Type   | TTL | Purpose                                  |
+| ------------------------------- | ------ | --- | ---------------------------------------- |
+| `url_cache:{url_sha256}`        | String | 48h | Cached page content, skip re-scrape      |
+| `pipeline_events:{campaign_id}` | List   | 1h  | WebSocket event log for reconnect replay |
+| `pipeline_state:{campaign_id}`  | Hash   | 2h  | Phase, counts, progress for polling      |
+| `rate_limit:{domain}`           | String | 10s | Sliding window request counter           |
+| `celery_task:{task_id}`         | String | 6h  | Celery task metadata                     |
 
 ---
 
@@ -982,9 +983,9 @@ Stores per-influencer flags with source URL, risk type, and LLM-generated reason
 
 Stores embeddings for:
 
-* semantic influencer-to-campaign similarity
-* influencer content embeddings for matching
-* future recommendation systems
+- semantic influencer-to-campaign similarity
+- influencer content embeddings for matching
+- future recommendation systems
 
 ---
 
@@ -1023,12 +1024,12 @@ Crawl workers are highest concurrency because the work is I/O-bound (network fet
 
 ## Queue Definitions
 
-| Queue          | Worker Count | Task Types                                      |
-| -------------- | ------------ | ----------------------------------------------- |
-| search_queue   | 2            | AI query generation, Brave/OpenSerp API calls   |
-| crawl_queue    | 8            | URL cache check, Playwright fetch, rate limiting |
-| extract_queue  | 4            | HTML cleaning, spaCy NLP, LLM entity extraction |
-| score_queue    | 2            | Trust scoring, brand safety LLM classification  |
+| Queue         | Worker Count | Task Types                                       |
+| ------------- | ------------ | ------------------------------------------------ |
+| search_queue  | 2            | AI query generation, Brave/OpenSerp API calls    |
+| crawl_queue   | 8            | URL cache check, Playwright fetch, rate limiting |
+| extract_queue | 4            | HTML cleaning, spaCy NLP, LLM entity extraction  |
+| score_queue   | 2            | Trust scoring, brand safety LLM classification   |
 
 ---
 
@@ -1121,9 +1122,9 @@ Provide real-time visibility into worker health, queue depths, and failure rates
 
 ## Tools
 
-* **Flower** — Celery monitoring UI. Displays per-worker task throughput, queue depths, failed tasks, and retry counts. Accessible at `/flower` in development.
-* **Redis INFO** — queue depth monitoring via `LLEN` on each queue key.
-* **FastAPI health endpoint** — `GET /health` returns queue depths, worker counts, and DB connection status.
+- **Flower** — Celery monitoring UI. Displays per-worker task throughput, queue depths, failed tasks, and retry counts. Accessible at `/flower` in development.
+- **Redis INFO** — queue depth monitoring via `LLEN` on each queue key.
+- **FastAPI health endpoint** — `GET /health` returns queue depths, worker counts, and DB connection status.
 
 ---
 
@@ -1153,12 +1154,12 @@ Provide real-time visibility into worker health, queue depths, and failure rates
 
 ## Key Metrics to Monitor
 
-| Metric                | Alert Threshold  | Action                              |
-| --------------------- | ---------------- | ----------------------------------- |
-| crawl_queue depth     | > 100 tasks      | Scale up crawl workers              |
-| Task failure rate     | > 10%            | Check rate limit / IP ban status    |
-| score_queue depth     | > 50 tasks       | Scale up score workers              |
-| Redis memory usage    | > 80%            | Increase TTLs, flush stale caches   |
+| Metric             | Alert Threshold | Action                            |
+| ------------------ | --------------- | --------------------------------- |
+| crawl_queue depth  | > 100 tasks     | Scale up crawl workers            |
+| Task failure rate  | > 10%           | Check rate limit / IP ban status  |
+| score_queue depth  | > 50 tasks      | Scale up score workers            |
+| Redis memory usage | > 80%           | Increase TTLs, flush stale caches |
 
 ---
 
@@ -1166,10 +1167,10 @@ Provide real-time visibility into worker health, queue depths, and failure rates
 
 ## Hosting
 
-* Railway or Render (FastAPI + Celery workers)
-* Vercel (Next.js frontend)
-* Redis Cloud or Railway Redis add-on
-* PostgreSQL via Railway or Render managed database
+- Railway or Render (FastAPI + Celery workers)
+- Vercel (Next.js frontend)
+- Redis Cloud or Railway Redis add-on
+- PostgreSQL via Railway or Render managed database
 
 ---
 
@@ -1197,10 +1198,10 @@ celery -A app.celery worker -Q score_queue -c 2
 
 The architecture prioritizes:
 
-* rapid deployment
-* simplicity
-* low operational overhead
-* fault tolerance without distributed systems complexity
+- rapid deployment
+- simplicity
+- low operational overhead
+- fault tolerance without distributed systems complexity
 
 ---
 
@@ -1210,10 +1211,10 @@ The architecture prioritizes:
 
 Verification System:
 
-* deeper credibility analysis with credential verification APIs
-* advanced fraud detection using ML classifiers
-* stronger identity matching via knowledge graph embeddings
-* score trend tracking and influencer history
+- deeper credibility analysis with credential verification APIs
+- advanced fraud detection using ML classifiers
+- stronger identity matching via knowledge graph embeddings
+- score trend tracking and influencer history
 
 ---
 
@@ -1221,10 +1222,10 @@ Verification System:
 
 Knowledge Graph:
 
-* influencer relationship mapping
-* trust networks and authority graphs
-* cross-campaign influencer performance tracking
-* recommendation engine powered by graph embeddings
+- influencer relationship mapping
+- trust networks and authority graphs
+- cross-campaign influencer performance tracking
+- recommendation engine powered by graph embeddings
 
 ---
 
@@ -1234,24 +1235,24 @@ The platform is an AI-powered trust-aware influencer discovery system designed t
 
 The system combines:
 
-* AI query generation
-* web search
-* recursive scraping with URL caching and rate-limit protection
-* NLP extraction with three-pass identity resolution
-* brand safety detection via LLM classification
-* normalized and versioned trust scoring
-* Celery + Redis async task pipeline with retry and partial result support
-* reconnection-safe WebSocket event streaming
-* real-time observability via Flower and health endpoints
+- AI query generation
+- web search
+- recursive scraping with URL caching and rate-limit protection
+- NLP extraction with three-pass identity resolution
+- brand safety detection via LLM classification
+- normalized and versioned trust scoring
+- Celery + Redis async task pipeline with retry and partial result support
+- reconnection-safe WebSocket event streaming
+- real-time observability via Flower and health endpoints
 
 to produce explainable influencer recommendations.
 
 Instead of optimizing for raw popularity, the platform optimizes for:
 
-* trust
-* credibility
-* authenticity
-* audience confidence
-* brand alignment
+- trust
+- credibility
+- authenticity
+- audience confidence
+- brand alignment
 
 This transforms influencer discovery from a manual and risky process into an intelligent, fault-tolerant, explainable, and scalable AI-driven workflow.
