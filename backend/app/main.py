@@ -1,49 +1,53 @@
 from __future__ import annotations
 
-import redis
 from fastapi import FastAPI
-from sqlalchemy import create_engine, text
+import structlog
 
-from app.celery_app import celery_app
 from app.config import settings
+from app.api import campaigns, health, websocket, demo, influencers
+from app.middleware.cors import setup_cors
+from app.middleware.logging import setup_logging_middleware
 
-app = FastAPI(title="InfluenceIQ", version="0.1.0")
+# Initialize structlog configuration
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer() if settings.APP_ENV == "prod" else structlog.processors.KeyValueRenderer()
+    ],
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+    cache_logger_on_first_use=True,
+)
 
-_engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
-_redis = redis.from_url(settings.REDIS_URL)
+logger = structlog.get_logger()
 
+# Create FastAPI instance
+app = FastAPI(
+    title="InfluenceIQ",
+    description="Trust-Aware Influencer Discovery Platform Backend",
+    version="0.1.0",
+)
 
-@app.get("/health")
-def health() -> dict:
-    queues = ["search_queue", "crawl_queue", "extract_queue", "score_queue"]
-    queue_depths = {q: _redis.llen(q) for q in queues}
+# Setup CORS and Custom Logging middleware
+setup_cors(app)
+setup_logging_middleware(app)
 
-    try:
-        with _engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        db_status = "connected"
-    except Exception:
-        db_status = "down"
-
-    try:
-        _redis.ping()
-        redis_status = "connected"
-    except Exception:
-        redis_status = "down"
-
-    inspect = celery_app.control.inspect(timeout=1)
-    active = inspect.active() or {}
-    workers = {name: len(tasks) for name, tasks in active.items()}
-
-    return {
-        "status": "ok" if db_status == "connected" and redis_status == "connected" else "degraded",
-        "queues": queue_depths,
-        "workers": workers,
-        "db": db_status,
-        "redis": redis_status,
-    }
+# Register endpoints routers
+app.include_router(health.router)
+app.include_router(campaigns.router)
+app.include_router(influencers.router)
+app.include_router(demo.router)
+app.include_router(websocket.router)
 
 
 @app.get("/")
-def root() -> dict:
-    return {"service": "influenceiq", "version": app.version}
+def root() -> dict[str, str]:
+    """Service description endpoint."""
+    return {
+        "service": "InfluenceIQ Backend API",
+        "version": app.version,
+        "environment": settings.APP_ENV,
+        "docs_url": "/docs"
+    }

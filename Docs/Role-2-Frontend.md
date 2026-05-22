@@ -117,13 +117,13 @@ frontend/
 
 ## Daily Dependencies
 
-| Day | What You Need From Whom |
-|-----|-------------------------|
-| 1 | WebSocket event schema (Backend), Influencer JSON schema (Scoring) |
-| 3 | Working WebSocket endpoint emitting mock events (Backend) |
-| 4 | `GET /api/campaigns/{id}/influencers` returning real or mock data (Backend) |
-| 5 | Trust score breakdown with reasons (Scoring) |
-| 6 | Pre-cached demo campaign IDs (AI/DevOps Lead) |
+| Day | What You Need From Whom                                                     |
+| --- | --------------------------------------------------------------------------- |
+| 1   | WebSocket event schema (Backend), Influencer JSON schema (Scoring)          |
+| 3   | Working WebSocket endpoint emitting mock events (Backend)                   |
+| 4   | `GET /api/campaigns/{id}/influencers` returning real or mock data (Backend) |
+| 5   | Trust score breakdown with reasons (Scoring)                                |
+| 6   | Pre-cached demo campaign IDs (AI/DevOps Lead)                               |
 
 ---
 

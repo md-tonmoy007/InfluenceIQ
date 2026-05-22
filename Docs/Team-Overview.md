@@ -9,13 +9,13 @@
 
 ## Team Roles
 
-| # | Role | Member Focus | Owns Sections |
-|---|------|--------------|---------------|
-| 1 | AI Orchestration + DevOps Lead | LLM integration, Celery, Docker, monitoring | 2, 6, 14, 15, 16, 20, 21, 22 |
-| 2 | Frontend Developer (UI Designer) | Next.js dashboard, WebSocket UI | 3, 18 (client-side) |
-| 3 | Backend API + Database Engineer | FastAPI, PostgreSQL, WebSocket server | 4, 5, 18 (server), 19 |
-| 4 | Scraping & Crawling Engineer | Playwright, rate limiting, URL cache | 7, 8, 9 |
-| 5 | Extraction & Scoring Engineer | NLP, identity resolution, scoring rules | 10, 11, 12, 13 |
+| #   | Role                             | Member Focus                                | Owns Sections                |
+| --- | -------------------------------- | ------------------------------------------- | ---------------------------- |
+| 1   | AI Orchestration + DevOps Lead   | LLM integration, Celery, Docker, monitoring | 2, 6, 14, 15, 16, 20, 21, 22 |
+| 2   | Frontend Developer (UI Designer) | Next.js dashboard, WebSocket UI             | 3, 18 (client-side)          |
+| 3   | Backend API + Database Engineer  | FastAPI, PostgreSQL, WebSocket server       | 4, 5, 18 (server), 19        |
+| 4   | Scraping & Crawling Engineer     | Playwright, rate limiting, URL cache        | 7, 8, 9                      |
+| 5   | Extraction & Scoring Engineer    | NLP, identity resolution, scoring rules     | 10, 11, 12, 13               |
 
 ---
 
@@ -37,13 +37,13 @@ Day 7  │ Polish, pre-cached demo runs, presentation prep
 
 ### Day 1 Contracts (must be agreed by EOD Day 1)
 
-| Contract | Owner | Consumers |
-|----------|-------|-----------|
-| Redis key schema | AI/DevOps Lead | Backend, Scraping |
-| WebSocket event JSON schema | Backend Engineer | Frontend, AI/DevOps |
-| PostgreSQL schema | Backend Engineer | Scoring, Scraping |
-| Celery task signatures | AI/DevOps Lead | Backend, Scraping, Scoring |
-| Influencer data model JSON | Scoring Engineer | Backend, Frontend |
+| Contract                    | Owner            | Consumers                  |
+| --------------------------- | ---------------- | -------------------------- |
+| Redis key schema            | AI/DevOps Lead   | Backend, Scraping          |
+| WebSocket event JSON schema | Backend Engineer | Frontend, AI/DevOps        |
+| PostgreSQL schema           | Backend Engineer | Scoring, Scraping          |
+| Celery task signatures      | AI/DevOps Lead   | Backend, Scraping, Scoring |
+| Influencer data model JSON  | Scoring Engineer | Backend, Frontend          |
 
 ### Daily Sync (15 min, every morning)
 
@@ -55,13 +55,13 @@ Day 7  │ Polish, pre-cached demo runs, presentation prep
 
 ## Risk Mitigation
 
-| Risk | Probability | Owner | Mitigation |
-|------|-------------|-------|------------|
-| Instagram/YouTube bans scraper | High | Scraping Engineer | Test against real targets on Day 2, use Playwright fingerprinting from start |
-| LLM cost overrun | Medium | AI/DevOps Lead | Hard token budget per task, blocklist before LLM |
-| Integration takes too long | High | All | No new features after Day 5 — only fixes |
-| Live demo fails | High | All | Pre-cache 2–3 demo campaigns, record backup video |
-| WebSocket disconnects mid-demo | Medium | Backend Engineer | Event replay from Redis must work by Day 4 |
+| Risk                           | Probability | Owner             | Mitigation                                                                   |
+| ------------------------------ | ----------- | ----------------- | ---------------------------------------------------------------------------- |
+| Instagram/YouTube bans scraper | High        | Scraping Engineer | Test against real targets on Day 2, use Playwright fingerprinting from start |
+| LLM cost overrun               | Medium      | AI/DevOps Lead    | Hard token budget per task, blocklist before LLM                             |
+| Integration takes too long     | High        | All               | No new features after Day 5 — only fixes                                     |
+| Live demo fails                | High        | All               | Pre-cache 2–3 demo campaigns, record backup video                            |
+| WebSocket disconnects mid-demo | Medium      | Backend Engineer  | Event replay from Redis must work by Day 4                                   |
 
 ---
 
@@ -76,25 +76,25 @@ Day 7  │ Polish, pre-cached demo runs, presentation prep
 
 ## Phase 2 (Post-Hackathon) — Verification System
 
-| Role | Phase 2 Focus |
-|------|---------------|
-| AI/DevOps | Credential verification APIs, advanced fraud ML classifier |
-| Frontend | Influencer history timeline, score trend charts |
-| Backend | Audit log tables, score versioning APIs, multi-tenant support |
-| Scraping | LinkedIn integration, certification scraping, deeper crawl |
-| Scoring | ML-based credibility model, training data pipeline |
+| Role      | Phase 2 Focus                                                 |
+| --------- | ------------------------------------------------------------- |
+| AI/DevOps | Credential verification APIs, advanced fraud ML classifier    |
+| Frontend  | Influencer history timeline, score trend charts               |
+| Backend   | Audit log tables, score versioning APIs, multi-tenant support |
+| Scraping  | LinkedIn integration, certification scraping, deeper crawl    |
+| Scoring   | ML-based credibility model, training data pipeline            |
 
 ---
 
 ## Phase 3 (Long-term) — Knowledge Graph
 
-| Role | Phase 3 Focus |
-|------|---------------|
-| AI/DevOps | Graph embedding pipelines, vector recommendation engine |
-| Frontend | Network visualization, relationship explorer |
-| Backend | Graph database integration (Neo4j or AGE), graph API layer |
-| Scraping | Cross-platform relationship discovery, citation graph |
-| Scoring | Trust propagation algorithms, authority graph scoring |
+| Role      | Phase 3 Focus                                              |
+| --------- | ---------------------------------------------------------- |
+| AI/DevOps | Graph embedding pipelines, vector recommendation engine    |
+| Frontend  | Network visualization, relationship explorer               |
+| Backend   | Graph database integration (Neo4j or AGE), graph API layer |
+| Scraping  | Cross-platform relationship discovery, citation graph      |
+| Scoring   | Trust propagation algorithms, authority graph scoring      |
 
 ---
 
