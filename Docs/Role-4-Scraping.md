@@ -87,7 +87,7 @@ You own the data engine. This is the highest-risk component because scraping bre
 ## Key Files You Own
 
 ```
-backend/
+platform/
 ├── tasks/
 │   ├── search.py             (execute_search task)
 │   └── crawl.py              (fetch_page, extract_content tasks)

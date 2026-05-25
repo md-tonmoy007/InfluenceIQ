@@ -87,7 +87,7 @@ You take raw scraped content and turn it into structured, deduplicated, scored i
 ## Key Files You Own
 
 ```
-backend/
+platform/
 ├── tasks/
 │   └── extract.py            (extract_influencers, deterministic portions)
 ├── extraction/

@@ -36,80 +36,67 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
-  api:
+  backend-core:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      context: .
+      dockerfile: platform/Dockerfile
+    command: uvicorn backend_core.app:app --host 0.0.0.0 --port 8000 --reload
     env_file: .env
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
+      - .:/workspace
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
-  worker_search:
+  ai_agent_services:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: celery -A app.celery_app worker -Q search_queue -c 2 -n search@%h
+      context: .
+      dockerfile: platform/Dockerfile
+    command: celery -A ai_agent_services.worker.celery_app worker -Q ai_agent_queue -c 2 -n ai_agent@%h
     env_file: .env
     volumes:
-      - ./backend:/app
+      - .:/workspace
     depends_on:
       redis:
         condition: service_healthy
 
-  worker_crawl:
+  scraping_service:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: celery -A app.celery_app worker -Q crawl_queue -c 8 -n crawl@%h
+      context: .
+      dockerfile: platform/Dockerfile
+    command: celery -A scraping_service.worker.celery_app worker -Q scraping_queue -c 8 -n scraping@%h
     env_file: .env
     volumes:
-      - ./backend:/app
+      - .:/workspace
     depends_on:
       redis:
         condition: service_healthy
 
-  worker_extract:
+  scoring_service:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: celery -A app.celery_app worker -Q extract_queue -c 4 -n extract@%h
+      context: .
+      dockerfile: platform/Dockerfile
+    command: celery -A scoring_service.worker.celery_app worker -Q scoring_queue -c 4 -n scoring@%h
     env_file: .env
     volumes:
-      - ./backend:/app
+      - .:/workspace
     depends_on:
       redis:
         condition: service_healthy
 
-  worker_score:
+  frontend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: celery -A app.celery_app worker -Q score_queue -c 2 -n score@%h
-    env_file: .env
-    volumes:
-      - ./backend:/app
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  flower:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: celery -A app.celery_app flower --port=5555 --url_prefix=flower
-    env_file: .env
+      context: .
+      dockerfile: frontend/Dockerfile
     ports:
-      - "5555:5555"
+      - "3000:80"
     depends_on:
-      - redis
+      backend-core:
+        condition: service_started
 
 volumes:
   postgres_data:

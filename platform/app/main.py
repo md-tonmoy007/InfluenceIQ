@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, text
 
 from app.celery_app import celery_app
 from app.config import settings
+from app.service_roles import WORKER_QUEUES
 
 app = FastAPI(title="InfluenceIQ", version="0.1.0")
 
@@ -15,8 +16,7 @@ _redis = redis.from_url(settings.REDIS_URL)
 
 @app.get("/health")
 def health() -> dict:
-    queues = ["search_queue", "crawl_queue", "extract_queue", "score_queue"]
-    queue_depths = {q: _redis.llen(q) for q in queues}
+    queue_depths = {queue_name: _redis.llen(queue_name) for queue_name in WORKER_QUEUES}
 
     try:
         with _engine.connect() as conn:
@@ -37,6 +37,7 @@ def health() -> dict:
 
     return {
         "status": "ok" if db_status == "connected" and redis_status == "connected" else "degraded",
+        "architecture": "multi-service",
         "queues": queue_depths,
         "workers": workers,
         "db": db_status,
@@ -46,4 +47,9 @@ def health() -> dict:
 
 @app.get("/")
 def root() -> dict:
-    return {"service": "influenceiq", "version": app.version}
+    return {
+        "service": "backend-core",
+        "project": "InfluenceIQ",
+        "version": app.version,
+        "worker_queues": WORKER_QUEUES,
+    }
