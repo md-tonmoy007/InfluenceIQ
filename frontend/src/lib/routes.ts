@@ -1,0 +1,15 @@
+export const routes = {
+  landing: "/",
+  signup: "/signup",
+  onboarding: "/onboarding",
+  dashboard: "/dashboard",
+  discover: "/discover",
+  discoverTable: "/discover/table",
+  lists: "/lists",
+  briefs: "/briefs",
+  newBrief: "/briefs/new",
+  matching: "/matching",
+  shortlist: "/shortlist",
+  profile: "/profile/lila-park",
+  settings: "/settings",
+} as const;

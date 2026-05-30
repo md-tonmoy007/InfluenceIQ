@@ -1,69 +1,86 @@
+
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 # Claude Code working file — local guidance, not committed
-CLAUDE.md
-.claude/
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-.venv/
-venv/
-env/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Node / Next.js
-node_modules/
-.next/
-out/
-dist/
-build/
-*.tsbuildinfo
-.npm
-.yarn/
-.pnpm-debug.log*
-
+# Coverage
+# Docker
+# Editor / OS
 # Environment & secrets
-.env
-.env.local
-.env.*.local
-*.pem
-*.key
-
 # Logs
+# Misc
+# Node / Next.js
+# Playwright
+# Python
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# debug
+# dependencies
+# env files (can opt-in for committing if needed)
+# misc
+# next.js
+# production
+# testing
+# typescript
+# vercel
+*$py.class
+*.bak
+*.egg-info/
+*.key
 *.log
-logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+*.pem
+*.py[cod]
+*.so
+*.swo
+*.swp
+*.tmp
+*.tsbuildinfo
+.DS_Store
+.Python
+.claude/
+.coverage
+.docker/
+.env
+.env*
+.env.*.local
+.env.local
+.idea/
+.mypy_cache/
+.next/
+.npm
+.playwright/
+.pnp.*
+.pnpm-debug.log*
+.pytest_cache/
+.ruff_cache/
+.venv/
+.vercel
+.vscode/
+.yarn/
+.yarn/*
+/.next/
+/.pnp
+/build
+/coverage
+/node_modules
+/out/
+CLAUDE.md
+Thumbs.db
+__pycache__/
+build/
 celerybeat-schedule
 celerybeat.pid
-
-# Editor / OS
-.vscode/
-.idea/
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
-
-# Docker
-.docker/
-
-# Playwright
+coverage/
+dist/
+env/
+htmlcov/
+logs/
+next-env.d.ts
+node_modules/
+npm-debug.log*
+out/
 playwright-report/
 test-results/
-.playwright/
-
-# Coverage
-.coverage
-htmlcov/
-coverage/
-
-# Misc
-*.bak
-*.tmp
+venv/
+yarn-debug.log*
+yarn-error.log*
