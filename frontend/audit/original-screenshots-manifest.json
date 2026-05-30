@@ -1,0 +1,769 @@
+{
+  "capturedAt": "2026-05-29T14:51:05.958Z",
+  "routes": [
+    [
+      "landing",
+      "InfluenceIQ.html"
+    ],
+    [
+      "signup",
+      "Signup.html"
+    ],
+    [
+      "onboarding",
+      "Onboarding.html"
+    ],
+    [
+      "dashboard",
+      "Dashboard.html"
+    ],
+    [
+      "discover",
+      "Discover.html"
+    ],
+    [
+      "discover-table",
+      "DiscoverTable.html"
+    ],
+    [
+      "lists",
+      "Lists.html"
+    ],
+    [
+      "briefs",
+      "Briefs.html"
+    ],
+    [
+      "brief-new",
+      "Brief.html"
+    ],
+    [
+      "matching",
+      "Matching.html"
+    ],
+    [
+      "shortlist",
+      "Shortlist.html"
+    ],
+    [
+      "profile",
+      "Profile.html"
+    ],
+    [
+      "settings",
+      "Settings.html"
+    ]
+  ],
+  "widths": [
+    1440,
+    1280,
+    1024,
+    768,
+    430,
+    390
+  ],
+  "screenshots": [
+    {
+      "slug": "landing",
+      "file": "InfluenceIQ.html",
+      "width": 1440,
+      "filename": "landing-1440.png",
+      "title": "InfluenceIQ — Find the Perfect Influencer. Instantly.",
+      "pageWidth": 1464,
+      "pageHeight": 8434
+    },
+    {
+      "slug": "landing",
+      "file": "InfluenceIQ.html",
+      "width": 1280,
+      "filename": "landing-1280.png",
+      "title": "InfluenceIQ — Find the Perfect Influencer. Instantly.",
+      "pageWidth": 1384,
+      "pageHeight": 8434
+    },
+    {
+      "slug": "landing",
+      "file": "InfluenceIQ.html",
+      "width": 1024,
+      "filename": "landing-1024.png",
+      "title": "InfluenceIQ — Find the Perfect Influencer. Instantly.",
+      "pageWidth": 1174,
+      "pageHeight": 8176
+    },
+    {
+      "slug": "landing",
+      "file": "InfluenceIQ.html",
+      "width": 768,
+      "filename": "landing-768.png",
+      "title": "InfluenceIQ — Find the Perfect Influencer. Instantly.",
+      "pageWidth": 954,
+      "pageHeight": 11762
+    },
+    {
+      "slug": "landing",
+      "file": "InfluenceIQ.html",
+      "width": 430,
+      "filename": "landing-430.png",
+      "title": "InfluenceIQ — Find the Perfect Influencer. Instantly.",
+      "pageWidth": 663,
+      "pageHeight": 13354
+    },
+    {
+      "slug": "landing",
+      "file": "InfluenceIQ.html",
+      "width": 390,
+      "filename": "landing-390.png",
+      "title": "InfluenceIQ — Find the Perfect Influencer. Instantly.",
+      "pageWidth": 630,
+      "pageHeight": 14070
+    },
+    {
+      "slug": "signup",
+      "file": "Signup.html",
+      "width": 1440,
+      "filename": "signup-1440.png",
+      "title": "InfluenceIQ — Sign up",
+      "pageWidth": 1440,
+      "pageHeight": 900
+    },
+    {
+      "slug": "signup",
+      "file": "Signup.html",
+      "width": 1280,
+      "filename": "signup-1280.png",
+      "title": "InfluenceIQ — Sign up",
+      "pageWidth": 1280,
+      "pageHeight": 900
+    },
+    {
+      "slug": "signup",
+      "file": "Signup.html",
+      "width": 1024,
+      "filename": "signup-1024.png",
+      "title": "InfluenceIQ — Sign up",
+      "pageWidth": 1024,
+      "pageHeight": 900
+    },
+    {
+      "slug": "signup",
+      "file": "Signup.html",
+      "width": 768,
+      "filename": "signup-768.png",
+      "title": "InfluenceIQ — Sign up",
+      "pageWidth": 768,
+      "pageHeight": 900
+    },
+    {
+      "slug": "signup",
+      "file": "Signup.html",
+      "width": 430,
+      "filename": "signup-430.png",
+      "title": "InfluenceIQ — Sign up",
+      "pageWidth": 430,
+      "pageHeight": 900
+    },
+    {
+      "slug": "signup",
+      "file": "Signup.html",
+      "width": 390,
+      "filename": "signup-390.png",
+      "title": "InfluenceIQ — Sign up",
+      "pageWidth": 390,
+      "pageHeight": 900
+    },
+    {
+      "slug": "onboarding",
+      "file": "Onboarding.html",
+      "width": 1440,
+      "filename": "onboarding-1440.png",
+      "title": "InfluenceIQ — Welcome",
+      "pageWidth": 1440,
+      "pageHeight": 900
+    },
+    {
+      "slug": "onboarding",
+      "file": "Onboarding.html",
+      "width": 1280,
+      "filename": "onboarding-1280.png",
+      "title": "InfluenceIQ — Welcome",
+      "pageWidth": 1280,
+      "pageHeight": 900
+    },
+    {
+      "slug": "onboarding",
+      "file": "Onboarding.html",
+      "width": 1024,
+      "filename": "onboarding-1024.png",
+      "title": "InfluenceIQ — Welcome",
+      "pageWidth": 1024,
+      "pageHeight": 900
+    },
+    {
+      "slug": "onboarding",
+      "file": "Onboarding.html",
+      "width": 768,
+      "filename": "onboarding-768.png",
+      "title": "InfluenceIQ — Welcome",
+      "pageWidth": 768,
+      "pageHeight": 900
+    },
+    {
+      "slug": "onboarding",
+      "file": "Onboarding.html",
+      "width": 430,
+      "filename": "onboarding-430.png",
+      "title": "InfluenceIQ — Welcome",
+      "pageWidth": 602,
+      "pageHeight": 1260
+    },
+    {
+      "slug": "onboarding",
+      "file": "Onboarding.html",
+      "width": 390,
+      "filename": "onboarding-390.png",
+      "title": "InfluenceIQ — Welcome",
+      "pageWidth": 602,
+      "pageHeight": 1390
+    },
+    {
+      "slug": "dashboard",
+      "file": "Dashboard.html",
+      "width": 1440,
+      "filename": "dashboard-1440.png",
+      "title": "InfluenceIQ — Dashboard",
+      "pageWidth": 1440,
+      "pageHeight": 900
+    },
+    {
+      "slug": "dashboard",
+      "file": "Dashboard.html",
+      "width": 1280,
+      "filename": "dashboard-1280.png",
+      "title": "InfluenceIQ — Dashboard",
+      "pageWidth": 1280,
+      "pageHeight": 991
+    },
+    {
+      "slug": "dashboard",
+      "file": "Dashboard.html",
+      "width": 1024,
+      "filename": "dashboard-1024.png",
+      "title": "InfluenceIQ — Dashboard",
+      "pageWidth": 1024,
+      "pageHeight": 1239
+    },
+    {
+      "slug": "dashboard",
+      "file": "Dashboard.html",
+      "width": 768,
+      "filename": "dashboard-768.png",
+      "title": "InfluenceIQ — Dashboard",
+      "pageWidth": 932,
+      "pageHeight": 1622
+    },
+    {
+      "slug": "dashboard",
+      "file": "Dashboard.html",
+      "width": 430,
+      "filename": "dashboard-430.png",
+      "title": "InfluenceIQ — Dashboard",
+      "pageWidth": 932,
+      "pageHeight": 2078
+    },
+    {
+      "slug": "dashboard",
+      "file": "Dashboard.html",
+      "width": 390,
+      "filename": "dashboard-390.png",
+      "title": "InfluenceIQ — Dashboard",
+      "pageWidth": 932,
+      "pageHeight": 2153
+    },
+    {
+      "slug": "discover",
+      "file": "Discover.html",
+      "width": 1440,
+      "filename": "discover-1440.png",
+      "title": "InfluenceIQ — Discover",
+      "pageWidth": 1440,
+      "pageHeight": 1713
+    },
+    {
+      "slug": "discover",
+      "file": "Discover.html",
+      "width": 1280,
+      "filename": "discover-1280.png",
+      "title": "InfluenceIQ — Discover",
+      "pageWidth": 1280,
+      "pageHeight": 2297
+    },
+    {
+      "slug": "discover",
+      "file": "Discover.html",
+      "width": 1024,
+      "filename": "discover-1024.png",
+      "title": "InfluenceIQ — Discover",
+      "pageWidth": 1024,
+      "pageHeight": 2973
+    },
+    {
+      "slug": "discover",
+      "file": "Discover.html",
+      "width": 768,
+      "filename": "discover-768.png",
+      "title": "InfluenceIQ — Discover",
+      "pageWidth": 768,
+      "pageHeight": 3367
+    },
+    {
+      "slug": "discover",
+      "file": "Discover.html",
+      "width": 430,
+      "filename": "discover-430.png",
+      "title": "InfluenceIQ — Discover",
+      "pageWidth": 650,
+      "pageHeight": 5550
+    },
+    {
+      "slug": "discover",
+      "file": "Discover.html",
+      "width": 390,
+      "filename": "discover-390.png",
+      "title": "InfluenceIQ — Discover",
+      "pageWidth": 650,
+      "pageHeight": 5550
+    },
+    {
+      "slug": "discover-table",
+      "file": "DiscoverTable.html",
+      "width": 1440,
+      "filename": "discover-table-1440.png",
+      "title": "InfluenceIQ — Discover (Table)",
+      "pageWidth": 1440,
+      "pageHeight": 1700
+    },
+    {
+      "slug": "discover-table",
+      "file": "DiscoverTable.html",
+      "width": 1280,
+      "filename": "discover-table-1280.png",
+      "title": "InfluenceIQ — Discover (Table)",
+      "pageWidth": 1280,
+      "pageHeight": 1700
+    },
+    {
+      "slug": "discover-table",
+      "file": "DiscoverTable.html",
+      "width": 1024,
+      "filename": "discover-table-1024.png",
+      "title": "InfluenceIQ — Discover (Table)",
+      "pageWidth": 1024,
+      "pageHeight": 1759
+    },
+    {
+      "slug": "discover-table",
+      "file": "DiscoverTable.html",
+      "width": 768,
+      "filename": "discover-table-768.png",
+      "title": "InfluenceIQ — Discover (Table)",
+      "pageWidth": 768,
+      "pageHeight": 1910
+    },
+    {
+      "slug": "discover-table",
+      "file": "DiscoverTable.html",
+      "width": 430,
+      "filename": "discover-table-430.png",
+      "title": "InfluenceIQ — Discover (Table)",
+      "pageWidth": 705,
+      "pageHeight": 2134
+    },
+    {
+      "slug": "discover-table",
+      "file": "DiscoverTable.html",
+      "width": 390,
+      "filename": "discover-table-390.png",
+      "title": "InfluenceIQ — Discover (Table)",
+      "pageWidth": 705,
+      "pageHeight": 2134
+    },
+    {
+      "slug": "lists",
+      "file": "Lists.html",
+      "width": 1440,
+      "filename": "lists-1440.png",
+      "title": "InfluenceIQ — Saved Lists",
+      "pageWidth": 1440,
+      "pageHeight": 966
+    },
+    {
+      "slug": "lists",
+      "file": "Lists.html",
+      "width": 1280,
+      "filename": "lists-1280.png",
+      "title": "InfluenceIQ — Saved Lists",
+      "pageWidth": 1280,
+      "pageHeight": 966
+    },
+    {
+      "slug": "lists",
+      "file": "Lists.html",
+      "width": 1024,
+      "filename": "lists-1024.png",
+      "title": "InfluenceIQ — Saved Lists",
+      "pageWidth": 1024,
+      "pageHeight": 1110
+    },
+    {
+      "slug": "lists",
+      "file": "Lists.html",
+      "width": 768,
+      "filename": "lists-768.png",
+      "title": "InfluenceIQ — Saved Lists",
+      "pageWidth": 768,
+      "pageHeight": 1244
+    },
+    {
+      "slug": "lists",
+      "file": "Lists.html",
+      "width": 430,
+      "filename": "lists-430.png",
+      "title": "InfluenceIQ — Saved Lists",
+      "pageWidth": 634,
+      "pageHeight": 2550
+    },
+    {
+      "slug": "lists",
+      "file": "Lists.html",
+      "width": 390,
+      "filename": "lists-390.png",
+      "title": "InfluenceIQ — Saved Lists",
+      "pageWidth": 635,
+      "pageHeight": 2688
+    },
+    {
+      "slug": "briefs",
+      "file": "Briefs.html",
+      "width": 1440,
+      "filename": "briefs-1440.png",
+      "title": "InfluenceIQ — Campaign Briefs",
+      "pageWidth": 1440,
+      "pageHeight": 1245
+    },
+    {
+      "slug": "briefs",
+      "file": "Briefs.html",
+      "width": 1280,
+      "filename": "briefs-1280.png",
+      "title": "InfluenceIQ — Campaign Briefs",
+      "pageWidth": 1280,
+      "pageHeight": 1245
+    },
+    {
+      "slug": "briefs",
+      "file": "Briefs.html",
+      "width": 1024,
+      "filename": "briefs-1024.png",
+      "title": "InfluenceIQ — Campaign Briefs",
+      "pageWidth": 1024,
+      "pageHeight": 1401
+    },
+    {
+      "slug": "briefs",
+      "file": "Briefs.html",
+      "width": 768,
+      "filename": "briefs-768.png",
+      "title": "InfluenceIQ — Campaign Briefs",
+      "pageWidth": 768,
+      "pageHeight": 2334
+    },
+    {
+      "slug": "briefs",
+      "file": "Briefs.html",
+      "width": 430,
+      "filename": "briefs-430.png",
+      "title": "InfluenceIQ — Campaign Briefs",
+      "pageWidth": 610,
+      "pageHeight": 3069
+    },
+    {
+      "slug": "briefs",
+      "file": "Briefs.html",
+      "width": 390,
+      "filename": "briefs-390.png",
+      "title": "InfluenceIQ — Campaign Briefs",
+      "pageWidth": 610,
+      "pageHeight": 3069
+    },
+    {
+      "slug": "brief-new",
+      "file": "Brief.html",
+      "width": 1440,
+      "filename": "brief-new-1440.png",
+      "title": "InfluenceIQ — New Campaign Brief",
+      "pageWidth": 1440,
+      "pageHeight": 2103
+    },
+    {
+      "slug": "brief-new",
+      "file": "Brief.html",
+      "width": 1280,
+      "filename": "brief-new-1280.png",
+      "title": "InfluenceIQ — New Campaign Brief",
+      "pageWidth": 1280,
+      "pageHeight": 2158
+    },
+    {
+      "slug": "brief-new",
+      "file": "Brief.html",
+      "width": 1024,
+      "filename": "brief-new-1024.png",
+      "title": "InfluenceIQ — New Campaign Brief",
+      "pageWidth": 1024,
+      "pageHeight": 2637
+    },
+    {
+      "slug": "brief-new",
+      "file": "Brief.html",
+      "width": 768,
+      "filename": "brief-new-768.png",
+      "title": "InfluenceIQ — New Campaign Brief",
+      "pageWidth": 768,
+      "pageHeight": 3116
+    },
+    {
+      "slug": "brief-new",
+      "file": "Brief.html",
+      "width": 430,
+      "filename": "brief-new-430.png",
+      "title": "InfluenceIQ — New Campaign Brief",
+      "pageWidth": 708,
+      "pageHeight": 5241
+    },
+    {
+      "slug": "brief-new",
+      "file": "Brief.html",
+      "width": 390,
+      "filename": "brief-new-390.png",
+      "title": "InfluenceIQ — New Campaign Brief",
+      "pageWidth": 708,
+      "pageHeight": 5241
+    },
+    {
+      "slug": "matching",
+      "file": "Matching.html",
+      "width": 1440,
+      "filename": "matching-1440.png",
+      "title": "InfluenceIQ — Matching…",
+      "pageWidth": 1440,
+      "pageHeight": 900
+    },
+    {
+      "slug": "matching",
+      "file": "Matching.html",
+      "width": 1280,
+      "filename": "matching-1280.png",
+      "title": "InfluenceIQ — Matching…",
+      "pageWidth": 1280,
+      "pageHeight": 900
+    },
+    {
+      "slug": "matching",
+      "file": "Matching.html",
+      "width": 1024,
+      "filename": "matching-1024.png",
+      "title": "InfluenceIQ — Matching…",
+      "pageWidth": 1024,
+      "pageHeight": 900
+    },
+    {
+      "slug": "matching",
+      "file": "Matching.html",
+      "width": 768,
+      "filename": "matching-768.png",
+      "title": "InfluenceIQ — Matching…",
+      "pageWidth": 768,
+      "pageHeight": 900
+    },
+    {
+      "slug": "matching",
+      "file": "Matching.html",
+      "width": 430,
+      "filename": "matching-430.png",
+      "title": "InfluenceIQ — Matching…",
+      "pageWidth": 430,
+      "pageHeight": 900
+    },
+    {
+      "slug": "matching",
+      "file": "Matching.html",
+      "width": 390,
+      "filename": "matching-390.png",
+      "title": "InfluenceIQ — Matching…",
+      "pageWidth": 390,
+      "pageHeight": 900
+    },
+    {
+      "slug": "shortlist",
+      "file": "Shortlist.html",
+      "width": 1440,
+      "filename": "shortlist-1440.png",
+      "title": "InfluenceIQ — AI Shortlist",
+      "pageWidth": 1440,
+      "pageHeight": 2048
+    },
+    {
+      "slug": "shortlist",
+      "file": "Shortlist.html",
+      "width": 1280,
+      "filename": "shortlist-1280.png",
+      "title": "InfluenceIQ — AI Shortlist",
+      "pageWidth": 1280,
+      "pageHeight": 1452
+    },
+    {
+      "slug": "shortlist",
+      "file": "Shortlist.html",
+      "width": 1024,
+      "filename": "shortlist-1024.png",
+      "title": "InfluenceIQ — AI Shortlist",
+      "pageWidth": 1024,
+      "pageHeight": 2077
+    },
+    {
+      "slug": "shortlist",
+      "file": "Shortlist.html",
+      "width": 768,
+      "filename": "shortlist-768.png",
+      "title": "InfluenceIQ — AI Shortlist",
+      "pageWidth": 768,
+      "pageHeight": 2098
+    },
+    {
+      "slug": "shortlist",
+      "file": "Shortlist.html",
+      "width": 430,
+      "filename": "shortlist-430.png",
+      "title": "InfluenceIQ — AI Shortlist",
+      "pageWidth": 729,
+      "pageHeight": 4568
+    },
+    {
+      "slug": "shortlist",
+      "file": "Shortlist.html",
+      "width": 390,
+      "filename": "shortlist-390.png",
+      "title": "InfluenceIQ — AI Shortlist",
+      "pageWidth": 730,
+      "pageHeight": 4694
+    },
+    {
+      "slug": "profile",
+      "file": "Profile.html",
+      "width": 1440,
+      "filename": "profile-1440.png",
+      "title": "InfluenceIQ — Lila Park",
+      "pageWidth": 1440,
+      "pageHeight": 2140
+    },
+    {
+      "slug": "profile",
+      "file": "Profile.html",
+      "width": 1280,
+      "filename": "profile-1280.png",
+      "title": "InfluenceIQ — Lila Park",
+      "pageWidth": 1280,
+      "pageHeight": 2254
+    },
+    {
+      "slug": "profile",
+      "file": "Profile.html",
+      "width": 1024,
+      "filename": "profile-1024.png",
+      "title": "InfluenceIQ — Lila Park",
+      "pageWidth": 1024,
+      "pageHeight": 3229
+    },
+    {
+      "slug": "profile",
+      "file": "Profile.html",
+      "width": 768,
+      "filename": "profile-768.png",
+      "title": "InfluenceIQ — Lila Park",
+      "pageWidth": 768,
+      "pageHeight": 3923
+    },
+    {
+      "slug": "profile",
+      "file": "Profile.html",
+      "width": 430,
+      "filename": "profile-430.png",
+      "title": "InfluenceIQ — Lila Park",
+      "pageWidth": 699,
+      "pageHeight": 4885
+    },
+    {
+      "slug": "profile",
+      "file": "Profile.html",
+      "width": 390,
+      "filename": "profile-390.png",
+      "title": "InfluenceIQ — Lila Park",
+      "pageWidth": 699,
+      "pageHeight": 4885
+    },
+    {
+      "slug": "settings",
+      "file": "Settings.html",
+      "width": 1440,
+      "filename": "settings-1440.png",
+      "title": "InfluenceIQ — Settings",
+      "pageWidth": 1440,
+      "pageHeight": 2213
+    },
+    {
+      "slug": "settings",
+      "file": "Settings.html",
+      "width": 1280,
+      "filename": "settings-1280.png",
+      "title": "InfluenceIQ — Settings",
+      "pageWidth": 1280,
+      "pageHeight": 2213
+    },
+    {
+      "slug": "settings",
+      "file": "Settings.html",
+      "width": 1024,
+      "filename": "settings-1024.png",
+      "title": "InfluenceIQ — Settings",
+      "pageWidth": 1024,
+      "pageHeight": 2346
+    },
+    {
+      "slug": "settings",
+      "file": "Settings.html",
+      "width": 768,
+      "filename": "settings-768.png",
+      "title": "InfluenceIQ — Settings",
+      "pageWidth": 768,
+      "pageHeight": 2654
+    },
+    {
+      "slug": "settings",
+      "file": "Settings.html",
+      "width": 430,
+      "filename": "settings-430.png",
+      "title": "InfluenceIQ — Settings",
+      "pageWidth": 599,
+      "pageHeight": 3748
+    },
+    {
+      "slug": "settings",
+      "file": "Settings.html",
+      "width": 390,
+      "filename": "settings-390.png",
+      "title": "InfluenceIQ — Settings",
+      "pageWidth": 599,
+      "pageHeight": 3790
+    }
+  ]
+}
