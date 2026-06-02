@@ -55,3 +55,20 @@
 
   .danger{background:var(--warn-soft);border-color:color-mix(in oklab,var(--warn),white 70%)}
   .danger h2{color:var(--warn-ink)}
+
+  @media (max-width:900px){
+    .sub-nav{position:static;display:flex;flex-direction:row;overflow-x:auto;padding-bottom:4px}
+    .sub-nav a{white-space:nowrap}
+  }
+
+  @media (max-width:640px){
+    .page-head h1{font-size:24px}
+    .page-head .sub{font-size:13px}
+    .card{padding:20px 16px;border-radius:12px}
+    .avatar-row{align-items:flex-start;flex-direction:column;gap:12px}
+    .billing-card{align-items:flex-start;flex-direction:column}
+    .toggle-row{align-items:flex-start;gap:14px}
+    .toggle-row .sw{flex-shrink:0;margin-top:2px}
+    .plan{padding:16px}
+    .plan .price{font-size:24px}
+  }

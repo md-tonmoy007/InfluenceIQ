@@ -25,7 +25,7 @@ export default function NotificationMenu() {
     position: "absolute",
     top: "calc(100% + 8px)",
     right: 0,
-    width: "340px",
+    width: "min(340px, calc(100vw - 28px))",
     background: "#fff",
     border: "1px solid var(--line,#e6e3da)",
     borderRadius: "14px",
@@ -48,7 +48,7 @@ export default function NotificationMenu() {
   };
 
   return (
-    <div ref={wrapperRef} style={{ position: "relative" }}>
+    <div className="notif-menu" ref={wrapperRef} style={{ position: "relative" }}>
       <button
         className="icon-btn"
         id="notif"

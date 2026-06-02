@@ -41,6 +41,7 @@ export function useToast() {
 
 export default function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [isPhone, setIsPhone] = useState(false);
   const nextId = useRef(0);
   const timers = useRef<number[]>([]);
 
@@ -84,6 +85,14 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 640px)");
+    const updatePhoneState = () => setIsPhone(mediaQuery.matches);
+    updatePhoneState();
+    mediaQuery.addEventListener("change", updatePhoneState);
+    return () => mediaQuery.removeEventListener("change", updatePhoneState);
+  }, []);
+
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
@@ -92,7 +101,9 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
         style={{
           position: "fixed",
           top: "80px",
-          right: "24px",
+          right: isPhone ? "14px" : "24px",
+          left: isPhone ? "14px" : undefined,
+          width: isPhone ? "auto" : undefined,
           zIndex: 9999,
           display: "flex",
           flexDirection: "column",

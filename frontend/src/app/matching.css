@@ -57,3 +57,36 @@
   @keyframes shine{from{transform:translateX(-30px)}to{transform:translateX(30px)}}
   .bar-meta{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;color:rgba(255,255,255,0.45)}
   .bar-meta .pct{color:#fff;font-weight:500}
+
+  @media (max-width:640px){
+    html,body{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto}
+    body{min-height:100svh;display:block;padding:28px 14px}
+    body::before{background-size:34px 34px}
+    .stage{width:100%;min-height:calc(100svh - 56px);display:flex;flex-direction:column;justify-content:center}
+    .brand{margin-bottom:28px}
+    .mark{width:30px;height:30px}
+    .orb{width:148px;height:148px;margin-bottom:28px}
+    .orb .core .center{width:48px;height:48px}
+    .orb .core .center::after{font-size:22px}
+    .ring.r2{inset:14px}
+    .ring.r3{inset:28px}
+    h1{font-size:27px;letter-spacing:-0.018em}
+    .lede{font-size:13.5px;line-height:1.45;margin-bottom:24px}
+    .steps{border-radius:14px;padding:12px 14px}
+    .step{gap:10px;padding:9px 0;font-size:13px;align-items:flex-start}
+    .step .icon{width:22px;height:22px;margin-top:1px}
+    .step .meta{font-size:10px;margin-left:6px;white-space:nowrap}
+    .bar-wrap{margin-top:18px}
+    .bar-meta{align-items:flex-start;gap:8px;font-size:10px;line-height:1.35}
+  }
+
+  @media (max-width:430px){
+    body{padding:22px 12px}
+    .stage{min-height:calc(100svh - 44px)}
+    .orb{width:132px;height:132px}
+    .brand{margin-bottom:22px}
+    .steps{padding:10px 12px}
+    .step{font-size:12.5px}
+    .step .meta{display:none}
+    .bar-meta{flex-direction:column}
+  }
