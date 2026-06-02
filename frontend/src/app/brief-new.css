@@ -152,3 +152,43 @@
   .loading-step.active{opacity:1;color:var(--violet-ink)}
   .loading-step.active .tick{border-color:var(--violet);position:relative}
   .loading-step.active .tick::after{content:'';position:absolute;inset:2px;border-radius:50%;background:var(--violet);animation:pulseCore 1.2s ease-in-out infinite}
+
+  @media (max-width:900px){
+    .page-head{align-items:flex-start;gap:14px}
+    .stepper{width:100%;overflow-x:auto;padding-bottom:2px}
+    .preview{position:static}
+  }
+
+  @media (max-width:640px){
+    .page-head h1{font-size:24px}
+    .page-head .sub{font-size:13px}
+    .stepper{font-size:12px;gap:7px}
+    .stepper .dot{width:20px;height:20px;font-size:10px;flex-shrink:0}
+    .stepper .sep{width:12px;flex-shrink:0}
+    .section{padding:20px 16px}
+    .section-head{align-items:flex-start;flex-wrap:wrap;gap:8px 10px;margin-bottom:16px}
+    .section-head .desc{width:100%;margin-left:34px;font-size:12.5px}
+    .goal-grid,.pf-grid,.tier-grid{grid-template-columns:1fr}
+    .goal,.pf-tile,.tier{padding:13px}
+    .chips{gap:7px}
+    .chip{min-height:34px;display:inline-flex;align-items:center}
+    .seg{display:flex;width:100%;overflow-x:auto}
+    .seg button{flex:1;min-width:max-content;padding:0 12px}
+    .tag-input input{min-width:100%}
+    .currency-row{align-items:flex-start;flex-direction:column;gap:8px}
+    .budget-readout{font-size:11px;gap:8px}
+    .budget-readout strong{text-align:center}
+    .form-foot{align-items:stretch;flex-direction:column;padding:18px 16px}
+    .form-foot .meta{font-size:12px}
+    .form-foot > div:last-child{display:grid !important;grid-template-columns:1fr;gap:8px !important}
+    .form-foot .btn{width:100%}
+    .preview{padding:16px}
+    .preview .row{align-items:flex-start;flex-direction:column;gap:4px}
+    .preview .row .v{max-width:100%;text-align:left}
+    .preview .stack{justify-content:flex-start}
+    .loading{padding:14px}
+    .loading-card{width:min(100%,calc(100vw - 28px));max-height:calc(100vh - 28px);overflow:auto;padding:28px 18px;border-radius:16px}
+    .loading-orb{width:72px;height:72px;margin-bottom:18px}
+    .loading h3{font-size:18px}
+    .loading p{font-size:13px}
+  }

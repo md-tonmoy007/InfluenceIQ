@@ -124,3 +124,47 @@
   .iconlink{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--muted);cursor:pointer;transition:all .15s;border:1px solid transparent}
   .iconlink:hover{background:var(--paper-2);color:var(--ink);border-color:var(--line)}
   .iconlink.danger:hover{color:var(--warn-ink);background:var(--warn-soft);border-color:color-mix(in oklab,var(--warn),white 70%)}
+
+  @media (max-width:900px){
+    .page-head{align-items:flex-start;gap:16px;margin-bottom:20px}
+    .page-head h1,.det-title h1{font-size:26px}
+    .card{padding:18px}
+    .det-head{gap:16px}
+    .det-title,.det-actions{width:100%}
+    .det-actions{flex-wrap:wrap}
+    .summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .panel-head{align-items:flex-start;flex-wrap:wrap;padding:14px 18px}
+    .panel-head .right{width:100%;margin-left:0;flex-wrap:wrap}
+    table.tbl{min-width:820px}
+  }
+
+  @media (max-width:640px){
+    .page-head{margin-bottom:16px}
+    .page-head h1,.det-title h1{font-size:24px}
+    .page-head .sub{font-size:13.5px}
+    .page-head .btn,.det-actions .btn{width:100%;min-height:40px;justify-content:center}
+    .card{padding:16px;border-radius:12px}
+    .card-head{margin-bottom:12px}
+    .card h3{font-size:18px}
+    .platform-mix{align-items:flex-start;flex-wrap:wrap}
+    .platform-mix .lbl{width:100%;margin-right:0}
+    .stat-row{grid-template-columns:1fr}
+    .card-cta{grid-template-columns:1fr 40px}
+    .btn-card{min-height:40px}
+    .btn-del{width:40px}
+    .card-new{min-height:220px}
+    .det-title h1{align-items:flex-start;flex-direction:column;gap:8px}
+    .det-title .name-edit{max-width:100%;overflow-wrap:anywhere}
+    .det-title .meta{gap:8px 12px}
+    .summary-row{grid-template-columns:1fr;border-radius:12px}
+    .summary-row > div{padding:14px 16px}
+    .summary-row .v{font-size:20px}
+    .panel{border-radius:12px}
+    .panel-head{padding:12px}
+    .panel-head .ttl{width:100%}
+    .panel-head .right{gap:8px}
+    .filter-mini{flex:1 1 100%;min-height:38px;justify-content:center}
+    table.tbl{min-width:760px}
+    .tbl th,.tbl td{padding-left:12px;padding-right:12px}
+    .iconlink{width:32px;height:32px}
+  }

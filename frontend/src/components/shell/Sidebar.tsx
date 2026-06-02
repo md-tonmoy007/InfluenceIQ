@@ -8,9 +8,13 @@ import BrandMark from "./BrandMark";
 
 type SidebarProps = {
   brandHref?: string;
+  onNavigate?: () => void;
 };
 
-export default function Sidebar({ brandHref = routes.dashboard }: SidebarProps) {
+export default function Sidebar({
+  brandHref = routes.dashboard,
+  onNavigate,
+}: SidebarProps) {
   const pathname = usePathname() ?? "";
   const briefCount =
     pathname === routes.newBrief || pathname === routes.shortlist ? 3 : 5;
@@ -113,8 +117,13 @@ export default function Sidebar({ brandHref = routes.dashboard }: SidebarProps) 
     );
 
   return (
-    <aside className="sidebar">
-      <Link className="brand" href={brandHref} aria-label="InfluenceIQ home">
+    <aside className="sidebar" id="workspace-sidebar">
+      <Link
+        className="brand"
+        href={brandHref}
+        aria-label="InfluenceIQ home"
+        onClick={onNavigate}
+      >
         <BrandMark />
         <span>InfluenceIQ</span>
       </Link>
@@ -127,6 +136,7 @@ export default function Sidebar({ brandHref = routes.dashboard }: SidebarProps) 
             key={item.label}
             className={`side-link${active ? " active" : ""}`}
             href={item.href}
+            onClick={onNavigate}
           >
             {item.icon}
             {item.label}

@@ -878,3 +878,232 @@
       transition-duration: 0.01ms !important;
     }
   }
+
+  @media (max-width: 900px) {
+    .app {
+      grid-template-columns: 1fr;
+    }
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 40;
+      width: min(300px, calc(100vw - 56px));
+      height: 100dvh;
+      transform: translateX(-100%);
+      transition: transform .25s ease;
+      box-shadow: 18px 0 50px -28px rgba(10,11,16,0.45);
+    }
+    .app.sidebar-open .sidebar {
+      transform: translateX(0);
+    }
+    .topbar {
+      min-height: 64px;
+      height: auto;
+      padding: 12px 20px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .mobile-menu-btn {
+      display: grid;
+      flex: 0 0 auto;
+    }
+    .topbar .right {
+      margin-left: 0;
+      flex: 0 0 auto;
+    }
+    .content {
+      padding: 24px 20px 56px;
+    }
+    .page-head {
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .page-head h1 {
+      font-size: 27px;
+    }
+    .search-hero {
+      border-radius: 16px;
+      padding: 12px;
+    }
+    .search-row {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .search-input {
+      flex: 1 1 calc(100% - 52px);
+      min-height: 38px;
+    }
+    .search-actions {
+      width: 100%;
+      justify-content: flex-end;
+    }
+    .layout {
+      gap: 18px;
+    }
+    .filters {
+      position: static;
+      max-height: none;
+      overflow: visible;
+    }
+    .results-head {
+      align-items: flex-start;
+    }
+    .results-actions {
+      margin-left: auto;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .topbar {
+      padding: 10px 14px;
+      gap: 10px;
+    }
+    .mobile-menu-btn,
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+    }
+    .topbar .right {
+      order: 3;
+      width: 100%;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .content {
+      padding: 18px 14px 48px;
+    }
+    .page-head {
+      margin-bottom: 14px;
+    }
+    .page-head h1 {
+      font-size: 25px;
+    }
+    .page-head .sub {
+      font-size: 13.5px;
+    }
+    .search-hero {
+      margin-bottom: 16px;
+      border-radius: 14px;
+      padding: 10px;
+    }
+    .search-row {
+      gap: 10px;
+    }
+    .search-row .ai-icon {
+      width: 36px;
+      height: 36px;
+    }
+    .search-input {
+      flex-basis: calc(100% - 46px);
+      font-size: 14px;
+      min-height: 40px;
+      padding: 4px 0;
+    }
+    .search-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+    .search-kbd {
+      display: none;
+    }
+    .search-actions .btn {
+      width: 100%;
+      min-height: 40px;
+      justify-content: center;
+    }
+    .search-suggest {
+      align-items: stretch;
+      padding: 10px 0 0;
+    }
+    .search-suggest .lbl {
+      width: 100%;
+      padding: 0 2px 2px;
+    }
+    .suggest {
+      min-height: 34px;
+      text-align: left;
+    }
+    .filters {
+      border-radius: 12px;
+      padding-bottom: 8px;
+    }
+    .filters-head {
+      padding: 12px 12px 8px;
+    }
+    .filter-section {
+      padding: 12px;
+    }
+    .check,
+    .radio {
+      min-height: 40px;
+      padding: 8px 9px;
+    }
+    .radio .tier-mark {
+      margin-left: 4px;
+    }
+    .results-head {
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .results-count {
+      width: 100%;
+      font-size: 13.5px;
+    }
+    .results-count .live {
+      margin: 8px 0 0;
+    }
+    .results-actions {
+      width: 100%;
+      margin-left: 0;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .sort-wrap {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .sort-wrap select {
+      min-width: 0;
+      width: 100%;
+    }
+    .card {
+      padding: 15px;
+      border-radius: 12px;
+    }
+    .card-top {
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .card-av {
+      width: 44px;
+      height: 44px;
+    }
+    .card-handle {
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .match-chip {
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+    .card-stats {
+      grid-template-columns: 1fr;
+    }
+    .card-stats > div {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 9px 11px;
+    }
+    .card-actions {
+      grid-template-columns: 1fr 40px;
+    }
+    .btn-card {
+      min-height: 40px;
+    }
+    .btn-save {
+      width: 40px;
+    }
+  }

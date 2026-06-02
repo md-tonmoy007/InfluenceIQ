@@ -126,3 +126,47 @@
   .pages button.nav:hover{color:var(--ink)}
   .pages button:disabled{opacity:0.4;cursor:not-allowed}
   .pages .ellipsis{padding:0 4px;color:var(--muted)}
+
+  @media (max-width:900px){
+    .page-head{align-items:flex-start;gap:16px;margin-bottom:16px}
+    .page-head h1{font-size:26px}
+    .controls{align-items:stretch;gap:8px}
+    .seg{width:100%;height:auto}
+    .seg button,.seg a{flex:1;justify-content:center;min-height:34px}
+    .quick-search{order:2;flex:1 1 100%;max-width:none;min-width:0}
+    .ctrl-btn{min-height:38px}
+    .bulk-bar{align-items:flex-start;flex-wrap:wrap;padding:12px}
+    .bulk-bar .sep{display:none}
+    .bulk-bar .clear{margin-left:0}
+    .term-head{align-items:flex-start;flex-wrap:wrap;gap:8px 12px}
+    .term-head .right{width:100%;margin-left:0;flex-wrap:wrap}
+    .pagination{align-items:flex-start;gap:12px;flex-wrap:wrap}
+    .pagination > div:last-child{width:100%;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  }
+
+  @media (max-width:640px){
+    .page-head{margin-bottom:14px}
+    .page-head h1{font-size:24px}
+    .page-head .sub{font-size:13px}
+    .controls{margin-bottom:12px}
+    .seg button,.seg a{padding:0 8px;font-size:12px}
+    .quick-search{height:40px}
+    .ctrl-btn{flex:1 1 calc(50% - 4px);justify-content:center;padding:0 10px}
+    .bulk-bar{border-radius:9px;gap:8px}
+    .bulk-act{flex:1 1 100%;justify-content:center;min-height:34px}
+    .bulk-bar .nc,.bulk-bar .clear{width:100%}
+    .bulk-bar .clear{text-align:center;color:rgba(255,255,255,.75)}
+    .term{border-radius:12px}
+    .term-head{padding:10px 12px}
+    .term-head .ticker{width:100%;line-height:1.45}
+    .term-head .live{font-size:9.5px}
+    .term-head .right{font-size:9.5px;line-height:1.5}
+    .scroll{max-width:calc(100vw - 28px)}
+    table.t{min-width:1080px}
+    .t thead th,.t tbody td{padding-left:10px;padding-right:10px}
+    .pagination{padding:12px;align-items:stretch}
+    .pagination .info{width:100%;line-height:1.4}
+    .pagination .per-page{margin-right:0}
+    .pages{max-width:100%;overflow-x:auto;padding-bottom:2px}
+    .pages button{flex:0 0 30px}
+  }

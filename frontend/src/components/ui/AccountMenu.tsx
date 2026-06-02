@@ -28,7 +28,7 @@ export default function AccountMenu({ orgName = "Northwind Outdoor" }: AccountMe
     position: "absolute",
     top: "calc(100% + 8px)",
     right: 0,
-    width: "220px",
+    width: "min(220px, calc(100vw - 28px))",
     background: "#fff",
     border: "1px solid #e6e3da",
     borderRadius: "12px",
@@ -52,7 +52,7 @@ export default function AccountMenu({ orgName = "Northwind Outdoor" }: AccountMe
   });
 
   return (
-    <div ref={wrapperRef} style={{ position: "relative" }}>
+    <div className="account-menu" ref={wrapperRef} style={{ position: "relative" }}>
       <div className="me" id="me" role="button" onClick={() => setOpen((prev) => !prev)}>
         <span className="av">EM</span>
         <div className="who">

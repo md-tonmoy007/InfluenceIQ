@@ -130,6 +130,7 @@ export default function ProfileInteractions() {
       {isModalOpen && (
         <div
           id="contact-modal"
+          className="contact-modal"
           style={{
             position: 'fixed',
             inset: 0,
@@ -147,11 +148,13 @@ export default function ProfileInteractions() {
           }}
         >
           <div
+            className="contact-modal-panel"
             style={{
               background: '#fff',
               borderRadius: '18px',
-              width: '100%',
+              width: 'min(520px, calc(100vw - 28px))',
               maxWidth: '520px',
+              maxHeight: 'calc(100vh - 28px)',
               overflow: 'hidden',
               boxShadow: '0 40px 80px -20px rgba(60,50,120,0.4)',
               animation: 'popIn .35s cubic-bezier(.2,.8,.2,1)',
@@ -201,8 +204,8 @@ export default function ProfileInteractions() {
               </div>
             </div>
 
-            <form id="contact-form" style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }} onSubmit={handleSubmit}>
-              <div style={{ display: 'flex', gap: '8px' }}>
+            <form id="contact-form" className="contact-modal-form" style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }} onSubmit={handleSubmit}>
+              <div className="contact-channel-row" style={{ display: 'flex', gap: '8px' }}>
                 <label
                   style={{
                     flex: 1,
@@ -363,12 +366,12 @@ export default function ProfileInteractions() {
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', paddingTop: '6px' }}>
+              <div className="contact-modal-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', paddingTop: '6px' }}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: 'var(--muted)' }}>
                   <input type="checkbox" defaultChecked style={{ accentColor: 'var(--violet)' }} />
                   Track opens &amp; replies
                 </label>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div className="contact-modal-buttons" style={{ display: 'flex', gap: '8px' }}>
                   <button
                     type="button"
                     id="modal-cancel"

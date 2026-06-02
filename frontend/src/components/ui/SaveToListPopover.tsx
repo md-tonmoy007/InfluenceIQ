@@ -122,7 +122,7 @@ export default function SaveToListPopover({ children }: SaveToListPopoverProps) 
           position: "absolute",
           top: "calc(100% + 6px)",
           right: 0,
-          width: "280px",
+          width: "min(280px, calc(100vw - 28px))",
           background: "#fff",
           border: "1px solid #e6e3da",
           borderRadius: "12px",

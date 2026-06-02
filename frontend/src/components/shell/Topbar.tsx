@@ -19,6 +19,8 @@ type TopbarProps = {
   showSearch?: boolean;
   rightVariant?: "default" | "minimal";
   orgName?: string;
+  sidebarOpen?: boolean;
+  onOpenSidebar?: () => void;
 };
 
 export default function Topbar({
@@ -26,6 +28,8 @@ export default function Topbar({
   showSearch = false,
   rightVariant = "default",
   orgName = "Northwind Outdoor",
+  sidebarOpen = false,
+  onOpenSidebar,
 }: TopbarProps) {
   const router = useRouter();
   const normalizedCrumbs = crumbs.map((crumb, index) => ({
@@ -42,6 +46,24 @@ export default function Topbar({
 
   return (
     <header className="topbar">
+      <button
+        className="mobile-menu-btn"
+        type="button"
+        aria-label="Open navigation"
+        aria-controls="workspace-sidebar"
+        aria-expanded={sidebarOpen}
+        onClick={onOpenSidebar}
+      >
+        <svg
+          className="i"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        >
+          <path d="M4 7h16M4 12h16M4 17h16" />
+        </svg>
+      </button>
       <div className="crumbs">
         {normalizedCrumbs.map((crumb, index) => (
           <Fragment key={`${crumb.label}-${crumb.href ?? "current"}-${index}`}>
