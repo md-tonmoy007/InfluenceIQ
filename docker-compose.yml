@@ -52,11 +52,11 @@ services:
       redis:
         condition: service_healthy
 
-  ai_agent_services:
+  worker_search:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A ai_agent_services.worker.celery_app worker -Q ai_agent_queue -c 2 -n ai_agent@%h
+    command: celery -A app.celery_app:celery_app worker -Q search_queue -c 2 -n search@%h
     env_file: .env
     volumes:
       - .:/workspace
@@ -64,11 +64,11 @@ services:
       redis:
         condition: service_healthy
 
-  scraping_service:
+  worker_crawl:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A scraping_service.worker.celery_app worker -Q scraping_queue -c 8 -n scraping@%h
+    command: celery -A app.celery_app:celery_app worker -Q crawl_queue -c 8 -n crawl@%h
     env_file: .env
     volumes:
       - .:/workspace
@@ -76,12 +76,38 @@ services:
       redis:
         condition: service_healthy
 
-  scoring_service:
+  worker_extract:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A scoring_service.worker.celery_app worker -Q scoring_queue -c 4 -n scoring@%h
+    command: celery -A app.celery_app:celery_app worker -Q extract_queue -c 4 -n extract@%h
     env_file: .env
+    volumes:
+      - .:/workspace
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker_score:
+    build:
+      context: .
+      dockerfile: platform/Dockerfile
+    command: celery -A app.celery_app:celery_app worker -Q score_queue -c 2 -n score@%h
+    env_file: .env
+    volumes:
+      - .:/workspace
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  flower:
+    build:
+      context: .
+      dockerfile: platform/Dockerfile
+    command: celery -A app.celery_app:celery_app flower --port=5555
+    env_file: .env
+    ports:
+      - "5555:5555"
     volumes:
       - .:/workspace
     depends_on:

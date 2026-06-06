@@ -16,8 +16,6 @@ _redis = redis.from_url(settings.REDIS_URL)
 
 @app.get("/health")
 def health() -> dict:
-    queue_depths = {queue_name: _redis.llen(queue_name) for queue_name in WORKER_QUEUES}
-
     try:
         with _engine.connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -27,13 +25,18 @@ def health() -> dict:
 
     try:
         _redis.ping()
+        queue_depths = {queue_name: _redis.llen(queue_name) for queue_name in WORKER_QUEUES}
         redis_status = "connected"
     except Exception:
+        queue_depths = {queue_name: None for queue_name in WORKER_QUEUES}
         redis_status = "down"
 
-    inspect = celery_app.control.inspect(timeout=1)
-    active = inspect.active() or {}
-    workers = {name: len(tasks) for name, tasks in active.items()}
+    try:
+        inspect = celery_app.control.inspect(timeout=1)
+        active = inspect.active() or {}
+        workers = {name: len(tasks) for name, tasks in active.items()}
+    except Exception:
+        workers = {}
 
     return {
         "status": "ok" if db_status == "connected" and redis_status == "connected" else "degraded",
