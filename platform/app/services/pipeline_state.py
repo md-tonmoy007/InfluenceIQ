@@ -105,3 +105,57 @@ def update_state(campaign_id: str, **fields: Any) -> dict[str, str]:
         )
 
     return encoded_fields
+
+
+def _decode_hash_value(value: str) -> Any:
+    if value in {"true", "false"}:
+        return value == "true"
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        if "." in value:
+            return float(value)
+        return int(value)
+    except ValueError:
+        return value
+
+
+def get_state(campaign_id: str) -> dict[str, Any]:
+    client = _state_redis()
+    key = f"pipeline_state:{campaign_id}"
+    try:
+        raw = client.hgetall(key)
+    except redis.RedisError as exc:
+        logger.warning("pipeline_state_read_failed", campaign_id=campaign_id, error=str(exc))
+        return {}
+
+    decoded: dict[str, Any] = {}
+    for key_bytes, value_bytes in raw.items():
+        key_name = key_bytes.decode() if isinstance(key_bytes, bytes) else str(key_bytes)
+        value = value_bytes.decode() if isinstance(value_bytes, bytes) else str(value_bytes)
+        decoded[key_name] = _decode_hash_value(value)
+    return decoded
+
+
+def get_events(campaign_id: str, after_event_id: int = 0) -> list[dict[str, Any]]:
+    client = _state_redis()
+    key = f"pipeline_events:{campaign_id}"
+    try:
+        raw_events = client.lrange(key, 0, -1)
+    except redis.RedisError as exc:
+        logger.warning("pipeline_events_read_failed", campaign_id=campaign_id, error=str(exc))
+        return []
+
+    events: list[dict[str, Any]] = []
+    for raw_event in raw_events:
+        payload = raw_event.decode() if isinstance(raw_event, bytes) else str(raw_event)
+        try:
+            event = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if int(event.get("event_id", 0)) > after_event_id:
+            events.append(event)
+    return events

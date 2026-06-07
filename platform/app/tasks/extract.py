@@ -7,6 +7,21 @@ from celery import shared_task
 
 from app.services.pipeline_state import emit_event, update_state
 
+NAME_SUFFIX_BLOCKLIST = {
+    "certified",
+    "instagram",
+    "youtube",
+    "tiktok",
+    "creator",
+    "creators",
+    "educator",
+    "educators",
+    "expert",
+    "experts",
+    "social",
+    "media",
+}
+
 
 def _normalize_name(value: str) -> str:
     value = value.lower()
@@ -24,6 +39,26 @@ def _platforms(candidate: dict) -> set[str]:
     return set()
 
 
+def _clean_name(raw_name: str) -> str:
+    tokens = raw_name.split()
+    while len(tokens) > 2 and tokens[-1].lower() in NAME_SUFFIX_BLOCKLIST:
+        tokens.pop()
+    return " ".join(tokens)
+
+
+def _extract_credentials(content: str) -> list[str]:
+    matches = re.findall(
+        r"\b(?:MD|PhD|MBA|RD|RN|Certified(?:\s+(?!with\b)[A-Za-z]+){0,3})\b",
+        content,
+    )
+    seen: list[str] = []
+    for match in matches:
+        cleaned = match.strip()
+        if cleaned and cleaned not in seen:
+            seen.append(cleaned)
+    return seen
+
+
 @shared_task(name="app.tasks.extract.extract_influencers", bind=True)
 def extract_influencers(self, campaign_id: str, page: dict) -> list[dict]:
     """spaCy NER + regex + LLM fallback handled by scoring_service.
@@ -32,21 +67,23 @@ def extract_influencers(self, campaign_id: str, page: dict) -> list[dict]:
     source_url = page.get("url", "")
     name_matches = re.findall(r"\b(?:Dr\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b", content)
     handles = re.findall(r"@([A-Za-z0-9_.]{3,30})", content)
+    credentials = _extract_credentials(content)
 
     mentions: list[dict] = []
     seen_names: set[str] = set()
     for raw_name in name_matches[:5]:
-        normalized = _normalize_name(raw_name)
+        cleaned_name = _clean_name(raw_name)
+        normalized = _normalize_name(cleaned_name)
         if not normalized or normalized in seen_names:
             continue
         seen_names.add(normalized)
         mentions.append(
             {
-                "name": raw_name,
+                "name": cleaned_name,
                 "source_url": source_url,
                 "context": content[:240],
                 "platforms": {"instagram": f"@{handles[0]}"} if handles else {},
-                "credentials": re.findall(r"\b(?:MD|PhD|MBA|RD|RN|Certified [A-Za-z ]+)\b", content),
+                "credentials": credentials,
             }
         )
 

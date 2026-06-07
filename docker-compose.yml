@@ -56,7 +56,7 @@ services:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A app.celery_app:celery_app worker -Q search_queue -c 2 -n search@%h
+    command: celery -A app.celery_app:celery_app worker -E -Q search_queue -c 2 -n search@%h
     env_file: .env
     volumes:
       - .:/workspace
@@ -68,7 +68,7 @@ services:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A app.celery_app:celery_app worker -Q crawl_queue -c 8 -n crawl@%h
+    command: celery -A app.celery_app:celery_app worker -E -Q crawl_queue -c 8 -n crawl@%h
     env_file: .env
     volumes:
       - .:/workspace
@@ -80,7 +80,7 @@ services:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A app.celery_app:celery_app worker -Q extract_queue -c 4 -n extract@%h
+    command: celery -A app.celery_app:celery_app worker -E -Q extract_queue -c 4 -n extract@%h
     env_file: .env
     volumes:
       - .:/workspace
@@ -92,7 +92,7 @@ services:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A app.celery_app:celery_app worker -Q score_queue -c 2 -n score@%h
+    command: celery -A app.celery_app:celery_app worker -E -Q score_queue -c 2 -n score@%h
     env_file: .env
     volumes:
       - .:/workspace
