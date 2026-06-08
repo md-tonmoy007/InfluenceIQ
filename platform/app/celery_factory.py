@@ -3,10 +3,12 @@ from __future__ import annotations
 from celery import Celery
 
 from app.config import settings
+from app.logging_config import configure_logging
 from app.service_roles import ALL_TASK_MODULES, TASK_MODULES_BY_SERVICE, TASK_QUEUE_BY_NAME
 
 
 def create_celery_app(service_name: str, include_modules: list[str] | None = None) -> Celery:
+    configure_logging(settings.LOG_LEVEL)
     include = include_modules or TASK_MODULES_BY_SERVICE.get(service_name, ALL_TASK_MODULES)
 
     celery_app = Celery(

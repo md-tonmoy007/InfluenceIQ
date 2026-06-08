@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import threading
 import time
 import uuid
@@ -9,13 +8,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.orm import Session
+import structlog
 
 from app.celery_app import celery_app
 from app.db import SessionLocal
+from app.logging_config import bind_campaign, clear_log_context
 from app.models import Campaign, InfluencerResult
 from app.services.pipeline_state import emit_event, update_state
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -36,14 +37,17 @@ def start_campaign_pipeline(campaign_id: str) -> None:
 
 
 def run_campaign_pipeline(campaign_id: str) -> None:
+    bind_campaign(campaign_id)
     started_at = time.monotonic()
     session = SessionLocal()
     try:
         campaign = session.get(Campaign, uuid.UUID(campaign_id))
         if campaign is None:
-            logger.warning("campaign_missing_for_pipeline", extra={"campaign_id": campaign_id})
+            logger.warning("campaign_missing_for_pipeline")
             return
 
+        bind_campaign(campaign_id, brand=campaign.brand, product=campaign.product)
+        logger.info("campaign_pipeline_started")
         campaign.status = "running"
         session.commit()
 
@@ -58,6 +62,7 @@ def run_campaign_pipeline(campaign_id: str) -> None:
         )
         emit_event(campaign_id, "pipeline.started", {"campaign_id": campaign_id})
 
+        logger.info("campaign_pipeline_phase_started", phase="search")
         queries = _dispatch("app.tasks.search.generate_queries", campaign_id)
         all_results: list[dict[str, Any]] = []
         for query in queries:
@@ -65,12 +70,14 @@ def run_campaign_pipeline(campaign_id: str) -> None:
 
         unique_urls = list(OrderedDict((result["url"], result) for result in all_results).values())
         update_state(campaign_id, phase="search", urls_discovered=len(unique_urls))
+        logger.info("campaign_pipeline_phase_completed", phase="search", urls_discovered=len(unique_urls))
 
         by_name: dict[str, PipelineInfluencer] = {}
         urls_scraped = 0
         scores_computed = 0
 
         for result in unique_urls:
+            logger.info("campaign_pipeline_url_started", url=result["url"])
             page = _dispatch("app.tasks.crawl.fetch_page", campaign_id, result["url"])
             content = _dispatch("app.tasks.crawl.extract_content", page)
             brand_safety = _dispatch("app.tasks.score.classify_brand_safety", campaign_id, content)
@@ -109,6 +116,13 @@ def run_campaign_pipeline(campaign_id: str) -> None:
                     influencers_found=len(by_name),
                     scores_computed=scores_computed,
                 )
+            logger.info(
+                "campaign_pipeline_url_completed",
+                url=result["url"],
+                mentions=len(mentions),
+                urls_scraped=urls_scraped,
+                scores_computed=scores_computed,
+            )
 
         _replace_influencers(session, campaign, by_name.values())
         campaign.status = "completed"
@@ -121,8 +135,13 @@ def run_campaign_pipeline(campaign_id: str) -> None:
             "pipeline.completed",
             {"total_influencers": len(by_name), "duration_seconds": duration_seconds},
         )
+        logger.info(
+            "campaign_pipeline_completed",
+            total_influencers=len(by_name),
+            duration_seconds=duration_seconds,
+        )
     except Exception as exc:
-        logger.exception("campaign_pipeline_failed", extra={"campaign_id": campaign_id})
+        logger.exception("campaign_pipeline_failed")
         campaign = session.get(Campaign, uuid.UUID(campaign_id))
         if campaign is not None:
             campaign.status = "failed"
@@ -131,10 +150,23 @@ def run_campaign_pipeline(campaign_id: str) -> None:
         emit_event(campaign_id, "pipeline.failed", {"error": str(exc)})
     finally:
         session.close()
+        clear_log_context()
 
 
 def _dispatch(task_name: str, *args: Any) -> Any:
-    return celery_app.send_task(task_name, args=args).get(timeout=60)
+    started_at = time.monotonic()
+    logger.info("celery_task_dispatch_started", task_name=task_name)
+    try:
+        result = celery_app.send_task(task_name, args=args).get(timeout=60)
+    except Exception:
+        logger.exception("celery_task_dispatch_failed", task_name=task_name)
+        raise
+    logger.info(
+        "celery_task_dispatch_completed",
+        task_name=task_name,
+        duration_seconds=round(time.monotonic() - started_at, 3),
+    )
+    return result
 
 
 def _canonical_key(mention: dict[str, Any]) -> str:

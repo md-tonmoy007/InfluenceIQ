@@ -4,8 +4,11 @@ import re
 from difflib import SequenceMatcher
 
 from celery import shared_task
+import structlog
 
 from app.services.pipeline_state import emit_event, update_state
+
+logger = structlog.get_logger(__name__)
 
 NAME_SUFFIX_BLOCKLIST = {
     "certified",
@@ -109,6 +112,12 @@ def extract_influencers(self, campaign_id: str, page: dict) -> list[dict]:
                 "source": source_url,
             },
         )
+    logger.info(
+        "influencers_extracted",
+        campaign_id=campaign_id,
+        source_url=source_url,
+        mention_count=len(mentions),
+    )
     return mentions
 
 

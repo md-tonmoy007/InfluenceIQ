@@ -16,6 +16,7 @@ from app.scoring.formula import calculate_final_score, confidence_for_sources, g
 from app.scoring.normalize import normalize_score
 from app.service_roles import TASK_QUEUE_BY_NAME, WORKER_QUEUES
 from app.services import pipeline_state
+from app.llm.client import available_provider_for
 from app.tasks.extract import resolve_identity_llm
 from app.tasks.score import classify_brand_safety, score_influencer
 
@@ -162,6 +163,30 @@ class AiDevOpsTest(unittest.TestCase):
 
         self.assertTrue(result["merge"])
         self.assertGreaterEqual(result["confidence"], 0.9)
+
+    def test_llm_provider_selection_uses_task_specific_provider_and_model(self) -> None:
+        with (
+            patch("app.llm.client.settings.OPENROUTER_API_KEY", "router-key"),
+            patch("app.llm.client.settings.GEMINI_API_KEY", "gemini-key"),
+            patch("app.llm.client.settings.GENERATE_QUERY_AI_PROVIDER", "openrouter"),
+            patch("app.llm.client.settings.GENERATE_QUERY_AI_MODEL", "openai/gpt-4o-mini"),
+            patch("app.llm.client.settings.CLASSIFY_BRAND_SAFETY_AI_PROVIDER", "gemini"),
+            patch("app.llm.client.settings.CLASSIFY_BRAND_SAFETY_AI_MODEL", "gemini-2.5-flash"),
+            patch("app.llm.client.settings.RESOLVE_IDENTITY_AI_PROVIDER", "openrouter"),
+            patch("app.llm.client.settings.RESOLVE_IDENTITY_AI_MODEL", "anthropic/claude-3.5-haiku"),
+        ):
+            self.assertEqual(
+                available_provider_for("generate_queries"),
+                ("openrouter", "openai/gpt-4o-mini"),
+            )
+            self.assertEqual(
+                available_provider_for("classify_brand_safety"),
+                ("gemini", "gemini-2.5-flash"),
+            )
+            self.assertEqual(
+                available_provider_for("resolve_identity_llm"),
+                ("openrouter", "anthropic/claude-3.5-haiku"),
+            )
 
 
 if __name__ == "__main__":

@@ -4,10 +4,13 @@ import uuid
 from urllib.parse import quote_plus
 
 from celery import shared_task
+import structlog
 
 from app.db import SessionLocal
 from app.models import Campaign
 from app.services.pipeline_state import emit_event, update_state
+
+logger = structlog.get_logger(__name__)
 
 
 def _topic_from_campaign(campaign_id: str) -> str:
@@ -47,6 +50,7 @@ def generate_queries(self, campaign_id: str) -> list[str]:
     ]
     update_state(campaign_id, phase="search", generated_query_count=len(queries))
     emit_event(campaign_id, "query.generated", {"queries": queries})
+    logger.info("queries_generated", campaign_id=campaign_id, query_count=len(queries), topic=topic)
     return queries
 
 
@@ -79,4 +83,5 @@ def execute_search(self, campaign_id: str, query: str) -> list[dict]:
                 "relevance": result["relevance_score"],
             },
         )
+    logger.info("search_executed", campaign_id=campaign_id, query=query, result_count=len(results))
     return results

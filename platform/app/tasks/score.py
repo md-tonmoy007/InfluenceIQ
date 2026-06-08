@@ -3,10 +3,13 @@ from __future__ import annotations
 from typing import Any
 
 from celery import shared_task
+import structlog
 
 from app.scoring.formula import calculate_final_score, confidence_for_sources, grade_for_score
 from app.scoring.versioning import score_metadata
 from app.services.pipeline_state import emit_event, update_state
+
+logger = structlog.get_logger(__name__)
 
 BRAND_SAFETY_KEYWORDS = {
     "hate_speech": {"hate", "slur", "racist"},
@@ -61,6 +64,12 @@ def classify_brand_safety(self, campaign_id: str, content: dict) -> dict:
         "source_url": content.get("url") or content.get("source_url", ""),
     }
     update_state(campaign_id, phase="score", brand_safety_checked=True)
+    logger.info(
+        "brand_safety_classified",
+        campaign_id=campaign_id,
+        source_url=result["source_url"],
+        risk_count=sum(1 for flagged in risks.values() if flagged),
+    )
     return result
 
 
@@ -88,5 +97,13 @@ def score_influencer(self, campaign_id: str, influencer_id: str, sub_scores: dic
             "grade": result["grade"],
             "confidence": confidence,
         },
+    )
+    logger.info(
+        "influencer_scored",
+        campaign_id=campaign_id,
+        influencer_id=influencer_id,
+        final_score=final_score,
+        grade=result["grade"],
+        confidence=confidence,
     )
     return result

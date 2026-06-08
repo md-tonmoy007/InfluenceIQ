@@ -20,15 +20,32 @@ class LLMResponse:
     fallback: bool
 
 
+TASK_PROVIDER_AND_MODEL = {
+    "generate_queries": ("GENERATE_QUERY_AI_PROVIDER", "GENERATE_QUERY_AI_MODEL"),
+    "classify_brand_safety": (
+        "CLASSIFY_BRAND_SAFETY_AI_PROVIDER",
+        "CLASSIFY_BRAND_SAFETY_AI_MODEL",
+    ),
+    "resolve_identity_llm": ("RESOLVE_IDENTITY_AI_PROVIDER", "RESOLVE_IDENTITY_AI_MODEL"),
+    "score_explain": ("SCORE_EXPLAIN_AI_PROVIDER", "SCORE_EXPLAIN_AI_MODEL"),
+}
+
+
 def available_provider_for(task_type: str) -> tuple[str, str] | None:
-    if task_type == "generate_queries" and settings.MOONSHOT_API_KEY:
-        return "moonshot", settings.KIMI_MODEL
-    if task_type == "classify_brand_safety" and settings.GOOGLE_API_KEY:
-        return "google", settings.GEMINI_MODEL
-    if task_type == "resolve_identity_llm" and settings.DEEPSEEK_API_KEY:
-        return "deepseek", settings.DEEPSEEK_MODEL
-    if settings.OPENAI_API_KEY:
-        return "openai", settings.OPENAI_JUDGE_MODEL
+    setting_names = TASK_PROVIDER_AND_MODEL.get(task_type)
+    if setting_names is None:
+        return None
+
+    provider_setting, model_setting = setting_names
+    provider_name = getattr(settings, provider_setting, "").strip().lower()
+    model_name = getattr(settings, model_setting, "").strip()
+
+    if not provider_name or not model_name:
+        return None
+    if provider_name == "openrouter" and settings.OPENROUTER_API_KEY:
+        return provider_name, model_name
+    if provider_name == "gemini" and settings.GEMINI_API_KEY:
+        return provider_name, model_name
     return None
 
 
