@@ -137,7 +137,7 @@ pipeline.apply_async()
 
 See `.env.example` at repo root. Every contributor copies it to `.env` and fills in API keys locally. Required keys:
 
-- LLMs: `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, and per-task routing vars such as `GENERATE_QUERY_AI_PROVIDER` / `GENERATE_QUERY_AI_MODEL`
+- LLMs: `MOONSHOT_API_KEY` (Kimi K2), `GOOGLE_API_KEY` (Gemini 2.5 Flash), `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`
 - Search: `BRAVE_SEARCH_API_KEY`, `OPENSERP_API_KEY`
 - Infra: `DATABASE_URL`, `REDIS_URL`, `QDRANT_URL` (defaults work with docker-compose)
 
