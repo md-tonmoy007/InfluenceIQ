@@ -20,7 +20,4 @@ COPY ai_agent_services ai_agent_services
 COPY scraping_service scraping_service
 COPY scoring_service scoring_service
 
-RUN groupadd --gid 10001 app \
- && useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app
-
 EXPOSE 8000

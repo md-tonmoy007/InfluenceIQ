@@ -3,12 +3,10 @@ from __future__ import annotations
 from celery import Celery
 
 from app.config import settings
-from app.logging_config import configure_logging
 from app.service_roles import ALL_TASK_MODULES, TASK_MODULES_BY_SERVICE, TASK_QUEUE_BY_NAME
 
 
 def create_celery_app(service_name: str, include_modules: list[str] | None = None) -> Celery:
-    configure_logging(settings.LOG_LEVEL)
     include = include_modules or TASK_MODULES_BY_SERVICE.get(service_name, ALL_TASK_MODULES)
 
     celery_app = Celery(
@@ -27,9 +25,6 @@ def create_celery_app(service_name: str, include_modules: list[str] | None = Non
         result_expires=21600,
         task_acks_late=True,
         worker_prefetch_multiplier=1,
-        worker_send_task_events=True,
-        task_send_sent_event=True,
-        broker_connection_retry_on_startup=True,
         task_routes={task_name: {"queue": queue_name} for task_name, queue_name in TASK_QUEUE_BY_NAME.items()},
         task_default_retry_delay=2,
         task_annotations={

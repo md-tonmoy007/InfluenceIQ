@@ -18,3 +18,4 @@ tenacity==9.0.0
 python-dotenv==1.0.1
 
 structlog==24.4.0
+rapidfuzz==3.10.1
