@@ -10,7 +10,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
-type ToastType = "success" | "info";
+type ToastType = "success" | "info" | "error";
 
 type ToastOptions = {
   type?: ToastType;
@@ -134,6 +134,13 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
             fontFamily: "Geist,system-ui,sans-serif",
           };
 
+          const accentBackground =
+            toastItem.type === "success"
+              ? "linear-gradient(135deg,oklch(0.65 0.13 155),oklch(0.78 0.15 215))"
+              : toastItem.type === "error"
+                ? "linear-gradient(135deg,oklch(0.62 0.22 28),oklch(0.68 0.18 18))"
+                : "linear-gradient(135deg,oklch(0.58 0.22 285),oklch(0.74 0.18 30))";
+
           return (
             <div key={toastItem.id} style={baseStyle}>
               {toastItem.type === "success" ? (
@@ -142,8 +149,7 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
                     width: "22px",
                     height: "22px",
                     borderRadius: "50%",
-                    background:
-                      "linear-gradient(135deg,oklch(0.65 0.13 155),oklch(0.78 0.15 215))",
+                    background: accentBackground,
                     display: "grid",
                     placeItems: "center",
                     flexShrink: 0,
@@ -168,8 +174,7 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
                     width: "22px",
                     height: "22px",
                     borderRadius: "50%",
-                    background:
-                      "linear-gradient(135deg,oklch(0.58 0.22 285),oklch(0.74 0.18 30))",
+                    background: accentBackground,
                     display: "grid",
                     placeItems: "center",
                     flexShrink: 0,
@@ -179,7 +184,7 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
                     fontSize: "14px",
                   }}
                 >
-                  ✦
+                  {toastItem.type === "error" ? "!" : "*"}
                 </span>
               )}
               <span style={{ flex: 1 }}>{toastItem.message}</span>

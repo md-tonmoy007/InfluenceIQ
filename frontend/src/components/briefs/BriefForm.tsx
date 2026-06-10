@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { buildBriefSearchParams, BriefQuery } from '@/lib/briefQuery';
+import { createCampaign } from '@/lib/api';
+import { useToast } from '@/components/ui/ToastProvider';
 
 export default function BriefForm() {
   const router = useRouter();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(-1);
   const [profileCount, setProfileCount] = useState(0);
@@ -93,8 +95,14 @@ export default function BriefForm() {
   };
 
   // Submit flow
-  const handleFindMatches = () => {
+  const handleFindMatches = async () => {
+    if (loading) {
+      return;
+    }
+
     setLoading(true);
+    setLoadingStep(-1);
+    setProfileCount(0);
     let step = 0;
     let n = 0;
 
@@ -103,33 +111,53 @@ export default function BriefForm() {
       setProfileCount(Math.min(50247, n));
     }, 60);
 
-    const advanceStep = () => {
-      if (step < 4) {
-        setLoadingStep(step);
-        step++;
-        setTimeout(advanceStep, 700);
-      } else {
-        clearInterval(counterInterval);
-        setProfileCount(50247);
-        setTimeout(() => {
-          const briefData: BriefQuery = {
-            brand: brief.brand,
-            product: brief.product,
-            category: brief.category,
-            goal: brief.goal,
-            ages: brief.ages,
-            gender: brief.gender,
-            locs: brief.locs,
-            platforms: brief.platforms,
-            tier: brief.tier,
-            budget: getBudgetText()
-          };
-          const query = buildBriefSearchParams(briefData);
-          router.push(`/shortlist?${query}`);
-        }, 600);
-      }
-    };
-    advanceStep();
+    const stepTimer = window.setInterval(() => {
+      setLoadingStep(current => {
+        if (current >= 3) {
+          window.clearInterval(stepTimer);
+          return current;
+        }
+        step += 1;
+        return step - 1;
+      });
+    }, 700);
+
+    try {
+      const [campaign] = await Promise.all([
+        createCampaign({
+          brand: brief.brand,
+          product: brief.product,
+          category: brief.category,
+          goal: brief.goal,
+          ages: brief.ages,
+          gender: brief.gender,
+          locations: brief.locs,
+          platforms: brief.platforms.map(platform => platform.toLowerCase()),
+          tier: brief.tier,
+          budget: getBudgetText(),
+        }),
+        new Promise(resolve => window.setTimeout(resolve, 1800)),
+      ]);
+
+      clearInterval(counterInterval);
+      window.clearInterval(stepTimer);
+      setProfileCount(50247);
+      setLoadingStep(3);
+
+      window.setTimeout(() => {
+        router.push(`/shortlist?campaignId=${encodeURIComponent(campaign.campaignId)}`);
+      }, 450);
+    } catch (error) {
+      clearInterval(counterInterval);
+      window.clearInterval(stepTimer);
+      setLoading(false);
+      setLoadingStep(-1);
+      setProfileCount(0);
+      toast(
+        error instanceof Error ? error.message : 'Unable to submit campaign right now.',
+        { type: 'error' }
+      );
+    }
   };
 
   return (

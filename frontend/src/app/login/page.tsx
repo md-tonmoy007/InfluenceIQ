@@ -3,10 +3,10 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signup } from "@/lib/api";
+import { login } from "@/lib/api";
 import "../signup.css";
 
-export default function SignupPage() {
+export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -20,15 +20,13 @@ export default function SignupPage() {
     setError("");
 
     try {
-      await signup({
-        company_name: String(form.get("company_name") ?? ""),
-        name: String(form.get("name") ?? ""),
+      await login({
         email: String(form.get("email") ?? ""),
         password: String(form.get("password") ?? ""),
       });
-      router.push("/onboarding");
+      router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create account.");
+      setError(err instanceof Error ? err.message : "Unable to log in.");
       setLoading(false);
     }
   };
@@ -42,25 +40,14 @@ export default function SignupPage() {
         </Link>
 
         <h1>
-          Start finding your <span className="ac">perfect</span> creators.
+          Welcome <span className="ac">back.</span>
         </h1>
         <p className="sub">
-          Create your workspace account. Your campaigns and results will stay
-          private to this login.
+          Log in to view your workspace, campaign briefs, and influencer
+          recommendations.
         </p>
 
         <form className="form" onSubmit={handleSubmit}>
-          <div className="row">
-            <div className="field">
-              <label>Company name</label>
-              <input name="company_name" required defaultValue="Northwind Outdoor" />
-            </div>
-            <div className="field">
-              <label>Your name</label>
-              <input name="name" required defaultValue="Elena Marchetti" />
-            </div>
-          </div>
-
           <div className="field">
             <label>Work email</label>
             <input name="email" type="email" required defaultValue="elena@northwind.co" />
@@ -68,7 +55,7 @@ export default function SignupPage() {
 
           <div className="field">
             <label>Password</label>
-            <input name="password" type="password" required minLength={8} defaultValue="password123" />
+            <input name="password" type="password" required defaultValue="password123" />
           </div>
 
           {error ? (
@@ -78,20 +65,15 @@ export default function SignupPage() {
           ) : null}
 
           <button className="submit" type="submit" disabled={loading}>
-            {loading ? "Creating account..." : "Create Free Account"}{" "}
+            {loading ? "Logging in..." : "Log In"}{" "}
             <span style={{ fontFamily: "Instrument Serif, serif", fontStyle: "italic" }}>
               -&gt;
             </span>
           </button>
-
-          <p className="terms">
-            By creating an account you agree to our <a href="#">Terms</a> and{" "}
-            <a href="#">Privacy Policy</a>.
-          </p>
         </form>
 
         <div className="foot">
-          Already have an account? <Link href="/login">Log in</Link>
+          Need an account? <Link href="/signup">Create one</Link>
         </div>
       </div>
 
@@ -124,33 +106,33 @@ export default function SignupPage() {
                 textTransform: "uppercase",
               }}
             >
-              secure
+              session
             </span>
-            Private campaign workspace
+            Cookie-backed account access
           </span>
           <h2>
-            Sign up once.
+            Your campaigns.
             <br />
-            Own every brief.
+            Your results.
           </h2>
           <p>
-            Campaign briefs, matching progress, and saved recommendations are
-            scoped to your authenticated account.
+            InfluenceIQ keeps campaign data tied to the signed-in account, so
+            another user cannot open your briefs or live matching stream.
           </p>
         </div>
 
         <div className="stat-strip">
           <div className="s">
-            <div className="l">Session</div>
+            <div className="l">Auth</div>
+            <div className="v">JWT</div>
+          </div>
+          <div className="s">
+            <div className="l">Cookie</div>
             <div className="v">HttpOnly</div>
           </div>
           <div className="s">
-            <div className="l">Campaign access</div>
+            <div className="l">Scope</div>
             <div className="v">Owner</div>
-          </div>
-          <div className="s">
-            <div className="l">Password storage</div>
-            <div className="v">Hashed</div>
           </div>
         </div>
       </div>

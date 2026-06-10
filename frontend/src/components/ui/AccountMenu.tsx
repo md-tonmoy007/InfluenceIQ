@@ -1,17 +1,29 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { logout, type CurrentUser } from "@/lib/api";
 
 type AccountMenuProps = {
   orgName?: string;
+  user?: CurrentUser;
 };
 
-export default function AccountMenu({ orgName = "Northwind Outdoor" }: AccountMenuProps) {
+export default function AccountMenu({ orgName = "Northwind Outdoor", user }: AccountMenuProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const displayName = user?.name || "Account";
+  const displayEmail = user?.email || "";
+  const initials = displayName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "II";
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -43,20 +55,31 @@ export default function AccountMenu({ orgName = "Northwind Outdoor" }: AccountMe
     display: "flex",
     alignItems: "center",
     gap: "10px",
+    width: "100%",
     padding: "10px 14px",
     fontSize: "13px",
+    fontFamily: "inherit",
+    textAlign: "left",
     color: danger ? "oklch(0.40 0.20 25)" : "#2a2e3a",
     transition: "background .15s",
     background: hoveredIndex === index ? "#f4f2ec" : "transparent",
+    border: "0",
     borderTop: danger ? "1px solid #efece4" : undefined,
+    cursor: "pointer",
   });
+
+  const handleLogout = async () => {
+    await logout().catch(() => undefined);
+    setOpen(false);
+    router.replace("/login");
+  };
 
   return (
     <div className="account-menu" ref={wrapperRef} style={{ position: "relative" }}>
       <div className="me" id="me" role="button" onClick={() => setOpen((prev) => !prev)}>
-        <span className="av">EM</span>
+        <span className="av">{initials}</span>
         <div className="who">
-          <div>Elena Marchetti</div>
+          <div>{displayName}</div>
           <div className="org">{orgName}</div>
         </div>
       </div>
@@ -68,9 +91,9 @@ export default function AccountMenu({ orgName = "Northwind Outdoor" }: AccountMe
             borderBottom: "1px solid #efece4",
           }}
         >
-          <div style={{ fontSize: "13px", fontWeight: 500 }}>Elena Marchetti</div>
+          <div style={{ fontSize: "13px", fontWeight: 500 }}>{displayName}</div>
           <div style={{ fontSize: "11.5px", color: "#6c6f7a" }}>
-            elena@northwind.co
+            {displayEmail}
           </div>
         </div>
 
@@ -114,12 +137,12 @@ export default function AccountMenu({ orgName = "Northwind Outdoor" }: AccountMe
           </svg>
           Settings
         </Link>
-        <Link
-          href="/"
+        <button
+          type="button"
           style={itemStyle(2, true)}
           onMouseEnter={() => setHoveredIndex(2)}
           onMouseLeave={() => setHoveredIndex(null)}
-          onClick={() => setOpen(false)}
+          onClick={handleLogout}
         >
           <svg
             width="14"
@@ -134,7 +157,7 @@ export default function AccountMenu({ orgName = "Northwind Outdoor" }: AccountMe
             <path d="M21 12H9" />
           </svg>
           Log out
-        </Link>
+        </button>
       </div>
     </div>
   );

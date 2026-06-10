@@ -9,12 +9,17 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-DEFAULT_PAYLOAD = {
-    "brand": "Acme Health",
-    "product": "Daily Greens",
-    "category": "Wellness",
-    "goal": "Find brand-safe wellness creators",
+DEMO_PAYLOAD = {
+    "brand": "Northwind Outdoor",
+    "product": "SS26 Trail Capsule",
+    "category": "Outdoor & Activewear",
+    "goal": "Product Launch",
+    "ages": ["18-24", "25-34"],
+    "gender": "All",
+    "locations": ["USA", "Canada"],
     "platforms": ["instagram", "youtube"],
+    "tier": "Established",
+    "budget": "$2,500 - $12,000 USD",
 }
 
 
@@ -31,7 +36,7 @@ def request_json(method: str, url: str, payload: dict[str, Any] | None = None) -
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run an end-to-end InfluenceIQ campaign smoke test.")
+    parser = argparse.ArgumentParser(description="Create a demo campaign and wait for shortlist completion.")
     parser.add_argument("--base-url", default="http://localhost:8000")
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--interval", type=float, default=2.0)
@@ -40,38 +45,31 @@ def main() -> int:
     base_url = args.base_url.rstrip("/")
 
     try:
-        health = request_json("GET", f"{base_url}/health")
-        print(f"health.status={health.get('status')} db={health.get('db')} redis={health.get('redis')}")
-
-        created = request_json("POST", f"{base_url}/api/campaigns", DEFAULT_PAYLOAD)
+        created = request_json("POST", f"{base_url}/api/campaigns", DEMO_PAYLOAD)
         campaign_id = created["campaign_id"]
-        print(f"campaign_id={campaign_id}")
+        print(f"seeded campaign_id={campaign_id}")
 
         deadline = time.monotonic() + args.timeout
-        state: dict[str, Any] = {}
         while time.monotonic() < deadline:
             state = request_json("GET", f"{base_url}/api/campaigns/{campaign_id}/state")
-            status = state.get("status")
-            phase = state.get("phase")
-            print(f"state.status={status} phase={phase}")
-            if status in {"completed", "failed"}:
-                break
+            print(
+                f"state.status={state.get('status')} phase={state.get('phase')} influencers={state.get('influencer_count', 0)}"
+            )
+            if state.get("status") == "completed":
+                shortlist = request_json("GET", f"{base_url}/api/campaigns/{campaign_id}/influencers")
+                print(
+                    f"demo.ready campaign_id={campaign_id} influencers={len(shortlist.get('items', []))}"
+                )
+                return 0
+            if state.get("status") == "failed":
+                print(f"Demo seed failed: {state}", file=sys.stderr)
+                return 1
             time.sleep(args.interval)
 
-        if state.get("status") != "completed":
-            print(f"Smoke test failed: campaign did not complete. Last state: {state}", file=sys.stderr)
-            return 1
-
-        influencers = request_json("GET", f"{base_url}/api/campaigns/{campaign_id}/influencers")
-        items = influencers.get("items", [])
-        if not items:
-            print("Smoke test failed: campaign completed with no influencers.", file=sys.stderr)
-            return 1
-
-        print(f"smoke.ok campaign_id={campaign_id} influencers={len(items)}")
-        return 0
+        print("Demo seed timed out before completion.", file=sys.stderr)
+        return 1
     except (HTTPError, URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
-        print(f"Smoke test failed: {exc}", file=sys.stderr)
+        print(f"Demo seed failed: {exc}", file=sys.stderr)
         return 1
 
 

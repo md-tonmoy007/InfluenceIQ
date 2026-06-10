@@ -48,5 +48,10 @@ class Settings(BaseSettings):
     CONFIDENCE_CAP_THRESHOLD: int = 3
     CONFIDENCE_CAP_VALUE: int = 70
 
+    AUTH_SECRET_KEY: str = "dev-insecure-change-me"
+    AUTH_COOKIE_NAME: str = "influenceiq_session"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    AUTH_COOKIE_SECURE: bool = False
+
 
 settings = Settings()

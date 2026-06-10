@@ -7,6 +7,7 @@ import type { KeyboardEvent } from "react";
 
 import AccountMenu from "../ui/AccountMenu";
 import NotificationMenu from "../ui/NotificationMenu";
+import type { CurrentUser } from "@/lib/api";
 
 export type Crumb = {
   label: string;
@@ -19,6 +20,7 @@ type TopbarProps = {
   showSearch?: boolean;
   rightVariant?: "default" | "minimal";
   orgName?: string;
+  currentUser?: CurrentUser;
   sidebarOpen?: boolean;
   onOpenSidebar?: () => void;
 };
@@ -28,6 +30,7 @@ export default function Topbar({
   showSearch = false,
   rightVariant = "default",
   orgName = "Northwind Outdoor",
+  currentUser,
   sidebarOpen = false,
   onOpenSidebar,
 }: TopbarProps) {
@@ -117,7 +120,7 @@ export default function Topbar({
           </button>
         ) : null}
         <NotificationMenu />
-        <AccountMenu orgName={orgName} />
+        <AccountMenu orgName={orgName} user={currentUser} />
       </div>
     </header>
   );

@@ -10,4 +10,7 @@ export type InfluencerRecommendation = {
   brandSafetyFlags: string[];
   citations: string[];
   rate: string;
+  subScores: Record<string, number>;
+  scorePayload: Record<string, unknown>;
+  sourcePayload: Record<string, unknown>;
 };
