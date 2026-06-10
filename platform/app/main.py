@@ -27,7 +27,6 @@ from app.auth import (
 )
 from app.celery_app import celery_app
 from app.config import settings
-<<<<<<< HEAD
 from app.db import Base, SessionLocal, get_db_session
 from app.logging_config import bind_campaign, clear_log_context, configure_logging
 from app.models import Campaign, InfluencerResult, User
@@ -43,11 +42,11 @@ from app.schemas import (
     SignupRequest,
     UserResponse,
 )
-=======
->>>>>>> b637425645e09d6e2c66685faf54dbcdda62a393
 from app.service_roles import WORKER_QUEUES
+from app.services import get_events, get_state, update_state
 
 app = FastAPI(title="InfluenceIQ", version="0.1.0")
+logger = structlog.get_logger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,6 +61,10 @@ app.add_middleware(
 
 _engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
 _redis = redis.from_url(settings.REDIS_URL)
+_state_redis = redis.from_url(settings.REDIS_STATE_DB)
+
+configure_logging(settings.LOG_LEVEL)
+Base.metadata.create_all(bind=_engine)
 
 
 def _ensure_auth_schema() -> None:
@@ -131,7 +134,6 @@ def root() -> dict:
         "version": app.version,
         "worker_queues": WORKER_QUEUES,
     }
-<<<<<<< HEAD
 
 
 @app.post("/api/auth/signup", response_model=AuthResponse)
@@ -455,5 +457,3 @@ def _influencer_sort_column(sort_by: str):
         "name": InfluencerResult.name,
         "created_at": InfluencerResult.created_at,
     }[sort_by]
-=======
->>>>>>> b637425645e09d6e2c66685faf54dbcdda62a393

@@ -1,9 +1,15 @@
 import React from "react";
 import AppShell from "@/components/shell/AppShell";
-import DiscoverTable from "@/components/discover/DiscoverTable";
+import LiveCampaignDiscover from "@/components/discover/LiveCampaignDiscover";
 import "../../discover-table.css";
 
-export default function DiscoverTablePage() {
+export default async function DiscoverTablePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ campaignId?: string }>;
+}) {
+  const params = await searchParams;
+  const campaignId = params.campaignId;
   const crumbs = [
     { label: "Workspace" },
     { label: "Discover", href: "/discover" },
@@ -24,7 +30,7 @@ export default function DiscoverTablePage() {
             </p>
           </div>
         </div>
-        <DiscoverTable />
+        <LiveCampaignDiscover campaignId={campaignId} variant="table" />
       </main>
     </AppShell>
   );

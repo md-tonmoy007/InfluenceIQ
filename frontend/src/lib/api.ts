@@ -197,6 +197,15 @@ export const getCampaignInfluencers = async (
   };
 };
 
+export const getCampaignInfluencer = async (
+  campaignId: string,
+  influencerId: string
+): Promise<InfluencerRecommendation | null> => {
+  const params = new URLSearchParams({ limit: "200" });
+  const response = await getCampaignInfluencers(campaignId, params);
+  return response.items.find(item => item.id === influencerId) ?? null;
+};
+
 export const getBackendReadiness = async (): Promise<{ status: string }> =>
   requestJson<{ status: string }>("/ready");
 

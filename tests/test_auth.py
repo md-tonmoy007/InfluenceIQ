@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 
 class AuthIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmpdir = tempfile.TemporaryDirectory()
+        self.tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.clients: list[TestClient] = []
         db_path = Path(self.tmpdir.name) / "auth.sqlite"
         os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
         os.environ["REDIS_URL"] = "redis://localhost:6379/0"
@@ -25,21 +26,33 @@ class AuthIntegrationTest(unittest.TestCase):
         import app.auth
         import app.config
         import app.db
-        import app.main
         import app.models
 
         importlib.reload(app.config)
         importlib.reload(app.db)
         importlib.reload(app.models)
         importlib.reload(app.auth)
+
+        import app.main
         self.main = importlib.reload(app.main)
         self.client = TestClient(self.main.app)
+        self.clients.append(self.client)
 
     def tearDown(self) -> None:
-        self.tmpdir.cleanup()
+        import app.db
+
+        for client in self.clients:
+            client.close()
+        app.db.engine.dispose()
+        self.main._engine.dispose()
+        try:
+            self.tmpdir.cleanup()
+        except PermissionError:
+            pass
 
     def _signup(self, email: str) -> TestClient:
         client = TestClient(self.main.app)
+        self.clients.append(client)
         response = client.post(
             "/api/auth/signup",
             json={
@@ -69,6 +82,7 @@ class AuthIntegrationTest(unittest.TestCase):
         self.assertEqual(duplicate.status_code, 409)
 
         login_client = TestClient(self.main.app)
+        self.clients.append(login_client)
         login = login_client.post(
             "/api/auth/login",
             json={"email": "owner@example.com", "password": "password123"},
