@@ -226,6 +226,7 @@ export default function ShortlistPageClient() {
     [searchParams]
   );
   const campaignId = searchParams.get('campaignId') || searchParams.get('campaign_id') || '';
+  const missingCampaignId = !campaignId;
 
   const [campaign, setCampaign] = useState<CampaignSummary | null>(null);
   const [pipelineState, setPipelineState] = useState<CampaignState | null>(null);
@@ -233,10 +234,10 @@ export default function ShortlistPageClient() {
   const [events, setEvents] = useState<CampaignPipelineEvent[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showPdf, setShowPdf] = useState(false);
-  const [loadingCampaign, setLoadingCampaign] = useState(true);
+  const [loadingCampaign, setLoadingCampaign] = useState(!missingCampaignId);
   const [loadingInfluencers, setLoadingInfluencers] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connected' | 'polling'>('idle');
+  const [errorMessage, setErrorMessage] = useState(missingCampaignId ? 'No campaignId found in the URL. Submit a brief first to start the live pipeline.' : '');
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connected' | 'polling'>(missingCampaignId ? 'idle' : 'polling');
   const lastEventIdRef = useRef(0);
 
   const liveBrief = useMemo(() => {
@@ -278,9 +279,7 @@ export default function ShortlistPageClient() {
   }, [showPdf]);
 
   useEffect(() => {
-    if (!campaignId) {
-      setLoadingCampaign(false);
-      setErrorMessage('No campaignId found in the URL. Submit a brief first to start the live pipeline.');
+    if (missingCampaignId) {
       return;
     }
 
@@ -315,7 +314,7 @@ export default function ShortlistPageClient() {
     return () => {
       cancelled = true;
     };
-  }, [campaignId]);
+  }, [campaignId, missingCampaignId]);
 
   useEffect(() => {
     const state = pipelineState;
@@ -358,11 +357,7 @@ export default function ShortlistPageClient() {
     return () => {
       cancelled = true;
     };
-  }, [
-    campaignId,
-    pipelineState?.partial_results_available,
-    pipelineState?.status,
-  ]);
+  }, [campaignId, pipelineState]);
 
   useEffect(() => {
     if (!campaignId) {
@@ -375,12 +370,12 @@ export default function ShortlistPageClient() {
       return;
     }
 
-    setConnectionStatus(current => (current === 'connected' ? current : 'polling'));
     const interval = window.setInterval(async () => {
       try {
         const nextState = await getCampaignState(campaignId);
         setPipelineState(nextState);
         setErrorMessage('');
+        setConnectionStatus(current => (current === 'connected' ? current : 'polling'));
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Campaign polling failed');
       }
@@ -619,7 +614,7 @@ export default function ShortlistPageClient() {
                       </svg>
                       <div className={`val ${matchClass}`}>{m.match}<span className="pct">% MATCH</span></div>
                     </div>
-                    <Link href={`/profile/${encodeURIComponent(m.id)}`} className="row-cta">View profile <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M13 6l6 6-6 6" /></svg></Link>
+                    <Link href={`/profile/${encodeURIComponent(m.id)}?campaignId=${encodeURIComponent(campaignId)}`} className="row-cta">View profile <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M13 6l6 6-6 6" /></svg></Link>
                   </div>
                 </article>
               );

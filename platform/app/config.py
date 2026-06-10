@@ -18,9 +18,21 @@ class Settings(BaseSettings):
     QDRANT_URL: str
     QDRANT_API_KEY: str = ""
 
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    GENERATE_QUERY_AI_PROVIDER: str = "openrouter"
+    GENERATE_QUERY_AI_MODEL: str = "openai/gpt-4o-mini"
+    CLASSIFY_BRAND_SAFETY_AI_PROVIDER: str = ""
+    CLASSIFY_BRAND_SAFETY_AI_MODEL: str = ""
+    RESOLVE_IDENTITY_AI_PROVIDER: str = ""
+    RESOLVE_IDENTITY_AI_MODEL: str = ""
+    SCORE_EXPLAIN_AI_PROVIDER: str = ""
+    SCORE_EXPLAIN_AI_MODEL: str = ""
+
     MOONSHOT_API_KEY: str = ""
     KIMI_MODEL: str = "kimi-k2"
     GOOGLE_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_MODEL: str = "deepseek-v4"
@@ -29,8 +41,21 @@ class Settings(BaseSettings):
     OPENAI_ESCALATION_MODEL: str = "gpt-5-mini"
 
     BRAVE_SEARCH_API_KEY: str = ""
+    SERP_API_KEY: str = ""
     OPENSERP_URL: str = ""
     OPENSERP_API_KEY: str = ""
+    SCRAPE_DO_API_KEY: str = ""
+    SCRAPE_DO_BASE_URL: str = "https://api.scrape.do/"
+    SEARCH_RESULT_LIMIT: int = 8
+    URL_CACHE_TTL_SECONDS: int = 48 * 60 * 60
+    CRAWL_MAX_DEPTH: int = 2
+    CRAWL_MAX_URLS_PER_CAMPAIGN: int = 100
+    CRAWL_DEFAULT_MIN_INTERVAL_SECONDS: float = 1.0
+    CRAWL_SOCIAL_MIN_INTERVAL_SECONDS: float = 2.0
+    CRAWL_MAX_RETRIES: int = 3
+    CRAWL_BACKOFF_SECONDS: float = 2.0
+    CRAWL_BACKOFF_MAX_SECONDS: float = 60.0
+    YOUTUBE_API_KEY: str = ""
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIM: int = 1536

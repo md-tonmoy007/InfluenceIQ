@@ -7,7 +7,9 @@ import type { KeyboardEvent } from "react";
 
 import AccountMenu from "../ui/AccountMenu";
 import NotificationMenu from "../ui/NotificationMenu";
-import type { CurrentUser } from "@/lib/api";
+import { createCampaign, type CurrentUser } from "@/lib/api";
+import { buildCampaignPayloadFromQuery } from "@/lib/campaignPayload";
+import { useToast } from "@/components/ui/ToastProvider";
 
 export type Crumb = {
   label: string;
@@ -35,16 +37,30 @@ export default function Topbar({
   onOpenSidebar,
 }: TopbarProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const normalizedCrumbs = crumbs.map((crumb, index) => ({
     ...crumb,
     current: crumb.current ?? index === crumbs.length - 1,
   }));
 
-  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleSearchKeyDown = async (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") return;
     const value = event.currentTarget.value.trim();
     if (!value) return;
-    router.push("/matching?next=/shortlist");
+
+    event.currentTarget.blur();
+    try {
+      const campaign = await createCampaign(buildCampaignPayloadFromQuery(value));
+      const next = `/discover?campaignId=${encodeURIComponent(campaign.campaignId)}`;
+      router.push(
+        `/matching?campaignId=${encodeURIComponent(campaign.campaignId)}&next=${encodeURIComponent(next)}`
+      );
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Unable to start creator discovery.",
+        { type: "error" }
+      );
+    }
   };
 
   return (
@@ -96,10 +112,10 @@ export default function Topbar({
           </svg>
           <input
             id="top-search"
-            placeholder="Describe your brand to find creators…"
-            onKeyDown={handleSearchKeyDown}
+            placeholder="Describe your brand to find creators..."
+            onKeyDown={(event) => void handleSearchKeyDown(event)}
           />
-          <span className="kbd">⏎</span>
+          <span className="kbd">Enter</span>
         </div>
       ) : null}
 

@@ -82,6 +82,20 @@ def emit_event(campaign_id: str, event_type: str, payload: dict[str, Any] | None
         }
 
 
+def _decode_state_value(value: str) -> Any:
+    lowered = value.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    if value == "":
+        return ""
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
 def update_state(campaign_id: str, **fields: Any) -> dict[str, str]:
     """Update the Redis hash used by REST and WebSocket status readers."""
     if not fields:
@@ -105,3 +119,41 @@ def update_state(campaign_id: str, **fields: Any) -> dict[str, str]:
         )
 
     return encoded_fields
+
+
+def get_state(campaign_id: str) -> dict[str, Any]:
+    client = _state_redis()
+    key = f"pipeline_state:{campaign_id}"
+    try:
+        raw = client.hgetall(key)
+    except redis.RedisError as exc:
+        logger.warning("pipeline_state_read_failed", campaign_id=campaign_id, error=str(exc))
+        return {}
+
+    decoded: dict[str, Any] = {}
+    for raw_key, raw_value in raw.items():
+        key_name = raw_key.decode() if isinstance(raw_key, bytes) else str(raw_key)
+        value = raw_value.decode() if isinstance(raw_value, bytes) else str(raw_value)
+        decoded[key_name] = _decode_state_value(value)
+    return decoded
+
+
+def get_events(campaign_id: str, after_event_id: int = 0) -> list[dict[str, Any]]:
+    client = _state_redis()
+    key = f"pipeline_events:{campaign_id}"
+    try:
+        raw_events = client.lrange(key, 0, -1)
+    except redis.RedisError as exc:
+        logger.warning("pipeline_events_read_failed", campaign_id=campaign_id, error=str(exc))
+        return []
+
+    events: list[dict[str, Any]] = []
+    for raw_event in raw_events:
+        payload = raw_event.decode() if isinstance(raw_event, bytes) else str(raw_event)
+        try:
+            event = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if int(event.get("event_id", 0)) > after_event_id:
+            events.append(event)
+    return events

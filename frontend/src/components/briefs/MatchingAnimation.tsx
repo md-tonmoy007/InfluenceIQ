@@ -76,7 +76,12 @@ export default function MatchingAnimation() {
         
         setTimeout(() => {
           if (isMounted) {
-            const next = searchParams.get('next') || '/shortlist';
+            const campaignId = searchParams.get('campaignId');
+            const next =
+              searchParams.get('next') ||
+              (campaignId
+                ? `/shortlist?campaignId=${encodeURIComponent(campaignId)}`
+                : '/shortlist');
             router.push(next);
           }
         }, 550);

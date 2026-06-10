@@ -2,20 +2,41 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { createCampaign } from "@/lib/api";
+import { buildCampaignPayloadFromQuery } from "@/lib/campaignPayload";
+import { useToast } from "@/components/ui/ToastProvider";
 
 export default function DiscoverSearch() {
   const router = useRouter();
+  const { toast } = useToast();
   const [query, setQuery] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSearch = () => {
-    if (query.trim()) {
-      router.push("/matching?next=/shortlist");
+  const handleSearch = async () => {
+    const trimmed = query.trim();
+    if (!trimmed || submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const campaign = await createCampaign(buildCampaignPayloadFromQuery(trimmed));
+      const next = `/discover?campaignId=${encodeURIComponent(campaign.campaignId)}`;
+      router.push(
+        `/matching?campaignId=${encodeURIComponent(campaign.campaignId)}&next=${encodeURIComponent(next)}`
+      );
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Unable to start creator discovery.",
+        { type: "error" }
+      );
+      setSubmitting(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSearch();
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter") {
+      void handleSearch();
     }
   };
 
@@ -44,21 +65,22 @@ export default function DiscoverSearch() {
         <input
           id="nl-search"
           className="search-input"
-          placeholder="Describe your product, audience, and budget — e.g. skincare brand targeting women 20–35, budget $500"
+          placeholder="Describe your product, audience, and budget - e.g. skincare brand targeting women 20-35, budget $500"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
           onKeyDown={handleKeyDown}
         />
         <div className="search-actions">
-          <span className="search-kbd">⌘ K</span>
+          <span className="search-kbd">Cmd K</span>
           <button
             id="nl-find"
             className="btn btn-primary"
             type="button"
-            onClick={handleSearch}
+            onClick={() => void handleSearch()}
+            disabled={submitting}
           >
-            Find creators
-            <span className="arrow">→</span>
+            {submitting ? "Starting search..." : "Find creators"}
+            <span className="arrow">-&gt;</span>
           </button>
         </div>
       </div>
@@ -67,9 +89,9 @@ export default function DiscoverSearch() {
         <button
           className="suggest"
           type="button"
-          onClick={() => handleSuggest("Eco-friendly cleaning, US moms 30–45")}
+          onClick={() => handleSuggest("Eco-friendly cleaning, US moms 30-45")}
         >
-          Eco-friendly cleaning, US moms 30–45
+          Eco-friendly cleaning, US moms 30-45
         </button>
         <button
           className="suggest"
@@ -81,9 +103,7 @@ export default function DiscoverSearch() {
         <button
           className="suggest"
           type="button"
-          onClick={() =>
-            handleSuggest("Gaming peripherals, mid-tier streamers")
-          }
+          onClick={() => handleSuggest("Gaming peripherals, mid-tier streamers")}
         >
           Gaming peripherals, mid-tier streamers
         </button>

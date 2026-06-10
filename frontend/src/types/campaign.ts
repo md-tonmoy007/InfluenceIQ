@@ -9,4 +9,6 @@ export type CampaignBriefPayload = {
   platforms: string[];
   tier: string;
   budget: string;
+  notes?: string;
+  query?: string;
 };
