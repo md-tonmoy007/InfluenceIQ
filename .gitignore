@@ -1,0 +1,87 @@
+# Claude Code working file — local guidance, not committed
+CLAUDE.md
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.vercel/
+.npm
+.yarn/
+.pnpm-debug.log*
+
+# Frontend generated artifacts
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/coverage/
+frontend/.vercel/
+frontend/*.tsbuildinfo
+frontend/.DS_Store
+
+# Environment & secrets
+.env
+.env.*
+.env.local
+.env.*.local
+!.env.example
+!frontend/.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+celerybeat-schedule
+celerybeat.pid
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
+
+# Playwright
+playwright-report/
+test-results/
+.playwright/
+
+# Coverage
+.coverage
+htmlcov/
+coverage/
+
+# Migration audit artifacts
+audit/original-screenshots/
+frontend/audit/original-screenshots/
+
+# Misc
+*.bak
+*.tmp
