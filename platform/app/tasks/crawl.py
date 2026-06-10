@@ -4,11 +4,8 @@ import re
 from datetime import UTC, datetime
 
 from celery import shared_task
-import structlog
 
 from app.services.pipeline_state import emit_event, update_state
-
-logger = structlog.get_logger(__name__)
 
 
 def _strip_html(html: str) -> str:
@@ -40,7 +37,6 @@ def fetch_page(self, campaign_id: str, url: str) -> dict:
     page = {"url": url, "html": html, "status": 200, "cached": False, "fetched_at": fetched_at}
     update_state(campaign_id, phase="crawl", last_url=url, last_status=200)
     emit_event(campaign_id, "page.scraped", {"url": url, "status": 200})
-    logger.info("page_fetched", campaign_id=campaign_id, url=url, status=200, cached=False)
     return page
 
 
@@ -63,5 +59,4 @@ def extract_content(self, page: dict) -> dict:
             "fetched_at": page.get("fetched_at"),
         },
     }
-    logger.info("content_extracted", url=url, title=content["title"], social_link_count=len(content["social_links"]))
     return content

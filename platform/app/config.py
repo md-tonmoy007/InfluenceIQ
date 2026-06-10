@@ -18,19 +18,15 @@ class Settings(BaseSettings):
     QDRANT_URL: str
     QDRANT_API_KEY: str = ""
 
-    OPENROUTER_API_KEY: str = ""
-    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    GEMINI_API_KEY: str = ""
-    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com"
-
-    GENERATE_QUERY_AI_PROVIDER: str = "openrouter"
-    GENERATE_QUERY_AI_MODEL: str = "openai/gpt-4o-mini"
-    CLASSIFY_BRAND_SAFETY_AI_PROVIDER: str = "gemini"
-    CLASSIFY_BRAND_SAFETY_AI_MODEL: str = "gemini-2.5-flash"
-    RESOLVE_IDENTITY_AI_PROVIDER: str = "openrouter"
-    RESOLVE_IDENTITY_AI_MODEL: str = "openai/gpt-4o-mini"
-    SCORE_EXPLAIN_AI_PROVIDER: str = "openrouter"
-    SCORE_EXPLAIN_AI_MODEL: str = "openai/gpt-4o-mini"
+    MOONSHOT_API_KEY: str = ""
+    KIMI_MODEL: str = "kimi-k2"
+    GOOGLE_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_MODEL: str = "deepseek-v4"
+    OPENAI_API_KEY: str = ""
+    OPENAI_JUDGE_MODEL: str = "gpt-4o-mini"
+    OPENAI_ESCALATION_MODEL: str = "gpt-5-mini"
 
     BRAVE_SEARCH_API_KEY: str = ""
     OPENSERP_URL: str = ""
