@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import json
-import re
 import uuid
-from html import unescape
-from urllib.parse import quote_plus, urlparse
 
-import httpx
 from celery import shared_task
 
 from app.config import settings
@@ -14,18 +10,9 @@ from app.db import SessionLocal
 from app.llm.client import LLMRequest, complete_or_fallback
 from app.models import Campaign
 from app.services.pipeline_state import emit_event, update_state
+from scraping_service.crawling.search_providers import search_web
 
 QUERY_PROMPT_PATH = "platform/app/llm/prompts/query_generation.md"
-_RESULT_LINK_RE = re.compile(
-    r'<a[^>]+class="result__a"[^>]+href="(?P<href>[^"]+)"[^>]*>(?P<title>.*?)</a>',
-    flags=re.IGNORECASE | re.DOTALL,
-)
-_TAG_RE = re.compile(r"<[^>]+>")
-_WHITESPACE_RE = re.compile(r"\s+")
-
-
-def _strip_html(value: str) -> str:
-    return _WHITESPACE_RE.sub(" ", _TAG_RE.sub(" ", unescape(value))).strip()
 
 
 def _prompt_template() -> str:
@@ -132,100 +119,6 @@ def _normalize_queries(raw_text: str, fallback_queries: list[str]) -> list[str]:
     return list(dict.fromkeys(queries or fallback_queries))[:8]
 
 
-def _search_via_brave(query: str) -> list[dict]:
-    with httpx.Client(timeout=30.0) as client:
-        response = client.get(
-            "https://api.search.brave.com/res/v1/web/search",
-            headers={"X-Subscription-Token": settings.BRAVE_SEARCH_API_KEY},
-            params={"q": query, "count": min(settings.SEARCH_RESULT_LIMIT, 20), "safesearch": "moderate"},
-        )
-        response.raise_for_status()
-        body = response.json()
-
-    results: list[dict] = []
-    for item in (body.get("web") or {}).get("results", []):
-        url = str(item.get("url") or "").strip()
-        if not url:
-            continue
-        results.append(
-            {
-                "url": url,
-                "title": str(item.get("title") or url),
-                "snippet": str(item.get("description") or ""),
-                "relevance_score": 80,
-                "source": "brave",
-            }
-        )
-    return results[: settings.SEARCH_RESULT_LIMIT]
-
-
-def _search_via_serp_api(query: str) -> list[dict]:
-    with httpx.Client(timeout=30.0) as client:
-        response = client.get(
-            "https://serpapi.com/search.json",
-            params={
-                "engine": "google",
-                "q": query,
-                "api_key": settings.SERP_API_KEY,
-                "num": settings.SEARCH_RESULT_LIMIT,
-            },
-        )
-        response.raise_for_status()
-        body = response.json()
-
-    results: list[dict] = []
-    for item in body.get("organic_results", []):
-        url = str(item.get("link") or "").strip()
-        if not url:
-            continue
-        results.append(
-            {
-                "url": url,
-                "title": str(item.get("title") or url),
-                "snippet": str(item.get("snippet") or ""),
-                "relevance_score": 80,
-                "source": "serpapi",
-            }
-        )
-    return results[: settings.SEARCH_RESULT_LIMIT]
-
-
-def _fetch_via_scrape_do(target_url: str, *, render: bool = False) -> str:
-    params = {
-        "token": settings.SCRAPE_DO_API_KEY,
-        "url": target_url,
-        "render": str(render).lower(),
-    }
-    with httpx.Client(timeout=45.0, follow_redirects=True) as client:
-        response = client.get(settings.SCRAPE_DO_BASE_URL, params=params)
-        response.raise_for_status()
-        return response.text
-
-
-def _search_via_scrape_do(query: str) -> list[dict]:
-    search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
-    html = _fetch_via_scrape_do(search_url, render=False)
-    results: list[dict] = []
-    for match in _RESULT_LINK_RE.finditer(html):
-        url = unescape(match.group("href")).strip()
-        title = _strip_html(match.group("title"))
-        if not url or not title:
-            continue
-        host = urlparse(url).netloc
-        results.append(
-            {
-                "url": url,
-                "title": title,
-                "snippet": f"Search result from {host}" if host else "",
-                "relevance_score": 72,
-                "source": "scrape.do",
-            }
-        )
-        if len(results) >= settings.SEARCH_RESULT_LIMIT:
-            break
-    return results
-
-
 @shared_task(name="app.tasks.search.generate_queries", bind=True)
 def generate_queries(self, campaign_id: str) -> list[str]:
     context = _campaign_context(campaign_id)
@@ -262,42 +155,8 @@ def generate_queries(self, campaign_id: str) -> list[str]:
 
 @shared_task(name="app.tasks.search.execute_search", bind=True)
 def execute_search(self, campaign_id: str, query: str) -> list[dict]:
-    results: list[dict]
-    provider = "serpapi"
-    try:
-        if settings.SERP_API_KEY:
-            results = _search_via_serp_api(query)
-        elif settings.BRAVE_SEARCH_API_KEY:
-            provider = "brave"
-            results = _search_via_brave(query)
-        elif settings.SCRAPE_DO_API_KEY:
-            provider = "scrape.do"
-            results = _search_via_scrape_do(query)
-        else:
-            slug = quote_plus(query.lower())
-            provider = "deterministic"
-            results = [
-                {
-                    "url": f"https://example.com/influencers/{slug}",
-                    "title": f"Top creators for {query}",
-                    "snippet": f"Fallback search result for {query}.",
-                    "relevance_score": 60,
-                    "source": provider,
-                }
-            ]
-    except (httpx.HTTPError, ValueError):
-        slug = quote_plus(query.lower())
-        provider = "deterministic"
-        results = [
-            {
-                "url": f"https://example.com/influencers/{slug}",
-                "title": f"Fallback creators for {query}",
-                "snippet": f"Fallback search result for {query}.",
-                "relevance_score": 60,
-                "source": provider,
-            }
-        ]
-
+    results = search_web(query, limit=settings.SEARCH_RESULT_LIMIT)
+    provider = results[0].get("provider") or results[0].get("source") if results else "none"
     update_state(
         campaign_id,
         phase="search",
@@ -313,7 +172,7 @@ def execute_search(self, campaign_id: str, query: str) -> list[dict]:
                 "url": result["url"],
                 "title": result["title"],
                 "relevance": result["relevance_score"],
-                "provider": provider,
+                "provider": result.get("provider") or result.get("source") or provider,
             },
         )
     return results

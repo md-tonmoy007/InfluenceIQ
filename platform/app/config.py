@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     CRAWL_MAX_RETRIES: int = 3
     CRAWL_BACKOFF_SECONDS: float = 2.0
     CRAWL_BACKOFF_MAX_SECONDS: float = 60.0
+    APIFY_API_TOKEN: str = ""
+    APIFY_INSTAGRAM_ACTOR: str = "apify/instagram-profile-scraper"
     YOUTUBE_API_KEY: str = ""
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"
