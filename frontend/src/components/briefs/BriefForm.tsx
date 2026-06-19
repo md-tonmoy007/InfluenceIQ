@@ -135,6 +135,7 @@ export default function BriefForm() {
           platforms: brief.platforms.map(platform => platform.toLowerCase()),
           tier: brief.tier,
           budget: getBudgetText(),
+          notes: brief.notes,
         }),
         new Promise(resolve => window.setTimeout(resolve, 1800)),
       ]);

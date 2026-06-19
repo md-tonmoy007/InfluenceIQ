@@ -108,6 +108,92 @@ platform/
     └── openserp_client.py
 ```
 
+## Implemented Role-5 Handoff Contract
+
+Role 4 must pass each extracted page to Role 5 with a `role5_candidate`
+payload. This keeps extraction/scoring deterministic and avoids forcing
+Role 5 to infer scraper-specific fields.
+
+```json
+{
+  "url": "https://source.example/article",
+  "title": "Top Nutrition Creators",
+  "content": "Clean readable text from the page",
+  "social_links": ["https://instagram.com/drsarahtan"],
+  "comments": ["Helpful and authentic advice"],
+  "metrics": {
+    "followers": 124000,
+    "average_engagement": 5400,
+    "verified": true
+  },
+  "metadata": {
+    "description": "Evidence-based creator profile",
+    "status": 200,
+    "cached": false,
+    "fetched_at": "2026-06-10T00:00:00+00:00",
+    "fetch_provider": "httpx"
+  },
+  "provenance": {
+    "source_url": "https://source.example/article",
+    "status": 200,
+    "cached": false
+  },
+  "role5_candidate": {
+    "source_url": "https://source.example/article",
+    "source_urls": ["https://source.example/article"],
+    "bio": "Evidence-based creator profile",
+    "content": "Clean readable text from the page",
+    "context": "First 4000 chars for extraction/scoring",
+    "comments": ["Helpful and authentic advice"],
+    "followers": 124000,
+    "average_engagement": 5400,
+    "verified": true,
+    "profile_urls": ["https://instagram.com/drsarahtan"],
+    "data_source_count": 1,
+    "source_evidence": {
+      "data_source_count": 1,
+      "profile_url_available": true,
+      "metadata_completeness": 0.33
+    }
+  }
+}
+```
+
+The campaign pipeline then merges `role5_candidate` with each extracted
+mention from Role 5 extraction:
+
+- `canonical_name`, `handle`, `platforms`
+- `credentials`, `professional_titles`, `authority_mentions`
+- `mentions`
+- `source_urls`, `data_source_count`
+- `brand_safety_scan`
+
+This merged object is sent to `app.tasks.score.score_influencer`, which
+can run the full Role 5 scoring path instead of the legacy five-number
+shortcut.
+
+## Platform Provider Adapters
+
+Profile URLs now route through provider-specific adapters before the
+generic HTTP fetcher:
+
+- YouTube: public channel page metadata plus RSS feed posts when a channel
+  ID is discoverable.
+- Instagram: public `web_profile_info` endpoint using the public app ID,
+  with profile meta fallback when the endpoint is blocked.
+- TikTok: public profile metadata extraction from profile HTML.
+- X/Twitter: public profile metadata extraction from profile HTML, with
+  Twitter URLs normalized to `x.com`.
+
+Every adapter returns a synthetic HTML page built from structured profile
+data so the existing Role 4 extractor can produce the same
+`role5_candidate` contract for all platforms.
+
+The adapters intentionally degrade instead of failing hard. If a platform
+blocks scraping, Role 4 still returns URL-derived identity and provenance
+so Role 5 can mark the result as low-confidence rather than losing the
+candidate entirely.
+
 ---
 
 ## Daily Dependencies

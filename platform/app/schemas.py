@@ -17,6 +17,8 @@ class CampaignBriefPayload(BaseModel):
     platforms: list[str] = Field(default_factory=list)
     tier: str = ""
     budget: str = ""
+    notes: str = ""
+    query: str = ""
 
 
 class SignupRequest(BaseModel):

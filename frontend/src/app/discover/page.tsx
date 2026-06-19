@@ -2,11 +2,17 @@ import React from "react";
 import Link from "next/link";
 import AppShell from "@/components/shell/AppShell";
 import DiscoverSearch from "@/components/discover/DiscoverSearch";
-import DiscoverGrid from "@/components/discover/DiscoverGrid";
 import RangeFilter from "@/components/discover/RangeFilter";
+import LiveCampaignDiscover from "@/components/discover/LiveCampaignDiscover";
 import "../discover.css";
 
-export default function DiscoverPage() {
+export default async function DiscoverPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ campaignId?: string }>;
+}) {
+  const params = await searchParams;
+  const campaignId = params.campaignId;
   const crumbs = [{ label: "Workspace" }, { label: "Discover", current: true }];
 
   return (
@@ -379,8 +385,8 @@ export default function DiscoverPage() {
           <section>
             <div className="results-head">
               <div className="results-count">
-                <strong>248</strong> creators match your brief
-                <span className="live">Live results</span>
+                <strong>{campaignId ? "Live" : "248"}</strong> creators match your brief
+                <span className="live">{campaignId ? "Backend connected" : "Live results"}</span>
               </div>
               <div className="results-actions">
                 <div className="sort-wrap">
@@ -434,7 +440,7 @@ export default function DiscoverPage() {
               </div>
             </div>
 
-            <DiscoverGrid />
+            <LiveCampaignDiscover campaignId={campaignId} variant="grid" />
           </section>
         </div>
       </main>
