@@ -84,7 +84,7 @@ You are the glue between every component. Frontend reads from you, Celery worker
 ## Key Files You Own
 
 ```
-backend/
+platform/
 ├── main.py                   (FastAPI entrypoint)
 ├── api/
 │   ├── campaigns.py

@@ -86,7 +86,7 @@ This is the critical path of the system. You own everything that makes the platf
 ## Key Files You Own
 
 ```
-backend/
+platform/
 ├── celery_app.py
 ├── tasks/
 │   ├── search.py

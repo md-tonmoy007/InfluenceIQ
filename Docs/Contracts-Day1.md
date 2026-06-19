@@ -29,7 +29,7 @@ Workers **must not** write to Redis directly. Use these helpers.
 
 ## 2. Celery Task Signatures (Owner: AI/DevOps)
 
-All tasks are in `backend/app/tasks/` and routed automatically via `app.celery_app` `task_routes`.
+All tasks are in `platform/app/tasks/` and routed automatically via `app.celery_app` `task_routes`.
 
 ### search_queue
 

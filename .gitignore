@@ -24,14 +24,28 @@ out/
 dist/
 build/
 *.tsbuildinfo
+.vercel/
 .npm
 .yarn/
 .pnpm-debug.log*
 
+# Frontend generated artifacts
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/coverage/
+frontend/.vercel/
+frontend/*.tsbuildinfo
+frontend/.DS_Store
+
 # Environment & secrets
 .env
+.env.*
 .env.local
 .env.*.local
+!.env.example
+!frontend/.env.example
 *.pem
 *.key
 
@@ -64,6 +78,10 @@ test-results/
 .coverage
 htmlcov/
 coverage/
+
+# Migration audit artifacts
+audit/original-screenshots/
+frontend/audit/original-screenshots/
 
 # Misc
 *.bak
