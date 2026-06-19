@@ -43,7 +43,7 @@ services:
     command: uvicorn backend_core.app:app --host 0.0.0.0 --port 8000 --reload
     env_file: .env
     ports:
-      - "8001:8000"
+      - "8002:8000"
     volumes:
       - .:/workspace
     depends_on:
@@ -58,6 +58,8 @@ services:
       dockerfile: platform/Dockerfile
     command: celery -A app.celery_app:celery_app worker -Q search_queue -c 2 -n search@%h
     env_file: .env
+    environment:
+      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
     volumes:
       - .:/workspace
     depends_on:
@@ -70,6 +72,8 @@ services:
       dockerfile: platform/Dockerfile
     command: celery -A app.celery_app:celery_app worker -Q crawl_queue -c 8 -n crawl@%h
     env_file: .env
+    environment:
+      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
     volumes:
       - .:/workspace
     depends_on:
@@ -82,6 +86,8 @@ services:
       dockerfile: platform/Dockerfile
     command: celery -A app.celery_app:celery_app worker -Q extract_queue -c 4 -n extract@%h
     env_file: .env
+    environment:
+      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
     volumes:
       - .:/workspace
     depends_on:
@@ -94,6 +100,8 @@ services:
       dockerfile: platform/Dockerfile
     command: celery -A app.celery_app:celery_app worker -Q score_queue -c 2 -n score@%h
     env_file: .env
+    environment:
+      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
     volumes:
       - .:/workspace
     depends_on:
@@ -106,6 +114,8 @@ services:
       dockerfile: platform/Dockerfile
     command: celery -A app.celery_app:celery_app flower --port=5555
     env_file: .env
+    environment:
+      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
     ports:
       - "5555:5555"
     volumes:
@@ -123,7 +133,7 @@ services:
         NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-ws://localhost:8000}
     env_file: .env
     ports:
-      - "3000:3000"
+      - "3002:3000"
     depends_on:
       backend-core:
         condition: service_started
