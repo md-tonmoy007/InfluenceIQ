@@ -6,13 +6,13 @@ Authoritative contracts every role builds against. **Do not change without notif
 
 ## 1. Redis Key Schema (Owner: AI/DevOps)
 
-| Key Pattern | Type | TTL | Writer | Reader |
-|-------------|------|-----|--------|--------|
-| `url_cache:{sha256(url)}` | String | 48h | Scraping | Scraping |
-| `pipeline_events:{campaign_id}` | List | 1h | All workers (via `emit_event`) | Backend WebSocket |
-| `pipeline_state:{campaign_id}` | Hash | 2h | All workers (via `update_state`) | Backend REST |
-| `rate_limit:{domain}` | String | 10s sliding | Scraping | Scraping |
-| `celery_task:{task_id}` | String | 6h | Celery internal | Celery internal |
+| Key Pattern                     | Type   | TTL         | Writer                           | Reader            |
+| ------------------------------- | ------ | ----------- | -------------------------------- | ----------------- |
+| `url_cache:{sha256(url)}`       | String | 48h         | Scraping                         | Scraping          |
+| `pipeline_events:{campaign_id}` | List   | 1h          | All workers (via `emit_event`)   | Backend WebSocket |
+| `pipeline_state:{campaign_id}`  | Hash   | 2h          | All workers (via `update_state`) | Backend REST      |
+| `rate_limit:{domain}`           | String | 10s sliding | Scraping                         | Scraping          |
+| `celery_task:{task_id}`         | String | 6h          | Celery internal                  | Celery internal   |
 
 **Channels (pub/sub):**
 
@@ -93,7 +93,7 @@ pipeline.apply_async()
   "type": "score.calculated",
   "campaign_id": "uuid",
   "timestamp": "2026-05-21T10:30:00Z",
-  "payload": { }
+  "payload": {}
 }
 ```
 
@@ -117,14 +117,20 @@ pipeline.apply_async()
 {
   "influencer_id": "uuid",
   "canonical_name": "Dr Sarah Tan",
-  "platforms": {"instagram": "@drsarahtan", "youtube": "youtube.com/sarahtan"},
+  "platforms": {
+    "instagram": "@drsarahtan",
+    "youtube": "youtube.com/sarahtan"
+  },
   "credentials": ["MD", "Certified Nutritionist"],
   "mentions": [
-    {"name": "Sarah Tan MD", "source_url": "https://...", "context": "..."}
+    { "name": "Sarah Tan MD", "source_url": "https://...", "context": "..." }
   ],
   "sub_scores": {
-    "relevance": 85, "credibility": 78, "engagement": 72,
-    "sentiment": 80, "brand_safety": 95
+    "relevance": 85,
+    "credibility": 78,
+    "engagement": 72,
+    "sentiment": 80,
+    "brand_safety": 95
   },
   "confidence": "High",
   "data_source_count": 7
@@ -145,12 +151,12 @@ See `.env.example` at repo root. Every contributor copies it to `.env` and fills
 
 ## 6. Token Budgets (hard caps per task)
 
-| Task | Max tokens |
-|------|-----------|
-| `generate_queries` | 2000 |
-| `classify_brand_safety` | 800 |
-| `resolve_identity_llm` | 400 |
-| `score_explain` | 1500 |
+| Task                    | Max tokens |
+| ----------------------- | ---------- |
+| `generate_queries`      | 2000       |
+| `classify_brand_safety` | 800        |
+| `resolve_identity_llm`  | 400        |
+| `score_explain`         | 1500       |
 
 Enforced in `app/llm/budget.py` (Day 2 deliverable).
 

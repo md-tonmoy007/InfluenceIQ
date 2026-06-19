@@ -1,159 +1,62 @@
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
-from functools import lru_cache
-from typing import Any
+from app.services.redis_client import redis_client
 
-import redis
-import structlog
-
-from app.config import settings
-
-PIPELINE_EVENTS_TTL_SECONDS = 60 * 60
-PIPELINE_STATE_TTL_SECONDS = 2 * 60 * 60
-
-logger = structlog.get_logger(__name__)
+# Redis hash key pattern for pipeline state
+STATE_KEY_PREFIX = "pipeline_state:"
+STATE_TTL = 7200  # 2 hours
 
 
-@lru_cache(maxsize=1)
-def _state_redis() -> redis.Redis:
-    return redis.from_url(settings.REDIS_STATE_DB)
+def initialize_pipeline_state(campaign_id: str, total_urls: int = 0) -> None:
+    """Initializes the campaign execution state hash in Redis with default values."""
+    key = f"{STATE_KEY_PREFIX}{campaign_id}"
+    initial_state = {
+        "campaign_id": campaign_id,
+        "phase": "initializing",
+        "urls_discovered": str(total_urls),
+        "urls_scraped": "0",
+        "urls_failed": "0",
+        "influencers_found": "0",
+        "scores_computed": "0",
+    }
+    # HSET fields
+    redis_client.hset(key, mapping=initial_state)
+    # Set expiration to 2 hours
+    redis_client.expire(key, STATE_TTL)
 
 
-def _json_default(value: Any) -> str:
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return str(value)
+def update_pipeline_state(campaign_id: str, **fields) -> None:
+    """Updates fields in the pipeline state hash and extends/renews its TTL."""
+    key = f"{STATE_KEY_PREFIX}{campaign_id}"
+    # Convert all values to string for redis storage
+    mapping = {k: str(v) for k, v in fields.items()}
+    if mapping:
+        redis_client.hset(key, mapping=mapping)
+    redis_client.expire(key, STATE_TTL)
 
 
-def _encode_hash_value(value: Any) -> str:
-    if isinstance(value, str):
-        return value
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int | float):
-        return str(value)
-    return json.dumps(value, default=_json_default, sort_keys=True)
+def get_pipeline_state(campaign_id: str) -> dict | None:
+    """Retrieves and normalizes the pipeline state from Redis.
+    Casts numeric fields to int and returns a dictionary.
+    """
+    key = f"{STATE_KEY_PREFIX}{campaign_id}"
+    state = redis_client.hgetall(key)
+    if not state:
+        return None
 
+    # Cast integer columns to int
+    int_cols = [
+        "urls_discovered",
+        "urls_scraped",
+        "urls_failed",
+        "influencers_found",
+        "scores_computed",
+    ]
+    for col in int_cols:
+        if col in state:
+            try:
+                state[col] = int(state[col])
+            except ValueError:
+                state[col] = 0
 
-def emit_event(campaign_id: str, event_type: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Append a pipeline event and publish it to the campaign channel."""
-    client = _state_redis()
-    event_key = f"pipeline_events:{campaign_id}"
-    sequence_key = f"pipeline_event_seq:{campaign_id}"
-    channel = f"campaign:{campaign_id}"
-
-    payload = payload or {}
-    timestamp = datetime.now(UTC).isoformat()
-
-    try:
-        event_id = int(client.incr(sequence_key))
-        event = {
-            "event_id": event_id,
-            "type": event_type,
-            "campaign_id": campaign_id,
-            "timestamp": timestamp,
-            "payload": payload,
-        }
-        encoded = json.dumps(event, default=_json_default, sort_keys=True)
-        pipe = client.pipeline()
-        pipe.rpush(event_key, encoded)
-        pipe.expire(event_key, PIPELINE_EVENTS_TTL_SECONDS)
-        pipe.expire(sequence_key, PIPELINE_EVENTS_TTL_SECONDS)
-        pipe.publish(channel, encoded)
-        pipe.execute()
-        return event
-    except redis.RedisError as exc:
-        logger.warning(
-            "pipeline_event_write_failed",
-            campaign_id=campaign_id,
-            event_type=event_type,
-            error=str(exc),
-        )
-        return {
-            "event_id": 0,
-            "type": event_type,
-            "campaign_id": campaign_id,
-            "timestamp": timestamp,
-            "payload": payload,
-        }
-
-
-def _decode_state_value(value: str) -> Any:
-    lowered = value.lower()
-    if lowered == "true":
-        return True
-    if lowered == "false":
-        return False
-    if value == "":
-        return ""
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError:
-        return value
-
-
-def update_state(campaign_id: str, **fields: Any) -> dict[str, str]:
-    """Update the Redis hash used by REST and WebSocket status readers."""
-    if not fields:
-        return {}
-
-    client = _state_redis()
-    key = f"pipeline_state:{campaign_id}"
-    encoded_fields = {name: _encode_hash_value(value) for name, value in fields.items()}
-
-    try:
-        pipe = client.pipeline()
-        pipe.hset(key, mapping=encoded_fields)
-        pipe.expire(key, PIPELINE_STATE_TTL_SECONDS)
-        pipe.execute()
-    except redis.RedisError as exc:
-        logger.warning(
-            "pipeline_state_write_failed",
-            campaign_id=campaign_id,
-            fields=sorted(fields),
-            error=str(exc),
-        )
-
-    return encoded_fields
-
-
-def get_state(campaign_id: str) -> dict[str, Any]:
-    client = _state_redis()
-    key = f"pipeline_state:{campaign_id}"
-    try:
-        raw = client.hgetall(key)
-    except redis.RedisError as exc:
-        logger.warning("pipeline_state_read_failed", campaign_id=campaign_id, error=str(exc))
-        return {}
-
-    decoded: dict[str, Any] = {}
-    for raw_key, raw_value in raw.items():
-        key_name = raw_key.decode() if isinstance(raw_key, bytes) else str(raw_key)
-        value = raw_value.decode() if isinstance(raw_value, bytes) else str(raw_value)
-        decoded[key_name] = _decode_state_value(value)
-    return decoded
-
-
-def get_events(campaign_id: str, after_event_id: int = 0) -> list[dict[str, Any]]:
-    client = _state_redis()
-    key = f"pipeline_events:{campaign_id}"
-    try:
-        raw_events = client.lrange(key, 0, -1)
-    except redis.RedisError as exc:
-        logger.warning("pipeline_events_read_failed", campaign_id=campaign_id, error=str(exc))
-        return []
-
-    events: list[dict[str, Any]] = []
-    for raw_event in raw_events:
-        payload = raw_event.decode() if isinstance(raw_event, bytes) else str(raw_event)
-        try:
-            event = json.loads(payload)
-        except json.JSONDecodeError:
-            continue
-        if int(event.get("event_id", 0)) > after_event_id:
-            events.append(event)
-    return events
+    return state
