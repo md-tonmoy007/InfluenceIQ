@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 import redis.asyncio as aioredis
 import structlog
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.config import settings
 from app.services.event_log import aget_event_replay
@@ -31,7 +30,7 @@ async def websocket_campaign_stream(
     """
     campaign_id_str = str(campaign_id)
     log = logger.bind(campaign_id=campaign_id_str)
-    
+
     await websocket.accept()
     log.info("WebSocket connection established")
 
@@ -55,11 +54,11 @@ async def websocket_campaign_stream(
     pubsub_redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
     pubsub = pubsub_redis.pubsub()
     channel_name = f"campaign:{campaign_id_str}"
-    
+
     try:
         await pubsub.subscribe(channel_name)
         log.info("Subscribed to Redis pub/sub channel", channel=channel_name)
-        
+
         # We run the ping/pong heartbeat and the pub/sub listener concurrently
         # We need a shared flag to communicate disconnection
         is_active = True

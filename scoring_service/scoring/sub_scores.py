@@ -13,8 +13,15 @@ from scoring_service.analysis.reason_builder import build_reasons, build_summary
 from scoring_service.analysis.sentiment import analyze_sentiment
 from scoring_service.scoring.normalize import score
 from scoring_service.scoring.renormalized_fusion import fuse as fuse_layers
-from scoring_service.scoring.risk_components import (authentic_engagement_bonus, behavioral_signal_score,
-    bot_ring_signal_score, graph_proxy_score, overall_fake_risk, overall_risk_category, semantic_signal_score)
+from scoring_service.scoring.risk_components import (
+    authentic_engagement_bonus,
+    behavioral_signal_score,
+    bot_ring_signal_score,
+    graph_proxy_score,
+    overall_fake_risk,
+    overall_risk_category,
+    semantic_signal_score,
+)
 from scoring_service.scoring.role5_fusion import canonical_risk_category
 from scoring_service.scoring.trust_formula import calculate_role5_trust
 from scoring_service.scoring.versioning import MODEL_VERSION, computed_at

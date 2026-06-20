@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.db import models
+from app.db.session import get_db
 from app.schemas.campaign import CampaignCreate, CampaignResponse
 from app.schemas.influencer import InfluencerResponse, SubScores
 from app.services.pipeline_state import (
-    initialize_pipeline_state,
     get_pipeline_state,
+    initialize_pipeline_state,
 )
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
@@ -41,9 +42,12 @@ def create_campaign(
     # Initialize tracking state in Redis
     initialize_pipeline_state(campaign_id_str)
 
-    # TODO: Dispatch Celery task pipeline asynchronously (starting with query generation).
-    # Task definitions were migrated to per-service workers during the multiservice refactor.
-    # generate_queries.delay(campaign_id_str)
+    # Dispatch the full Celery pipeline: generate_queries → execute_search
+    # → fetch_page → extract_content → extract_influencers → score_influencer
+    # → classify_brand_safety. The chain is fanned out across the
+    # ai_agent / scraping / scoring workers (see app/tasks/__init__.py).
+    from app.tasks import start_pipeline
+    start_pipeline(campaign_id_str)
 
     return {
         "campaign_id": db_campaign.id,
@@ -154,7 +158,7 @@ def get_campaign_influencers(
             )
             .all()
         )
-        
+
         from app.schemas.influencer import CrawlSourceResponse
         sources_response = [
             CrawlSourceResponse(

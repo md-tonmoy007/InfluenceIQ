@@ -19,7 +19,6 @@ from typing import Any
 
 import httpx
 
-
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 DEFAULT_MODEL = "gpt-4o-mini"
 MAX_TEXT_CHARS = 8_000

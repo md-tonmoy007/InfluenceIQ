@@ -34,9 +34,9 @@ from __future__ import annotations
 import os
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Enable / disable
@@ -235,7 +235,7 @@ def _spacy_locations(text: str) -> list[str]:
         return []
     try:
         nlp = spacy.load("en_core_web_sm")
-    except (OSError, IOError):
+    except OSError:
         return []
     return [
         entity.text.strip() for entity in nlp(text[:100_000]).ents

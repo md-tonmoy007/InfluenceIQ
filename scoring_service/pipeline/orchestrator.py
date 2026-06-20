@@ -17,21 +17,21 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from scoring_service.analysis.bot_behavior import score_bot_behavior
 from scoring_service.analysis.brand_safety_blocklist import scan_brand_safety
+from scoring_service.analysis.coordinated_engagement import score_coordinated_engagement
 from scoring_service.analysis.credibility import calculate_credibility
 from scoring_service.analysis.engagement_quality import engagement_quality_score
 from scoring_service.analysis.fake_comment import score_fake_comments
 from scoring_service.analysis.fake_follower import score_fake_followers
-from scoring_service.analysis.bot_behavior import score_bot_behavior
-from scoring_service.analysis.coordinated_engagement import score_coordinated_engagement
 from scoring_service.analysis.reason_builder import build_reasons, build_summary
 from scoring_service.analysis.sentiment import analyze_sentiment
 from scoring_service.analysis.source_confidence import source_confidence_score
 from scoring_service.detection import (
     DetectionDecision,
     classify_detection,
-    detect_brand_safety,
     detect_bot_behavior,
+    detect_brand_safety,
     detect_coordinated_engagement,
     detect_fake_comments,
     detect_fake_followers,
@@ -53,8 +53,12 @@ from scoring_service.scoring.risk_components import (
 )
 from scoring_service.scoring.role5_fusion import canonical_risk_category
 from scoring_service.scoring.sub_scores import relevance_score
-from scoring_service.scoring.trust_formula import calculate_role5_trust, grade_for_trust
-from scoring_service.scoring.versioning import MODEL_VERSION, MODEL_VERSION_ALIAS, computed_at, model_version_for
+from scoring_service.scoring.trust_formula import calculate_role5_trust
+from scoring_service.scoring.versioning import (
+    MODEL_VERSION_ALIAS,
+    computed_at,
+    model_version_for,
+)
 
 
 def _source_count(candidate: dict[str, Any]) -> int:

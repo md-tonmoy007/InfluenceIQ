@@ -14,6 +14,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -27,6 +28,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -35,6 +37,7 @@ services:
       - "6336:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    restart: unless-stopped
 
   backend-core:
     build:
@@ -46,11 +49,24 @@ services:
       - "8002:8000"
     volumes:
       - .:/workspace
+    environment:
+      PYTHONPATH: /workspace
+    healthcheck:
+      # Hit the FastAPI / endpoint; the app is "up" when uvicorn
+      # is serving. /health is a richer check but requires a
+      # working DB + Redis, which the worker containers do not
+      # need to verify themselves.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=2).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
   worker_ai_agent:
     build:
@@ -62,9 +78,17 @@ services:
       PYTHONPATH: /workspace
     volumes:
       - .:/workspace
+    healthcheck:
+      # Celery's `inspect ping` round-trips through the broker.
+      test: ["CMD", "celery", "-A", "ai_agent_services.worker:celery_app", "inspect", "ping", "-t", "2"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
   worker_scraping:
     build:
@@ -76,9 +100,16 @@ services:
       PYTHONPATH: /workspace
     volumes:
       - .:/workspace
+    healthcheck:
+      test: ["CMD", "celery", "-A", "scraping_service.worker:celery_app", "inspect", "ping", "-t", "2"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
   worker_scoring:
     build:
@@ -90,9 +121,16 @@ services:
       PYTHONPATH: /workspace
     volumes:
       - .:/workspace
+    healthcheck:
+      test: ["CMD", "celery", "-A", "scoring_service.worker:celery_app", "inspect", "ping", "-t", "2"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
   flower:
     build:
@@ -109,6 +147,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
   frontend:
     build:
@@ -123,6 +162,7 @@ services:
     depends_on:
       backend-core:
         condition: service_started
+    restart: unless-stopped
 
 volumes:
   postgres_data:

@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import unittest
-import asyncio
+
 import httpx
-from uuid import UUID
 
 API_URL = "http://localhost:8000"
 
 class TestInfluenceIQBackend(unittest.IsolatedAsyncioTestCase):
-    
+
     async def asyncSetUp(self):
         """Setup client and ensure database is freshly seeded before tests run."""
         self.client = httpx.AsyncClient(base_url=API_URL, timeout=10.0)
-        
+
         # Fresh seed for predictable test data
         try:
             resp = await self.client.post("/api/demo/seed")
@@ -33,7 +32,7 @@ class TestInfluenceIQBackend(unittest.IsolatedAsyncioTestCase):
         """Verify GET /health returns complete telemetry diagnostic details."""
         resp = await self.client.get("/health")
         self.assertEqual(resp.status_code, 200)
-        
+
         data = resp.json()
         self.assertEqual(data["status"], "ok")
         self.assertEqual(data["db"], "connected")
@@ -45,11 +44,11 @@ class TestInfluenceIQBackend(unittest.IsolatedAsyncioTestCase):
         """Verify GET /api/campaigns/{id} returns campaign models and Redis pipeline states."""
         resp = await self.client.get(f"/api/campaigns/{self.campaign_id}")
         self.assertEqual(resp.status_code, 200)
-        
+
         data = resp.json()
         self.assertIn("campaign", data)
         self.assertIn("pipeline_state", data)
-        
+
         campaign = data["campaign"]
         self.assertEqual(campaign["id"], self.campaign_id)
         self.assertEqual(campaign["product"], "BioGlow Collagen Peptide")
@@ -68,16 +67,16 @@ class TestInfluenceIQBackend(unittest.IsolatedAsyncioTestCase):
         """Verify GET /api/campaigns/{id}/influencers lists seeded ranked results with crawl sources."""
         resp = await self.client.get(f"/api/campaigns/{self.campaign_id}/influencers")
         self.assertEqual(resp.status_code, 200)
-        
+
         influencers = resp.json()
         self.assertGreater(len(influencers), 0)
-        
+
         # Verify first element is highest scored (Dr. Jessica Cho)
         top = influencers[0]
         self.assertEqual(top["canonical_name"], "Dr. Jessica Cho")
         self.assertEqual(top["final_score"], 92.5)
         self.assertIn("youtube", top["platforms"])
-        
+
         # Verify provenance joins (sources array)
         self.assertGreater(len(top["sources"]), 0)
         source = top["sources"][0]
@@ -92,7 +91,7 @@ class TestInfluenceIQBackend(unittest.IsolatedAsyncioTestCase):
         data_aplus = resp_aplus.json()
         self.assertEqual(len(data_aplus), 1)
         self.assertEqual(data_aplus[0]["canonical_name"], "Dr. Jessica Cho")
-        
+
         # Querying Grade A should isolate Elena Rostova (score 83.2)
         resp_a = await self.client.get(f"/api/campaigns/{self.campaign_id}/influencers?grade=A")
         self.assertEqual(resp_a.status_code, 200)
@@ -105,7 +104,7 @@ class TestInfluenceIQBackend(unittest.IsolatedAsyncioTestCase):
         resp = await self.client.get(f"/api/campaigns/{self.campaign_id}/influencers?platform=tiktok")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        
+
         # Only Elena Rostova has TikTok, Dr. Cho does not
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["canonical_name"], "Elena Rostova")
@@ -114,7 +113,7 @@ class TestInfluenceIQBackend(unittest.IsolatedAsyncioTestCase):
         """Verify GET /api/influencers/{id} returns correct canonical profile information."""
         resp = await self.client.get(f"/api/influencers/{self.dr_cho_id}")
         self.assertEqual(resp.status_code, 200)
-        
+
         data = resp.json()
         self.assertEqual(data["id"], self.dr_cho_id)
         self.assertEqual(data["canonical_name"], "Dr. Jessica Cho")
@@ -124,10 +123,10 @@ class TestInfluenceIQBackend(unittest.IsolatedAsyncioTestCase):
         """Verify GET /api/influencers/{id}/verifications returns credentials verified status."""
         resp = await self.client.get(f"/api/influencers/{self.dr_cho_id}/verifications")
         self.assertEqual(resp.status_code, 200)
-        
+
         verifications = resp.json()
         self.assertEqual(len(verifications), 2)
-        
+
         # Both seeded credentials for Dr. Cho are verified
         for v in verifications:
             self.assertTrue(v["verified"])
@@ -137,10 +136,10 @@ class TestInfluenceIQBackend(unittest.IsolatedAsyncioTestCase):
         """Verify GET /api/influencers/{id}/safety returns brand risk flags."""
         resp = await self.client.get(f"/api/influencers/{self.crypto_king_id}/safety")
         self.assertEqual(resp.status_code, 200)
-        
+
         flags = resp.json()
         self.assertEqual(len(flags), 1)
-        
+
         flag = flags[0]
         self.assertEqual(flag["risk_type"], "scam")
         self.assertEqual(flag["campaign_id"], self.crypto_campaign_id)

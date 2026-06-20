@@ -3,13 +3,21 @@ from __future__ import annotations
 from celery import Celery
 
 from app.config import settings
+from app.service_roles import TASK_QUEUE_BY_NAME
 
-# Legacy monolith celery app — kept for health endpoint compatibility.
-# Per-service celery apps are created via create_celery_app() in celery_factory.py.
+# Central Celery app — shared by the API process (for ``.delay()`` dispatch
+# with correct queue routing) and by the workers (which prefer
+# :func:`app.celery_factory.create_celery_app` for per-service isolation).
 celery_app = Celery(
     "influenceiq",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
+    include=[
+        "app.tasks.search",
+        "app.tasks.crawl",
+        "app.tasks.extract",
+        "app.tasks.score",
+    ],
 )
 
 celery_app.conf.update(
@@ -22,6 +30,13 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     task_default_retry_delay=2,
+    # Route every declared task to its service's queue so ``.delay()`` from
+    # the API lands in the right worker's inbox even without explicit
+    # ``queue=`` arguments.
+    task_routes={
+        task_name: {"queue": queue}
+        for task_name, queue in TASK_QUEUE_BY_NAME.items()
+    },
     task_annotations={
         "*": {
             "max_retries": 3,

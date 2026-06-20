@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import importlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,9 +24,10 @@ class AuthIntegrationTest(unittest.TestCase):
         os.environ["AUTH_SECRET_KEY"] = "test-secret"
 
         import app.auth
+        import app.models
+
         import app.config
         import app.db
-        import app.models
 
         importlib.reload(app.config)
         importlib.reload(app.db)

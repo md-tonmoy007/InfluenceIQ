@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import redis
+
 from app.config import settings
 
 # Shared Redis client with response decoding enabled

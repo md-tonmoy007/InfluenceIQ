@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from scoring_service.analysis import bot_behavior, fake_comment, fake_follower, sentiment
-from scoring_service.analysis import brand_safety_blocklist
+from scoring_service.analysis import (
+    bot_behavior,
+    brand_safety_blocklist,
+    fake_comment,
+    fake_follower,
+    sentiment,
+)
 from scoring_service.model_classifiers import ModelClassification, model_classifiers_enabled
 
 

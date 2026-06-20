@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
-
 SOCIAL_DOMAINS = {
     "instagram.com": "instagram",
     "youtube.com": "youtube",

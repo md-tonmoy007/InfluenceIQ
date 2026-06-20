@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
 import structlog
+from fastapi import FastAPI
 
+from app.api import campaigns, demo, health, influencers, websocket
 from app.config import settings
-from app.api import campaigns, health, websocket, demo, influencers
 from app.middleware.cors import setup_cors
 from app.middleware.logging import setup_logging_middleware
 

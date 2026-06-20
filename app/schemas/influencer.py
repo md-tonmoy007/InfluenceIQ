@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 
@@ -39,7 +40,7 @@ class InfluencerResponse(BaseModel):
     platforms: dict[str, str] = Field(default_factory=dict)
     credentials: list[str] | None = Field(default_factory=list)
     mentions: list[dict] | None = Field(default_factory=list)
-    
+
     # Latest score metrics
     final_score: float | None = None
     sub_scores: SubScores | None = None
@@ -47,7 +48,7 @@ class InfluencerResponse(BaseModel):
     data_source_count: int = 0
     score_version: str | None = None
     computed_at: datetime | None = None
-    
+
     # Source provenance
     sources: list[CrawlSourceResponse] | None = Field(default_factory=list)
 
