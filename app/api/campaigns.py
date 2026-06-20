@@ -41,9 +41,12 @@ def create_campaign(
     # Initialize tracking state in Redis
     initialize_pipeline_state(campaign_id_str)
 
-    # TODO: Dispatch Celery task pipeline asynchronously (starting with query generation).
-    # Task definitions were migrated to per-service workers during the multiservice refactor.
-    # generate_queries.delay(campaign_id_str)
+    # Dispatch the full Celery pipeline: generate_queries → execute_search
+    # → fetch_page → extract_content → extract_influencers → score_influencer
+    # → classify_brand_safety. The chain is fanned out across the
+    # ai_agent / scraping / scoring workers (see app/tasks/__init__.py).
+    from app.tasks import start_pipeline
+    start_pipeline(campaign_id_str)
 
     return {
         "campaign_id": db_campaign.id,

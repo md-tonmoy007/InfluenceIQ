@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -12,6 +12,11 @@ EVENT_LIST_PREFIX = "pipeline_events:"
 EVENT_COUNTER_PREFIX = "event_id_counter:"
 PUB_SUB_PREFIX = "campaign:"
 EVENT_TTL = 3600  # 1 hour
+
+
+def _utcnow_iso() -> str:
+    """Timezone-aware UTC ``isoformat()`` ending in ``Z``."""
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def emit_event(campaign_id: str, event_type: str, payload: dict) -> dict:
@@ -28,7 +33,7 @@ def emit_event(campaign_id: str, event_type: str, payload: dict) -> dict:
         "event_id": event_id,
         "type": event_type,
         "campaign_id": campaign_id,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": _utcnow_iso(),
         "payload": payload,
     }
 
@@ -86,7 +91,7 @@ async def aemit_event(
         "event_id": event_id,
         "type": event_type,
         "campaign_id": campaign_id,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": _utcnow_iso(),
         "payload": payload,
     }
 
