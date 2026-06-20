@@ -1,6 +1,7 @@
 [project]
 name = "umgl-ai"
 version = "0.1.0"
+description = "Optional ML backends for the InfluenceIQ scoring pipeline. Heavy dependencies (torch, transformers, peft) are intentionally required by this package so the core InfluenceIQ image stays light."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -16,15 +17,11 @@ dependencies = [
   "peft>=0.14,<1",
   "datasets>=3.2,<4",
   "accelerate>=1.2,<2",
-  "nats-py>=2.9,<3",
   "prometheus-client>=0.21,<1",
-  "opentelemetry-api>=1.29,<2",
-  "opentelemetry-sdk>=1.29,<2",
 ]
 
 [project.optional-dependencies]
 graph = ["torch-geometric>=2.6,<3", "dgl>=2.4,<3"]
-training = ["unsloth>=2025.1", "bitsandbytes>=0.45,<1", "trl>=0.13,<1"]
 deberta = ["transformers>=4.47,<5", "torch>=2.5,<3"]
 gnn = ["torch-geometric>=2.6,<3", "torch>=2.5,<3"]
 llm = ["httpx>=0.28,<1"]
@@ -36,4 +33,3 @@ target-version = "py311"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-

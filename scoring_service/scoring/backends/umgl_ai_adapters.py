@@ -1,10 +1,16 @@
-"""Optional adapter layer for the reference ``umgl_ai`` ML package.
+"""Optional adapter layer for the top-level ``umgl_ai`` ML package.
 
 This module lets :mod:`scoring_service.scoring.risk_components` and the
-Celery adapter in :mod:`platform.app.tasks.score` opt in to model-backed
+Celery adapters in :mod:`app.tasks.score` opt in to model-backed
 versions of the heuristic pipelines. When all flags are off (the
 default) nothing is imported and behaviour is byte-for-byte identical
 to the pre-upgrade heuristics.
+
+The ``umgl_ai`` package lives at the repository root. It is **not** a
+hard dependency: if it is not installed, every adapter returns the
+``(None, {})`` tuple (or ``""`` for the LLM explainer) and the
+heuristic path takes over. Install it with ``pip install -e ./umgl_ai``
+to opt in.
 
 Environment flags
 =================
