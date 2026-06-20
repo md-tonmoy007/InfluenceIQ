@@ -1,16 +1,14 @@
 line-length = 100
 target-version = "py311"
 
-# umgl_ai is the optional ML backend. Its files have legacy unused
+# backend.ml is the optional ML backend. Its files have legacy unused
 # imports and unusual import ordering. The repo lints clean without
-# it; the maintainers of umgl_ai can run `ruff check umgl_ai/`
+# it; the maintainers of backend.ml can run `ruff check backend/ml/`
 # separately when they want to clean it up.
 extend-exclude = [
-    "umgl_ai",
-    "scoring-and-extraction",
-    "backend_core",
-    "backend",
-    "alembic",
+    "backend/ml",
+    ".venv",
+    "frontend",
 ]
 
 [lint]
@@ -30,20 +28,20 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"tests/*" = ["B", "E402"]
+"backend/tests/*" = ["B", "E402"]
 "scripts/*" = ["B", "E402"]
-"scoring_service/tests/*" = ["B", "E402"]
-# The pre-existing scoring_service/analysis/* files have a style
+"backend/tests/pipeline/*" = ["B", "E402"]
+# The pre-existing backend/pipeline/analysis/* files have a style
 # of multi-statement-if (`if cond: do_x(); do_y()`) that ruff E701
 # flags. They are out of scope for this refactor; tracked for a
 # follow-up cleanup PR.
-"scoring_service/analysis/*.py" = ["E701", "E702"]
-"scoring_service/detection/detection_classifier.py" = ["UP042"]
-"scoring_service/scoring/normalize.py" = ["E701"]
-"scoring_service/scoring/risk_components.py" = ["E701"]
-"scoring_service/scoring/sub_scores.py" = ["E701"]
-"scoring_service/extraction/contact_info.py" = ["E402"]
-"scoring_service/pipeline/orchestrator.py" = ["F841"]
+"backend/pipeline/analysis/*.py" = ["E701", "E702"]
+"backend/pipeline/detection/detection_classifier.py" = ["UP042"]
+"backend/pipeline/fusion/normalize.py" = ["E701"]
+"backend/pipeline/fusion/components.py" = ["E701"]
+"backend/pipeline/fusion/sub_scores.py" = ["E701"]
+"backend/pipeline/extraction/contact_info.py" = ["E402"]
+"backend/pipeline/orchestrator/pipeline.py" = ["F841"]
 
 [format]
 quote-style = "double"

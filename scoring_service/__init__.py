@@ -1,1 +1,0 @@
-"""Scoring worker service package."""

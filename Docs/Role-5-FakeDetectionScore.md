@@ -2,7 +2,7 @@
 
 Role 5 of InfluenceIQ turns raw scraped pages into **explainable,
 auditable trust and fake-risk scores** for every candidate influencer.
-It is implemented inside `scoring_service/` and reuses only the parts
+It is implemented inside `backend.pipeline/` and reuses only the parts
 of the previous UMGL-Forensics architecture that the spec calls for:
 
 * the 5-layer fake-detection ensemble
@@ -22,7 +22,7 @@ MinIO/Qdrant storage layers.
 ## 1. Package layout
 
 ```
-scoring_service/
+backend.pipeline/
 ├── __init__.py
 ├── models.py                  TypedDict contracts
 ├── worker.py                  Celery factory
@@ -81,27 +81,27 @@ scoring_service/
 
 | #   | Pipeline                          | Module                                     |
 | --- | --------------------------------- | ------------------------------------------ |
-| 1   | Information extraction            | `scoring_service.extraction.*`             |
-| 2   | Identity resolution (3-pass)      | `scoring_service.identity.*`               |
-| 3   | Detection category                | `scoring_service.detection.detection_classifier` |
-| 4   | Fake comment detection            | `scoring_service.detection.fake_comment_detector` |
-| 5   | Fake follower detection           | `scoring_service.detection.fake_follower_detector` |
-| 6   | Bot behavior detection            | `scoring_service.detection.bot_behavior_detector` |
-| 7   | Coordinated engagement detection  | `scoring_service.detection.coordinated_ring_detector` |
-| 8   | Overall fake risk                 | `scoring_service.scoring.risk_components.overall_fake_risk` |
-| 9   | Previous 5-layer mapping          | `scoring_service.scoring.risk_components.*_signal_score` |
-| 10  | Renormalized weighted fusion      | `scoring_service.scoring.renormalized_fusion` |
-| 11  | Engagement quality                | `scoring_service.analysis.engagement_quality` |
-| 12  | Sentiment (multi-backend)         | `scoring_service.analysis.sentiment_backends` |
-| 13  | Brand safety detection            | `scoring_service.detection.brand_safety_detector` |
-| 14  | Credibility                       | `scoring_service.analysis.credibility`     |
-| 15  | Source confidence                 | `scoring_service.analysis.source_confidence` |
-| 16  | Role 5 final trust score          | `scoring_service.scoring.trust_formula`    |
-| 17  | Final output JSON                 | `scoring_service.pipeline.run_role5_pipeline` |
-| 18  | Explainability                    | `scoring_service.analysis.reason_builder`  |
-| 19  | Events                            | `scoring_service.events.*`                 |
-| 20  | Testing                           | `scoring_service.tests`                    |
-| --  | Contact info extraction (PII)     | `scoring_service.extraction.contact_info`  |
+| 1   | Information extraction            | `backend.pipeline.extraction.*`             |
+| 2   | Identity resolution (3-pass)      | `backend.pipeline.identity.*`               |
+| 3   | Detection category                | `backend.pipeline.detection.detection_classifier` |
+| 4   | Fake comment detection            | `backend.pipeline.detection.fake_comment_detector` |
+| 5   | Fake follower detection           | `backend.pipeline.detection.fake_follower_detector` |
+| 6   | Bot behavior detection            | `backend.pipeline.detection.bot_behavior_detector` |
+| 7   | Coordinated engagement detection  | `backend.pipeline.detection.coordinated_ring_detector` |
+| 8   | Overall fake risk                 | `backend.pipeline.fusion.components.overall_fake_risk` |
+| 9   | Previous 5-layer mapping          | `backend.pipeline.fusion.components.*_signal_score` |
+| 10  | Renormalized weighted fusion      | `backend.pipeline.fusion.fusion` |
+| 11  | Engagement quality                | `backend.pipeline.analysis.engagement_quality` |
+| 12  | Sentiment (multi-backend)         | `backend.pipeline.analysis.sentiment_backends` |
+| 13  | Brand safety detection            | `backend.pipeline.detection.brand_safety_detector` |
+| 14  | Credibility                       | `backend.pipeline.analysis.credibility`     |
+| 15  | Source confidence                 | `backend.pipeline.analysis.source_confidence` |
+| 16  | Role 5 final trust score          | `backend.pipeline.fusion.trust`    |
+| 17  | Final output JSON                 | `backend.pipeline.orchestrator.run_role5_pipeline` |
+| 18  | Explainability                    | `backend.pipeline.analysis.reason_builder`  |
+| 19  | Events                            | `backend.pipeline.events.*`                 |
+| 20  | Testing                           | `backend.pipeline.tests`                    |
+| --  | Contact info extraction (PII)     | `backend.pipeline.extraction.contact_info`  |
 
 ---
 
@@ -188,7 +188,7 @@ Grades: `A+ 90..100`, `A 80..89`, `B 70..79`, `C 60..69`, `D 40..59`,
 ```
 
 The model identifier is exposed as
-`scoring_service.scoring.versioning.MODEL_VERSION`. The previous alias
+`backend.pipeline.fusion.versioning.MODEL_VERSION`. The previous alias
 `Role5-FakeSignal-v1` is kept for backward compatibility.
 
 ---
@@ -198,10 +198,10 @@ The model identifier is exposed as
 * `influencer.found`     -> `{name, platform, source}`
 * `identity.merged`      -> `{canonical_id, merged_from, confidence}`
 * `score.calculated`     -> full struct from
-  `scoring_service.events.ScoreCalculated.to_payload()`
+  `backend.pipeline.events.ScoreCalculated.to_payload()`
 
 The Celery adapters call `emit_event` from
-`app.services.pipeline_state`; the score adapter builds the payload via
+`backend.core.cache.pipeline_state`; the score adapter builds the payload via
 the `ScoreCalculated` helper so the field set is always identical.
 
 ---
@@ -210,13 +210,13 @@ the `ScoreCalculated` helper so the field set is always identical.
 
 | Task name                                  | Signature                                                      |
 | ------------------------------------------ | -------------------------------------------------------------- |
-| `app.tasks.extract.extract_influencers`    | `extract_influencers(campaign_id: str, page: dict) -> list[dict]` |
-| `app.tasks.extract.resolve_identity_llm`   | `resolve_identity_llm(candidate_a: dict, candidate_b: dict) -> dict` |
-| `app.tasks.score.classify_brand_safety`    | `classify_brand_safety(campaign_id: str, content: dict) -> dict` |
-| `app.tasks.score.score_influencer`         | `score_influencer(campaign_id: str, influencer_id: str, sub_scores: dict) -> dict` |
+| `backend.pipeline.tasks.extract.extract_influencers`    | `extract_influencers(campaign_id: str, page: dict) -> list[dict]` |
+| `backend.pipeline.tasks.extract.resolve_identity_llm`   | `resolve_identity_llm(candidate_a: dict, candidate_b: dict) -> dict` |
+| `backend.pipeline.tasks.score.classify_brand_safety`    | `classify_brand_safety(campaign_id: str, content: dict) -> dict` |
+| `backend.pipeline.tasks.score.score_influencer`         | `score_influencer(campaign_id: str, influencer_id: str, sub_scores: dict) -> dict` |
 
 These signatures are pinned by `Contracts-Day1.md` and are not changed
-by this work. The adapters delegate to the `scoring_service` package
+by this work. The adapters delegate to the `backend.pipeline` package
 internally.
 
 ---
@@ -225,7 +225,7 @@ internally.
 
 Every analyzer in this package accepts a feature dictionary and has
 no provider dependency. To swap the model behind a fake-comment
-detector, override the call to `scoring_service.analysis.fake_comment.score_fake_comments`
+detector, override the call to `backend.pipeline.analysis.fake_comment.score_fake_comments`
 in the pipeline orchestrator or supply `model_fake_probability` in the
 candidate dict. The same applies to brand safety (VADER / transformer
 backends can replace the lexicon in `sentiment_backends.py`).
@@ -236,7 +236,7 @@ backends can replace the lexicon in `sentiment_backends.py`).
 
 ```powershell
 $env:PYTHONPATH='platform;.'
-python -m pytest scoring_service\tests tests\test_role5.py -q
+python -m pytest backend.pipeline\tests tests\test_role5.py -q
 ```
 
 The suite covers:
@@ -262,7 +262,7 @@ The suite covers:
 
 ## 11. Contact-info extraction (PII)
 
-`scoring_service/extraction/contact_info.py` adds four extractors:
+`backend.pipeline/extraction/contact_info.py` adds four extractors:
 
 | Field     | Source                                                            | Notes |
 | --------- | ----------------------------------------------------------------- | ----- |

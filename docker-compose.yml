@@ -43,7 +43,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
     env_file: .env
     ports:
       - "8002:8000"
@@ -72,7 +72,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A ai_agent_services.worker:celery_app worker -Q ai_agent_queue -c 2 -n ai_agent@%h
+    command: celery -A backend.workers.ai_agent.worker:celery_app worker -Q ai_agent_queue -c 2 -n ai_agent@%h
     env_file: .env
     environment:
       PYTHONPATH: /workspace
@@ -80,7 +80,7 @@ services:
       - .:/workspace
     healthcheck:
       # Celery's `inspect ping` round-trips through the broker.
-      test: ["CMD", "celery", "-A", "ai_agent_services.worker:celery_app", "inspect", "ping", "-t", "2"]
+      test: ["CMD", "celery", "-A", "backend.workers.ai_agent.worker:celery_app", "inspect", "ping", "-t", "2"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -94,14 +94,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A scraping_service.worker:celery_app worker -Q scraping_queue -c 8 -n scraping@%h
+    command: celery -A backend.workers.scraping.worker:celery_app worker -Q scraping_queue -c 8 -n scraping@%h
     env_file: .env
     environment:
       PYTHONPATH: /workspace
     volumes:
       - .:/workspace
     healthcheck:
-      test: ["CMD", "celery", "-A", "scraping_service.worker:celery_app", "inspect", "ping", "-t", "2"]
+      test: ["CMD", "celery", "-A", "backend.workers.scraping.worker:celery_app", "inspect", "ping", "-t", "2"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -115,14 +115,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A scoring_service.worker:celery_app worker -Q scoring_queue -c 4 -n scoring@%h
+    command: celery -A backend.workers.scoring.worker:celery_app worker -Q scoring_queue -c 4 -n scoring@%h
     env_file: .env
     environment:
       PYTHONPATH: /workspace
     volumes:
       - .:/workspace
     healthcheck:
-      test: ["CMD", "celery", "-A", "scoring_service.worker:celery_app", "inspect", "ping", "-t", "2"]
+      test: ["CMD", "celery", "-A", "backend.workers.scoring.worker:celery_app", "inspect", "ping", "-t", "2"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -136,7 +136,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A ai_agent_services.worker:celery_app flower --port=5555
+    command: celery -A backend.workers.ai_agent.worker:celery_app flower --port=5555
     env_file: .env
     environment:
       PYTHONPATH: /workspace

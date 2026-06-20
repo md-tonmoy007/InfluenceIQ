@@ -14,11 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 
-COPY app app
-COPY ai_agent_services ai_agent_services
-COPY scraping_service scraping_service
-COPY scoring_service scoring_service
-COPY umgl_ai umgl_ai
+COPY backend backend
 COPY scripts scripts
 COPY alembic.ini alembic.ini
 

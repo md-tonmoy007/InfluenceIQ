@@ -1,18 +1,18 @@
 # Role 5 Implementation
 
-Role 5 is implemented in `scoring_service/` and the Celery adapters
+Role 5 is implemented in `backend.pipeline/` and the Celery adapters
 that fan work into it live in `app/tasks/score.py` and
 `app/tasks/extract.py`. The published Celery contract in
 `app/service_roles.py` is unchanged.
 
 ## Boundaries
 
-- **Extraction** (`scoring_service/extraction/`) parses raw page
+- **Extraction** (`backend.pipeline/extraction/`) parses raw page
   text, optional HTML, supplied social links, credentials, titles,
   authority mentions, and context. spaCy PERSON NER is optional;
   missing spaCy or `en_core_web_sm` falls back to deterministic
   extraction.
-- **Identity resolution** (`scoring_service/identity/`) uses
+- **Identity resolution** (`backend.pipeline/identity/`) uses
   normalized URL hashes, RapidFuzz-compatible name/username
   matching, and an ambiguous-pair handoff. It never calls an
   external LLM in v1.
@@ -27,17 +27,17 @@ that fan work into it live in `app/tasks/score.py` and
 
 ## Public entry points
 
-- `scoring_service.pipeline.orchestrator.run_role5_pipeline(candidate, campaign)`
+- `backend.pipeline.orchestrator.pipeline.run_role5_pipeline(candidate, campaign)`
   returns `Role5PipelineResult` — the full role-5 output contract
   (detection, sub-scores, signal-scores, risk-score, grade, confidence,
   positive / negative reasons, contact_info, score_event).
-- `scoring_service.identity.resolver.resolve_identity_clusters(candidates)`
+- `backend.pipeline.identity.resolver.resolve_identity_clusters(candidates)`
   returns `canonical`, `ambiguous_pairs`, and `merge_events`.
-- `scoring_service.extraction.entities.extract_influencer_mentions(page)`
+- `backend.pipeline.extraction.entities.extract_influencer_mentions(page)`
   returns auditable mention records.
-- `scoring_service.scoring.sub_scores.build_influencer_output(candidate, campaign)`
+- `backend.pipeline.fusion.sub_scores.build_influencer_output(candidate, campaign)`
   returns the frontend / backend influencer contract.
-- `scoring_service.scoring.sub_scores.build_sub_scores(candidate, campaign)`
+- `backend.pipeline.fusion.sub_scores.build_sub_scores(candidate, campaign)`
   retains the legacy five-score view for existing consumers.
 
 ## Celery task bodies (Phase 3)
@@ -48,14 +48,14 @@ in `app/service_roles.py`:
 
 | Task                                       | Queue             | Body                                |
 | ------------------------------------------ | ----------------- | ----------------------------------- |
-| `app.tasks.search.generate_queries`         | `ai_agent_queue`  | `app/tasks/search.py`               |
-| `app.tasks.search.execute_search`          | `scraping_queue`  | `app/tasks/search.py`               |
-| `app.tasks.crawl.fetch_page`               | `scraping_queue`  | `app/tasks/crawl.py`                |
-| `app.tasks.crawl.extract_content`          | `scraping_queue`  | `app/tasks/crawl.py`                |
-| `app.tasks.extract.extract_influencers`    | `scoring_queue`   | `app/tasks/extract.py`              |
-| `app.tasks.extract.resolve_identity_llm`   | `ai_agent_queue`  | `app/tasks/extract.py`              |
-| `app.tasks.score.score_influencer`         | `scoring_queue`   | `app/tasks/score.py`                |
-| `app.tasks.score.classify_brand_safety`    | `ai_agent_queue`  | `app/tasks/score.py`                |
+| `backend.pipeline.tasks.search.generate_queries`         | `ai_agent_queue`  | `app/tasks/search.py`               |
+| `backend.pipeline.tasks.search.execute_search`          | `scraping_queue`  | `app/tasks/search.py`               |
+| `backend.pipeline.tasks.crawl.fetch_page`               | `scraping_queue`  | `app/tasks/crawl.py`                |
+| `backend.pipeline.tasks.crawl.extract_content`          | `scraping_queue`  | `app/tasks/crawl.py`                |
+| `backend.pipeline.tasks.extract.extract_influencers`    | `scoring_queue`   | `app/tasks/extract.py`              |
+| `backend.pipeline.tasks.extract.resolve_identity_llm`   | `ai_agent_queue`  | `app/tasks/extract.py`              |
+| `backend.pipeline.tasks.score.score_influencer`         | `scoring_queue`   | `app/tasks/score.py`                |
+| `backend.pipeline.tasks.score.classify_brand_safety`    | `ai_agent_queue`  | `app/tasks/score.py`                |
 
 `app/tasks/__init__.py::start_pipeline(campaign_id)` is the chain
 entry point called from `app/api/campaigns.py`.
@@ -84,17 +84,17 @@ closed: if the model is disabled, the key is missing, the network
 fails, or the response cannot be parsed, Role 5 returns the
 deterministic heuristic score.
 
-## Optional umgl_ai v2 adapters
+## Optional backend.ml v2 adapters
 
-The v2 ML backends in `umgl_ai/` are entirely optional and disabled
+The v2 ML backends in `backend.ml/` are entirely optional and disabled
 by default. They engage via the `UMGL_USE_*` env flags documented
-in `umgl_ai/README.md`. The adapter contract is in
-`scoring_service/scoring/backends/umgl_ai_adapters.py`.
+in `backend.ml/README.md`. The adapter contract is in
+`backend.pipeline/scoring/backends/umgl_ai_adapters.py`.
 
 When the package is not installed, every adapter returns the
 documented "no evidence" tuple and the orchestrator falls back to
 the deterministic path. There is no behavior change between
-"umgl_ai not installed" and "umgl_ai installed with all flags off".
+"backend.ml not installed" and "backend.ml installed with all flags off".
 
 ## Testing
 
@@ -112,8 +112,8 @@ This runs:
   `CELERY_TASK_ALWAYS_EAGER=True`, with DB and Redis mocked
 - `tests/test_app_smoke.py` — import-everything + route table +
   Celery task-routes contract
-- `scoring_service/tests/` — every deterministic scorer, identity
-  resolver, detection classifier, umgl_ai adapter
+- `backend.pipeline/tests/` — every deterministic scorer, identity
+  resolver, detection classifier, backend.ml adapter
 
 The suite covers: five HTML fixtures, optional NER fallback,
 extraction, identity passes, all fake-risk formulas, brand safety,

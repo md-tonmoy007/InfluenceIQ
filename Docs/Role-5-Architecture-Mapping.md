@@ -16,15 +16,15 @@ package that emits the same risk JSON contract and event shapes.
 | Qdrant vector store                               | no      | accepts `semantic_signal_score` if available             |
 | MongoDB raw behavioral metadata                   | partial | consumed if present                                      |
 | Redis direct writes                               | no      | events/state via helpers only                            |
-| `semantic.py`                                     | yes     | `scoring_service.analysis` (lexicon + optional backend)  |
-| `behavioral.py`                                    | yes     | `scoring_service.analysis.fake_engagement`               |
-| `graph.py`                                        | partial | `scoring_service.scoring.risk_components.graph_proxy_score` |
-| `bot_rings.py`                                    | yes     | `scoring_service.analysis.coordinated_engagement`        |
-| `final_risk.py`                                   | yes     | `scoring_service.scoring.renormalized_fusion`            |
+| `semantic.py`                                     | yes     | `backend.pipeline.analysis` (lexicon + optional backend)  |
+| `behavioral.py`                                    | yes     | `backend.pipeline.analysis.fake_engagement`               |
+| `graph.py`                                        | partial | `backend.pipeline.fusion.components.graph_proxy_score` |
+| `bot_rings.py`                                    | yes     | `backend.pipeline.analysis.coordinated_engagement`        |
+| `final_risk.py`                                   | yes     | `backend.pipeline.fusion.fusion`            |
 | `risk-score.schema.json`                          | yes     | emitted by `run_role5_pipeline`                          |
 | `signal_scores` table writes                      | yes     | produced in-memory in `sub_scores` / `signal_scores`     |
 | Campaign detection service                        | no      | local per-record category classification                 |
-| Explainability service                            | yes     | `scoring_service.analysis.reason_builder`                |
+| Explainability service                            | yes     | `backend.pipeline.analysis.reason_builder`                |
 | Tenant onboarding / JWT / API keys                | no      | unchanged                                                 |
 | Admin dashboard                                   | no      | unchanged                                                 |
 | Terraform / Helm / Prometheus                     | no      | unchanged                                                 |

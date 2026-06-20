@@ -168,7 +168,7 @@ mention from Role 5 extraction:
 - `source_urls`, `data_source_count`
 - `brand_safety_scan`
 
-This merged object is sent to `app.tasks.score.score_influencer`, which
+This merged object is sent to `backend.pipeline.tasks.score.score_influencer`, which
 can run the full Role 5 scoring path instead of the legacy five-number
 shortcut.
 

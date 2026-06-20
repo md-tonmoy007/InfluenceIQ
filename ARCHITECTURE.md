@@ -50,9 +50,9 @@
 ```
 
 The API + workers + Flower all share the same Docker image (built
-from the repo-root `Dockerfile`). The image contains the `app/`
-package, the worker shims, the `scoring_service/` and
-`scraping_service/` domain code, and the optional `umgl_ai/`
+from the repo-root `Dockerfile`). The image contains the `backend/`
+package, the worker shims, the `backend.pipeline/` and
+`backend.pipeline.content/` domain code, and the optional `backend.ml/`
 package. `PYTHONPATH=/workspace` is the only environment variable
 the workers need.
 
@@ -65,42 +65,42 @@ POST /api/campaigns
   │ 2. initialize_pipeline_state(campaign_id) in Redis
   │ 3. start_pipeline(campaign_id).delay()
   ▼
-ai_agent_queue   ── app.tasks.search.generate_queries
+ai_agent_queue   ── backend.pipeline.tasks.search.generate_queries
                     • Reads campaign fields
                     • Builds 3-5 deterministic queries
                     • Emits query.generation.completed
                     • Dispatches execute_search per query
                     │
                     ▼
-scraping_queue   ── app.tasks.search.execute_search
+scraping_queue   ── backend.pipeline.tasks.search.execute_search
                     • Calls search_web(query, limit=8)
                     • find-or-creates CrawlSource rows
                     • Emits search.executed
                     • Dispatches fetch_page per result
                     │
                     ▼
-scraping_queue   ── app.tasks.crawl.fetch_page
+scraping_queue   ── backend.pipeline.tasks.crawl.fetch_page
                     • Calls fetch_url(url) (httpx or platform provider)
                     • Updates CrawlSource(status=scraped, html, ...)
                     • Emits page.fetched
                     • Dispatches extract_content
                     │
                     ▼
-scraping_queue   ── app.tasks.crawl.extract_content
+scraping_queue   ── backend.pipeline.tasks.crawl.extract_content
                     • Calls extract_role5_content(page)
                     • Updates CrawlSource(status=extracted, content, title)
                     • Emits content.extracted
                     • Dispatches extract_influencers
                     │
                     ▼
-scoring_queue    ── app.tasks.extract.extract_influencers
+scoring_queue    ── backend.pipeline.tasks.extract.extract_influencers
                     • Calls extract_influencer_mentions(content)
                     • find-or-creates Influencer rows
                     • Emits influencer.found
                     • Dispatches score_influencer per new influencer
                     │
                     ▼
-scoring_queue    ── app.tasks.score.score_influencer
+scoring_queue    ── backend.pipeline.tasks.score.score_influencer
                     • Calls run_role5_pipeline(candidate, campaign)
                     • Creates InfluencerScore row
                     • Emits score.calculated
@@ -108,7 +108,7 @@ scoring_queue    ── app.tasks.score.score_influencer
                       Dispatches classify_brand_safety
                     │
                     ▼
-ai_agent_queue   ── app.tasks.score.classify_brand_safety
+ai_agent_queue   ── backend.pipeline.tasks.score.classify_brand_safety
                     • Calls scan_brand_safety(text, source_url)
                     • Persists BrandSafetyFlag rows
                     • Emits brand_safety.flagged
@@ -122,40 +122,50 @@ Redis pub/sub channel `campaign:{id}` and replays any events with
 
 ```text
 .
-├── app/                              # single FastAPI + Celery package
-│   ├── main.py                       # FastAPI factory
-│   ├── config.py                     # Pydantic settings
-│   ├── celery_app.py                 # central Celery app + task_routes
-│   ├── celery_factory.py             # per-service Celery app factory
-│   ├── service_roles.py              # queue ↔ task mapping
-│   ├── api/                          # FastAPI routers
-│   ├── db/                           # models + alembic
-│   ├── middleware/                   # CORS, structured logging
-│   ├── schemas/                      # Pydantic request/response
-│   ├── services/                     # redis_client, event_log, pipeline_state
-│   └── tasks/                        # Celery task bodies (the pipeline)
+├── backend/                            # all Python backend code
+│   ├── api/                            # FastAPI surface
+│   │   ├── main.py                     # FastAPI factory
+│   │   ├── deps.py                     # shared FastAPI dependencies
+│   │   ├── routers/                    # campaigns, influencers, health, demo, websocket
+│   │   ├── schemas/                    # Pydantic request/response
+│   │   └── middleware/                 # CORS, request logging
+│   ├── core/                           # cross-cutting infra
+│   │   ├── config.py                   # Pydantic settings
+│   │   ├── logging.py                  # structlog setup
+│   │   ├── celery/                     # central app, factory, task_routes, roles
+│   │   ├── database/                   # engine, session, models, alembic
+│   │   └── cache/                      # redis_client, event_log, pipeline_state
+│   ├── pipeline/                       # role-5 domain (unified)
+│   │   ├── tasks/                      # Celery task bodies
+│   │   ├── orchestrator/               # run_role5_pipeline
+│   │   ├── extraction/                 # entities, contact_info, credentials
+│   │   ├── identity/                   # canonical, fuzzy, resolver
+│   │   ├── analysis/                   # fake-risk scorers
+│   │   ├── detection/                  # detection classifier
+│   │   ├── fusion/                     # fusion, trust formula, sub-scores
+│   │   ├── events/                     # ScoreCalculated event payload
+│   │   ├── content/                    # search providers, fetcher, content extractor
+│   │   ├── types.py                    # TypedDicts for the role-5 contract
+│   │   └── model_classifiers.py        # API-backed classifiers (opt-in)
+│   ├── workers/                        # per-role Celery shims
+│   │   ├── ai_agent/worker.py
+│   │   ├── scraping/worker.py
+│   │   └── scoring/worker.py
+│   ├── ml/                             # OPTIONAL ML backend (install via `make ml-install`)
+│   │   ├── api.py, contracts.py, risk.py
+│   │   ├── models/                     # registry + text/graph adapters
+│   │   ├── stores/                     # vector (Qdrant), document (Mongo), object (MinIO)
+│   │   └── ...
+│   ├── tests/                          # pytest suite
+│   │   ├── api/                        # smoke + websocket
+│   │   ├── pipeline/                   # role-4, role-5, celery, fusion, etc.
+│   │   └── ml/                         # ML backends tests
+│   └── pyproject.toml                  # package metadata + pytest config
 │
-├── ai_agent_services/worker.py       # celery_app = create_celery_app("ai_agent_service")
-├── scraping_service/                 # domain code (search providers, fetcher, content extractor)
-│   ├── crawling/
-│   └── worker.py                     # celery_app = create_celery_app("scraping_service")
-├── scoring_service/                  # role-5 deterministic scoring
-│   ├── pipeline/                     # orchestrator
-│   ├── identity/                     # name/URL resolution
-│   ├── analysis/                     # fake-risk scorers
-│   ├── detection/                    # detection classifier
-│   ├── scoring/                      # fusion, trust formula, sub-scores
-│   ├── extraction/                   # entities, contact info, credentials
-│   ├── events/                       # ScoreCalculated event payload
-│   └── worker.py                     # celery_app = create_celery_app("scoring_service")
-│
-├── umgl_ai/                          # OPTIONAL ML backend (install via `make umgl-install`)
-│
-├── tests/                            # pytest suite
 ├── scripts/                          # in-container integration scripts
 ├── Docs/                             # role / architecture docs
 │
-├── Dockerfile                        # single image
+├── Dockerfile                        # single image (COPY backend backend)
 ├── docker-compose.yml                # 7 services + infra
 ├── requirements.txt
 ├── alembic.ini
@@ -171,16 +181,16 @@ Redis pub/sub channel `campaign:{id}` and replays any events with
    the API calls `generate_queries.delay(campaign_id)`, the task
    lands in the right queue without needing an explicit
    `queue=` argument.
-2. Each worker shim (`ai_agent_services/worker.py`, etc.) calls
+2. Each worker shim (`backend.workers.ai_agent/worker.py`, etc.) calls
    `create_celery_app(role)` **before** importing the task
    modules. `@shared_task` binds to the most recently created
    Celery instance, so this order is load-bearing.
-3. `celery -A ai_agent_services.worker:celery_app worker
+3. `celery -A backend.workers.ai_agent.worker:celery_app worker
    -Q ai_agent_queue -c 2` consumes only from the role's queue.
 
-## Optional ML backends (`umgl_ai`)
+## Optional ML backends (`backend.ml`)
 
-The `umgl_ai/` package at the repo root is **not** part of the
+The `backend.ml/` package at the repo root is **not** part of the
 core dev image. The Docker build copies it into the image but does
 not install it; the deps (`torch`, `transformers`, `peft`, ...)
 are multi-GB and intentionally kept out.
@@ -192,7 +202,7 @@ To opt in:
 make umgl-install
 
 # or in the container
-docker compose exec backend-core pip install -e /workspace/umgl_ai
+docker compose exec backend-core pip install -e /workspace/backend.ml
 ```
 
 Then enable the v2 adapter flags in `.env`:
@@ -251,7 +261,7 @@ fallback. `MODEL_VERSION` in the score output flips to
 
 1. Add a route function in the appropriate `app/api/*.py` file.
    Use the existing `db: Session = Depends(get_db)` pattern for
-   DB access and `from app.config import settings` for config.
+   DB access and `from backend.core.config import settings` for config.
 2. If the endpoint emits events, call `publish_event` (sync
    helper from `app/services/event_log.py`) or `aemit_event`
    (async, for WebSocket handlers).
@@ -260,15 +270,15 @@ fallback. `MODEL_VERSION` in the score output flips to
 
 ## How to add a new scoring heuristic
 
-1. The pure-Python scoring lives in `scoring_service/analysis/`.
+1. The pure-Python scoring lives in `backend.pipeline/analysis/`.
    New heuristics go there as plain functions, no DB or Redis
    imports.
 2. The orchestrator wires them together in
-   `scoring_service/pipeline/orchestrator.py::run_role5_pipeline`.
+   `backend.pipeline/pipeline/orchestrator.py::run_role5_pipeline`.
    Add the new function call inside the same dict that
    `sub_scores` reads from, and surface the value in the
    `Role5PipelineResult` dataclass.
-3. Add a unit test in `scoring_service/tests/` that exercises
+3. Add a unit test in `backend.pipeline/tests/` that exercises
    the heuristic in isolation.
 
 ## Observability
@@ -278,7 +288,7 @@ fallback. `MODEL_VERSION` in the score output flips to
 - `GET /ws/campaign/{id}` — live event stream with replay
 - `make logs` — `docker compose logs -f backend-core`
 - Flower on `http://localhost:5555` — Celery worker dashboard
-- `app.tasks._common` uses `structlog` so all task bodies emit
+- `backend.pipeline.tasks._common` uses `structlog` so all task bodies emit
   structured JSON (or key-value, depending on `APP_ENV`) to the
   container stdout.
 

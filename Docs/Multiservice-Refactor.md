@@ -12,9 +12,9 @@
 Three sequential refactor PRs produced the current layout:
 
 1. **PR #9 — Consolidate** (`82af6e6`): merged `backend/`,
-   `backend_core/`, and `platform/` into a single `app/` package at
+   `backend_core/`, and `platform/` into a single `backend/` package at
    the repo root. Deleted the orphan `backend/Dockerfile` and the
-   `backend_core` import shim. Promoted `umgl_ai` to a top-level
+   `backend_core` import shim. Promoted `backend.ml` to a top-level
    package; deleted the 7 dead Rust service stubs.
 2. **PR #10 — Wire Celery** (`fb854ef`): implemented the 8 Celery
    task bodies that `app/service_roles.py` declared but no code
@@ -35,7 +35,7 @@ sharing two images:
 │                   docker-compose cluster                       │
 ├────────────────────────────────────────────────────────────────┤
 │                                                                │
-│   backend-core     ── uvicorn app.main:app    (port 8000)     │
+│   backend-core     ── uvicorn backend.api.main:app    (port 8000)     │
 │   worker_ai_agent  ── celery -A ... -Q ai_agent_queue -c 2     │
 │   worker_scraping  ── celery -A ... -Q scraping_queue -c 8     │
 │   worker_scoring   ── celery -A ... -Q scoring_queue -c 4      │
@@ -56,19 +56,19 @@ mapping drives both producers and consumers:
 
 | Queue              | Worker                | Tasks                                                          |
 | ------------------ | --------------------- | -------------------------------------------------------------- |
-| `ai_agent_queue`   | `worker_ai_agent`     | `app.tasks.search.generate_queries`                            |
-|                    |                       | `app.tasks.extract.resolve_identity_llm`                        |
-|                    |                       | `app.tasks.score.classify_brand_safety`                        |
-| `scraping_queue`   | `worker_scraping`     | `app.tasks.search.execute_search`                              |
-|                    |                       | `app.tasks.crawl.fetch_page`                                   |
-|                    |                       | `app.tasks.crawl.extract_content`                              |
-| `scoring_queue`    | `worker_scoring`      | `app.tasks.extract.extract_influencers`                        |
-|                    |                       | `app.tasks.score.score_influencer`                             |
+| `ai_agent_queue`   | `worker_ai_agent`     | `backend.pipeline.tasks.search.generate_queries`                            |
+|                    |                       | `backend.pipeline.tasks.extract.resolve_identity_llm`                        |
+|                    |                       | `backend.pipeline.tasks.score.classify_brand_safety`                        |
+| `scraping_queue`   | `worker_scraping`     | `backend.pipeline.tasks.search.execute_search`                              |
+|                    |                       | `backend.pipeline.tasks.crawl.fetch_page`                                   |
+|                    |                       | `backend.pipeline.tasks.crawl.extract_content`                              |
+| `scoring_queue`    | `worker_scoring`      | `backend.pipeline.tasks.extract.extract_influencers`                        |
+|                    |                       | `backend.pipeline.tasks.score.score_influencer`                             |
 
 Routing is enforced by `task_routes` on
-:data:`app.celery_app.celery_app` (the central app the API uses to
+:data:`backend.core.celery.app.celery_app` (the central app the API uses to
 dispatch), and on each per-service app returned by
-:func:`app.celery_factory.create_celery_app`.
+:func:`backend.core.celery.factory.create_celery_app`.
 
 ## Source tree
 
@@ -104,14 +104,14 @@ dispatch), and on each per-service app returned by
 │       ├── extract.py          # extract_influencers, resolve_identity_llm
 │       └── score.py            # score_influencer, classify_brand_safety
 │
-├── ai_agent_services/worker.py # celery_app = create_celery_app("ai_agent_service")
-├── scraping_service/worker.py  # celery_app = create_celery_app("scraping_service")
-├── scoring_service/worker.py   # celery_app = create_celery_app("scoring_service")
+├── backend.workers.ai_agent/worker.py # celery_app = create_celery_app("ai_agent_service")
+├── backend.pipeline.content/worker.py  # celery_app = create_celery_app("backend.pipeline.content")
+├── backend.pipeline/worker.py   # celery_app = create_celery_app("backend.pipeline")
 │
-├── scraping_service/crawling/  # domain code (search providers, fetcher, content extractor)
-├── scoring_service/            # role-5 deterministic scoring (pipeline, identity, etc.)
+├── backend.pipeline.content/crawling/  # domain code (search providers, fetcher, content extractor)
+├── backend.pipeline/            # role-5 deterministic scoring (pipeline, identity, etc.)
 │
-├── umgl_ai/                   # OPTIONAL ML backend (pip install -e ./umgl_ai)
+├── backend.ml/                   # OPTIONAL ML backend (pip install -e ./backend.ml)
 │
 ├── tests/
 │   ├── test_role4_scraping.py
@@ -137,26 +137,26 @@ dispatch), and on each per-service app returned by
 
 | Service         | Module                                            | Command                                                                              |
 | --------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| API             | `app.main:app`                                    | `uvicorn app.main:app --host 0.0.0.0 --port 8000`                                   |
-| ai-agent worker | `ai_agent_services.worker:celery_app`             | `celery -A ai_agent_services.worker:celery_app worker -Q ai_agent_queue`             |
-| scraping worker | `scraping_service.worker:celery_app`              | `celery -A scraping_service.worker:celery_app worker -Q scraping_queue`              |
-| scoring worker  | `scoring_service.worker:celery_app`               | `celery -A scoring_service.worker:celery_app worker -Q scoring_queue`                |
-| Flower          | `ai_agent_services.worker:celery_app`             | `celery -A ai_agent_services.worker:celery_app flower --port=5555`                   |
-| umgl_ai (opt.)  | `umgl_ai.api:app`                                 | `make umgl` after `make umgl-install`                                                |
+| API             | `backend.api.main:app`                                    | `uvicorn backend.api.main:app --host 0.0.0.0 --port 8000`                                   |
+| ai-agent worker | `backend.workers.ai_agent.worker:celery_app`             | `celery -A backend.workers.ai_agent.worker:celery_app worker -Q ai_agent_queue`             |
+| scraping worker | `backend.pipeline.content.worker:celery_app`              | `celery -A backend.pipeline.content.worker:celery_app worker -Q scraping_queue`              |
+| scoring worker  | `backend.pipeline.worker:celery_app`               | `celery -A backend.pipeline.worker:celery_app worker -Q scoring_queue`                |
+| Flower          | `backend.workers.ai_agent.worker:celery_app`             | `celery -A backend.workers.ai_agent.worker:celery_app flower --port=5555`                   |
+| backend.ml (opt.)  | `backend.ml.api:app`                                 | `make umgl` after `make umgl-install`                                                |
 
 ## Why this is the right refactor for this repo
 
-* **One source tree, multiple services.** `app/` is a single Python
+* **One source tree, multiple services.** `backend/` is a single Python
   package shared by the API and all three workers. The packages at
-  the repo root (`ai_agent_services/`, `scraping_service/`,
-  `scoring_service/`) are 8-line shims that pick a service role
+  the repo root (`backend.workers.ai_agent/`, `backend.pipeline.content/`,
+  `backend.pipeline/`) are 8-line shims that pick a service role
   and call `create_celery_app`. This matches the team boundaries
   in `Docs/Team-Overview.md` without the source duplication the
   earlier "extract every service" plan would have required.
 * **The Celery pipeline is end-to-end functional.** Every task
   in `app/service_roles.py` now has a body in `app/tasks/`, and
   `POST /api/campaigns` actually triggers the chain.
-* **The optional ML stack is opt-in.** `umgl_ai` lives at the repo
+* **The optional ML stack is opt-in.** `backend.ml` lives at the repo
   root; the core backend image has no torch / transformers /
   peft. The `UMGL_USE_*` env flags let ops roll the ML stack out
   per-tenant.

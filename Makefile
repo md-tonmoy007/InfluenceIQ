@@ -1,4 +1,4 @@
-.PHONY: help up down restart ps logs migrate db-revision db-upgrade seed test test-api test-unit umgl-install umgl health lint
+.PHONY: help up down restart ps logs migrate db-revision db-upgrade seed test test-api test-unit test-ml ml-install ml-run health lint
 
 # Host port mappings
 API_URL = http://localhost:8002
@@ -24,12 +24,13 @@ help:
 	@echo "  make test         - Run the WebSocket and event replay integration test"
 	@echo "  make test-api     - Run the comprehensive Python API unit/integration suite"
 	@echo "  make test-unit    - Run the fast offline unit tests (no docker required)"
+	@echo "  make test-ml      - Run the optional backend.ml tests (requires make ml-install)"
 	@echo "  make health       - Check detailed system health and Celery queue statuses"
 	@echo "  make lint         - Run ruff over the whole tree"
 	@echo ""
 	@echo "Optional Backend:"
-	@echo "  make umgl-install - Install the optional umgl_ai ML backend package"
-	@echo "  make umgl         - Run the umgl_ai FastAPI service (after umgl-install)"
+	@echo "  make ml-install   - Install the optional backend.ml ML package"
+	@echo "  make ml-run       - Run the backend.ml FastAPI service (after ml-install)"
 	@echo "=========================================================================="
 
 up:
@@ -67,31 +68,41 @@ seed:
 test:
 	docker compose exec backend-core python /workspace/scripts/verify_websocket.py
 
+test-pipeline:
+	docker compose exec backend-core python /workspace/scripts/smoke_campaign.py
+
 test-api:
 	docker compose exec backend-core python /workspace/scripts/test_suite.py
 
 test-unit:
-	PYTHONPATH=. DATABASE_URL=postgresql+psycopg2://x:x@localhost:5432/x \
+	PYTHONPATH=./backend DATABASE_URL=postgresql+psycopg2://x:x@localhost:5432/x \
 	  REDIS_URL=redis://localhost:6379/0 \
 	  CELERY_BROKER_URL=redis://localhost:6379/0 \
 	  CELERY_RESULT_BACKEND=redis://localhost:6379/1 \
 	  QDRANT_URL=http://localhost:6333 \
-	  python3 -m pytest tests/test_role4_scraping.py tests/test_role5.py \
-	                     tests/test_celery_tasks.py tests/test_app_smoke.py \
-	                     scoring_service/tests/ -q
+	  python3 -m pytest backend/tests/api/test_smoke.py \
+	                     backend/tests/pipeline/ -q
+
+test-ml:
+	PYTHONPATH=./backend DATABASE_URL=postgresql+psycopg2://x:x@localhost:5432/x \
+	  REDIS_URL=redis://localhost:6379/0 \
+	  CELERY_BROKER_URL=redis://localhost:6379/0 \
+	  CELERY_RESULT_BACKEND=redis://localhost:6379/1 \
+	  QDRANT_URL=http://localhost:6333 \
+	  python3 -m pytest backend/tests/ml/ -q
 
 lint:
 	@command -v ruff >/dev/null 2>&1 || { echo "Install ruff: pip install ruff"; exit 1; }
 	ruff check .
 
-umgl-install:
-	pip install -e ./umgl_ai
+ml-install:
+	pip install -e ./backend/ml
 
-umgl:
-	@if [ ! -d "umgl_ai" ]; then \
-	  echo "Run 'make umgl-install' first."; exit 1; \
+ml-run:
+	@if [ ! -d "backend/ml" ]; then \
+	  echo "Run 'make ml-install' first."; exit 1; \
 	fi
-	UMGL_AI_ROLE=all python3 -m umgl_ai.api
+	ML_ROLE=all python3 -m backend.ml.api
 
 health:
 	@curl -s $(API_URL)/health | jq || curl -s $(API_URL)/health
