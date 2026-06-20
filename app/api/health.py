@@ -16,7 +16,7 @@ router = APIRouter(prefix="/health", tags=["health"])
 def get_health(db: Session = Depends(get_db)) -> dict:
     """Returns application integration health, Celery worker counts, and queue depths."""
     queues = WORKER_QUEUES
-    
+
     # Fetch queue depths from Redis
     queue_depths = {}
     for q in queues:

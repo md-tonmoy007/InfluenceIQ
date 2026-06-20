@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from scoring_service.analysis.sentiment import score_text as lexicon_score
 from scoring_service.scoring.normalize import clamp

@@ -7,10 +7,8 @@ importable when tests are invoked without that env var.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
-
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

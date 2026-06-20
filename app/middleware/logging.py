@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import time
+
+import structlog
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-import structlog
 
 logger = structlog.get_logger()
 
@@ -15,7 +16,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         structlog.contextvars.clear_contextvars()
-        
+
         # Capture basic request details
         request_id = request.headers.get("X-Request-ID", "")
         structlog.contextvars.bind_contextvars(
@@ -26,18 +27,18 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         )
 
         start_time = time.perf_counter()
-        
+
         try:
             response = await call_next(request)
             process_time_ms = (time.perf_counter() - start_time) * 1000.0
-            
+
             logger.info(
                 "Request processed successfully",
                 status_code=response.status_code,
                 duration_ms=round(process_time_ms, 2),
             )
             return response
-            
+
         except Exception as e:
             process_time_ms = (time.perf_counter() - start_time) * 1000.0
             logger.exception(

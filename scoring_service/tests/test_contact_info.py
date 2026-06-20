@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import os
 import re
-
-import pytest
 
 from scoring_service.events import ScoreCalculated
 from scoring_service.extraction import (
-    CONTACT_INFO_ENABLED,
-    CONTACT_INFO_HASH_IN_EVENTS,
     ContactInfo,
     extract_addresses,
     extract_contact_info,
@@ -22,10 +17,6 @@ from scoring_service.extraction import (
     merge_contact_info,
     redact_contact_info,
 )
-from scoring_service.extraction.contact_info import (
-    EMAIL_RE, PHONE_RE, STREET_RE, POBOX_RE, _BLOCKED_DOMAINS, _PLATFORM_HOSTS,
-)
-
 
 # ---------------------------------------------------------------------------
 # Email extraction
@@ -55,6 +46,7 @@ def test_extract_emails_rejects_double_dots() -> None:
 def test_extract_emails_returns_empty_when_disabled(monkeypatch) -> None:
     monkeypatch.setenv("ROLE5_EXTRACT_CONTACT_INFO", "0")
     import importlib
+
     import scoring_service.extraction.contact_info as ci
     importlib.reload(ci)
     try:
@@ -289,6 +281,7 @@ def test_pipeline_event_redacts_contact_info_by_default() -> None:
 def test_pipeline_event_omits_contact_info_when_disabled(monkeypatch) -> None:
     monkeypatch.setenv("ROLE5_EXTRACT_CONTACT_INFO", "0")
     import importlib
+
     import scoring_service.extraction.contact_info as ci
     importlib.reload(ci)
     import scoring_service.extraction as ext

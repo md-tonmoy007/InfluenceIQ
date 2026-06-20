@@ -22,8 +22,8 @@ values, thresholded reasons, and the raw 0-100 risk score so the
 :class:`DetectionClassifier` can both classify and surface reasons.
 """
 
-from .brand_safety_detector import detect_brand_safety
 from .bot_behavior_detector import detect_bot_behavior
+from .brand_safety_detector import detect_brand_safety
 from .coordinated_ring_detector import detect_coordinated_engagement
 from .detection_classifier import DetectionCategory, DetectionDecision, classify_detection
 from .fake_comment_detector import detect_fake_comments

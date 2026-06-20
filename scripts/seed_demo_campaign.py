@@ -8,7 +8,6 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-
 DEMO_PAYLOAD = {
     "brand": "Northwind Outdoor",
     "product": "SS26 Trail Capsule",

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+
 import httpx
 import redis.asyncio as aioredis
-from uuid import UUID
 
 API_URL = "http://localhost:8000"
 WS_URL = "ws://localhost:8000"
@@ -21,7 +21,7 @@ async def receive_next_event(ws) -> dict:
 
 async def test_websocket_stream_and_replay():
     print("=== STARTING WEBSOCKET AND REPLAY INTEGRATION TEST ===")
-    
+
     # Step 1: Trigger Demo Seed
     print("\n[Step 1] Triggering database seed via API...")
     async with httpx.AsyncClient() as client:
@@ -59,7 +59,7 @@ async def test_websocket_stream_and_replay():
             "payload": payload
         }
         serialized = json.dumps(event)
-        
+
         # Append to Redis event history list
         await r.rpush(f"pipeline_events:{campaign_id}", serialized)
         # Set expiry
@@ -77,7 +77,7 @@ async def test_websocket_stream_and_replay():
     # Step 3: Connect WebSocket client
     print(f"\n[Step 3] Connecting to WebSocket: {WS_URL}/ws/campaign/{campaign_id}")
     import websockets
-    
+
     try:
         async with websockets.connect(f"{WS_URL}/ws/campaign/{campaign_id}") as ws:
             print("✅ WebSocket connected successfully.")
@@ -108,7 +108,7 @@ async def test_websocket_stream_and_replay():
 
             # Test Heartbeat Ping from Server
             print("Waiting for heartbeat ping (or we can proceed with reconnection test)...")
-            
+
         print("🔌 Intentionally closed WebSocket connection to test replay/reconnection.")
 
         # Step 4: Publish event 3 and 4 while WebSocket client is disconnected (offline)
@@ -118,10 +118,10 @@ async def test_websocket_stream_and_replay():
 
         # Step 5: Reconnect client specifying last_event_id=2
         # It should receive events 3 and 4 immediately from the replay log
-        print(f"\n[Step 5] Reconnecting specifying last_event_id=2...")
+        print("\n[Step 5] Reconnecting specifying last_event_id=2...")
         async with websockets.connect(f"{WS_URL}/ws/campaign/{campaign_id}?last_event_id=2") as ws:
             print("✅ WebSocket reconnected.")
-            
+
             # Read first replayed event (should be event 3)
             event = await receive_next_event(ws)
             print(f"📥 WS Client: Replayed event received: {event}")
@@ -141,7 +141,7 @@ async def test_websocket_stream_and_replay():
             # Give server a moment to complete Redis pub/sub subscription setup after finishing replay
             await asyncio.sleep(0.5)
             await publish_mock_event(5, "pipeline.completed", {"total_influencers": 2, "duration_seconds": 12.5})
-            
+
             event = await receive_next_event(ws)
             print(f"📥 WS Client: Live event received: {event}")
             assert event["event_id"] == 5

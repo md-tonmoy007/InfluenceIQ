@@ -4,9 +4,9 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-import structlog
 
 from app.db import models
 from app.db.session import get_db
@@ -21,7 +21,7 @@ def reset_database(db: Session = Depends(get_db)) -> dict[str, str]:
     log = logger.bind()
     try:
         log.info("Resetting demo database tables")
-        
+
         # Delete dependent tables first to respect foreign key constraints
         db.query(models.BrandSafetyFlag).delete()
         db.query(models.CredentialVerification).delete()
@@ -30,7 +30,7 @@ def reset_database(db: Session = Depends(get_db)) -> dict[str, str]:
         db.query(models.Influencer).delete()
         db.query(models.Campaign).delete()
         db.query(models.Brand).delete()
-        
+
         db.commit()
         log.info("Demo database reset completed successfully")
         return {"status": "ok", "message": "Database reset completed successfully."}
@@ -46,10 +46,10 @@ def seed_database(db: Session = Depends(get_db)) -> dict[str, Any]:
     log = logger.bind()
     try:
         log.info("Seeding demo database")
-        
+
         # 1. First, reset the DB to ensure fresh seeds
         reset_database(db)
-        
+
         # 2. Seed a default Brand for multi-tenant verification
         brand_id = uuid.uuid4()
         demo_brand = models.Brand(
@@ -60,7 +60,7 @@ def seed_database(db: Session = Depends(get_db)) -> dict[str, Any]:
         )
         db.add(demo_brand)
         db.flush()  # Push to database to ensure key checks pass
-        
+
         # 3. Campaign A: "BioGlow Collagen Peptide" (Health/Beauty Niche)
         campaign_a_id = uuid.uuid4()
         campaign_a = models.Campaign(
@@ -82,7 +82,7 @@ def seed_database(db: Session = Depends(get_db)) -> dict[str, Any]:
             created_at=datetime.utcnow() - timedelta(days=2)
         )
         db.add(campaign_a)
-        
+
         # 4. Campaign B: "Apex DeFi Protocol" (Fintech/Crypto Niche)
         campaign_b_id = uuid.uuid4()
         campaign_b = models.Campaign(
@@ -349,7 +349,7 @@ def seed_database(db: Session = Depends(get_db)) -> dict[str, Any]:
 
         db.commit()
         log.info("Demo database seeded successfully")
-        
+
         return {
             "status": "ok",
             "brand_id": brand_id,

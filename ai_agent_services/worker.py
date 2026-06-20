@@ -9,4 +9,8 @@ from app.service_roles import AI_AGENT_SERVICE
 celery_app = create_celery_app(AI_AGENT_SERVICE)
 
 # Import the task bodies so Celery can discover them.
-from app.tasks import classify_brand_safety, generate_queries, resolve_identity_llm  # noqa: E402, F401
+from app.tasks import (  # noqa: E402, F401
+    classify_brand_safety,
+    generate_queries,
+    resolve_identity_llm,
+)

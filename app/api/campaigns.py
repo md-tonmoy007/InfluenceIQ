@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.db import models
+from app.db.session import get_db
 from app.schemas.campaign import CampaignCreate, CampaignResponse
 from app.schemas.influencer import InfluencerResponse, SubScores
 from app.services.pipeline_state import (
-    initialize_pipeline_state,
     get_pipeline_state,
+    initialize_pipeline_state,
 )
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
@@ -157,7 +158,7 @@ def get_campaign_influencers(
             )
             .all()
         )
-        
+
         from app.schemas.influencer import CrawlSourceResponse
         sources_response = [
             CrawlSourceResponse(

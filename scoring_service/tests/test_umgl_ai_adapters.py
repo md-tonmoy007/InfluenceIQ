@@ -162,8 +162,8 @@ def test_signal_score_with_provenance_falls_back_to_heuristic() -> None:
     """With the v2 flag off, the v2-aware variant in risk_components
     runs the heuristic body and reports used_v2=False."""
     from scoring_service.scoring.risk_components import (
-        semantic_signal_score_with_provenance,
         behavioral_signal_score_with_provenance,
+        semantic_signal_score_with_provenance,
     )
     score, used, versions = semantic_signal_score_with_provenance({
         "spam_probability": 0.5, "toxicity_probability": 0.2,

@@ -262,6 +262,7 @@ def explain_via_llm(influencer_id: str | int, factors: dict[str, float], *,
         return ""
     try:
         import asyncio
+
         from umgl_ai.llm_explainer import ExplainerRequest, LLMExplainer
 
         cleaned_factors: dict[str, float] = {}

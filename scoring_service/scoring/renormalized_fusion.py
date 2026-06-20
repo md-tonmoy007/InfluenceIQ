@@ -24,8 +24,9 @@ risk categorisation consumes.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 from scoring_service.scoring.normalize import score as clamp_score
 

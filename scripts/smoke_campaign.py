@@ -8,7 +8,6 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-
 DEFAULT_PAYLOAD = {
     "brand": "Acme Health",
     "product": "Daily Greens",

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from uuid import UUID
 from typing import Any
+from uuid import UUID
+
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-import structlog
 
 from app.db import models
 from app.db.session import get_db
@@ -18,7 +19,7 @@ def get_influencer_profile(id: UUID, db: Session = Depends(get_db)) -> dict[str,
     """Retrieves canonical metadata for a specific influencer profile."""
     log = logger.bind(influencer_id=str(id))
     log.info("Fetching influencer profile")
-    
+
     inf = db.query(models.Influencer).filter(models.Influencer.id == id).first()
     if not inf:
         log.warning("Influencer not found")
@@ -40,13 +41,13 @@ def get_influencer_scores(id: UUID, db: Session = Depends(get_db)) -> list[dict[
     """Retrieves all campaign score associations and metrics for this influencer."""
     log = logger.bind(influencer_id=str(id))
     log.info("Fetching influencer campaign scores")
-    
+
     inf = db.query(models.Influencer).filter(models.Influencer.id == id).first()
     if not inf:
         raise HTTPException(status_code=404, detail="Influencer profile not found")
 
     scores = db.query(models.InfluencerScore).filter(models.InfluencerScore.influencer_id == id).all()
-    
+
     response_list = []
     for s in scores:
         response_list.append({
@@ -63,7 +64,7 @@ def get_influencer_scores(id: UUID, db: Session = Depends(get_db)) -> list[dict[
             "score_version": s.score_version,
             "computed_at": s.computed_at
         })
-    
+
     return response_list
 
 
@@ -72,13 +73,13 @@ def get_influencer_safety_flags(id: UUID, db: Session = Depends(get_db)) -> list
     """Retrieves all brand safety violations/flags raised against this influencer."""
     log = logger.bind(influencer_id=str(id))
     log.info("Fetching influencer brand safety flags")
-    
+
     inf = db.query(models.Influencer).filter(models.Influencer.id == id).first()
     if not inf:
         raise HTTPException(status_code=404, detail="Influencer profile not found")
 
     flags = db.query(models.BrandSafetyFlag).filter(models.BrandSafetyFlag.influencer_id == id).all()
-    
+
     response_list = []
     for f in flags:
         response_list.append({
@@ -89,7 +90,7 @@ def get_influencer_safety_flags(id: UUID, db: Session = Depends(get_db)) -> list
             "reason": f.reason,
             "created_at": f.created_at
         })
-    
+
     return response_list
 
 
@@ -98,13 +99,13 @@ def get_influencer_verifications(id: UUID, db: Session = Depends(get_db)) -> lis
     """Retrieves all verified credentials (e.g. professional licenses, degrees) for the influencer."""
     log = logger.bind(influencer_id=str(id))
     log.info("Fetching influencer credential verifications")
-    
+
     inf = db.query(models.Influencer).filter(models.Influencer.id == id).first()
     if not inf:
         raise HTTPException(status_code=404, detail="Influencer profile not found")
 
     verifications = db.query(models.CredentialVerification).filter(models.CredentialVerification.influencer_id == id).all()
-    
+
     response_list = []
     for v in verifications:
         response_list.append({
@@ -115,5 +116,5 @@ def get_influencer_verifications(id: UUID, db: Session = Depends(get_db)) -> lis
             "verified_at": v.verified_at,
             "created_at": v.created_at
         })
-    
+
     return response_list

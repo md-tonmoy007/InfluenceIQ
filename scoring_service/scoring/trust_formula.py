@@ -22,8 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from scoring_service.scoring.normalize import clamp, score as clamp_score
-
+from scoring_service.scoring.normalize import clamp
+from scoring_service.scoring.normalize import score as clamp_score
 
 DEFAULT_POSITIVE_WEIGHTS: dict[str, float] = {
     "relevance": 0.20,

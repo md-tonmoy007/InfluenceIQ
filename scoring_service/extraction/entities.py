@@ -5,7 +5,11 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from .contact_info import ContactInfo, extract_contact_info
-from .credentials import extract_authority_mentions, extract_credentials, extract_professional_titles
+from .credentials import (
+    extract_authority_mentions,
+    extract_credentials,
+    extract_professional_titles,
+)
 from .handles import extract_handles, platform_for_url, username_from_profile
 from .parser import parse_page
 from .social_urls import extract_social_urls, profile_urls
@@ -24,7 +28,7 @@ def _spacy_person_names(text: str) -> list[str]:
         import spacy  # type: ignore[import-not-found]
         try:
             nlp = spacy.load("en_core_web_sm")
-        except (OSError, IOError):
+        except OSError:
             return []
         return [entity.text.strip() for entity in nlp(text[:100_000]).ents if entity.label_ == "PERSON"]
     except ImportError:

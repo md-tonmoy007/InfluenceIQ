@@ -94,7 +94,7 @@ def _fallback_search(query: str, limit: int) -> list[SearchResult]:
         SearchResult(
             url=f"https://medium.com/search?q={slug}",
             title=f"Articles mentioning {query}",
-            snippet=f"Editorial articles that can reveal expert creators, citations, and credentials.",
+            snippet="Editorial articles that can reveal expert creators, citations, and credentials.",
             relevance_score=66,
             provider="fallback",
         ),

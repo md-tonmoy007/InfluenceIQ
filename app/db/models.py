@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+
 from sqlalchemy import (
-    Column,
-    String,
-    Float,
-    Integer,
-    Text,
-    DateTime,
-    ForeignKey,
     Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
     Index,
+    Integer,
+    String,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -77,14 +78,14 @@ class InfluencerScore(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id"), nullable=False)
     campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id"), nullable=False)
-    
+
     final_score = Column(Float, nullable=False)
     relevance_score = Column(Float, nullable=False)
     credibility_score = Column(Float, nullable=False)
     engagement_score = Column(Float, nullable=False)
     sentiment_score = Column(Float, nullable=False)
     brand_safety_score = Column(Float, nullable=False)
-    
+
     confidence_level = Column(String, nullable=False)  # High / Medium / Low
     data_source_count = Column(Integer, nullable=False, default=0)
     score_version = Column(String, nullable=False, default="v1.0")
@@ -101,7 +102,7 @@ class CrawlSource(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id"), nullable=False)
     influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id"), nullable=True)
-    
+
     url = Column(String, nullable=False)
     title = Column(String, nullable=True)
     content = Column(Text, nullable=True)
@@ -122,7 +123,7 @@ class BrandSafetyFlag(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id"), nullable=False)
     campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id"), nullable=False)
-    
+
     source_url = Column(String, nullable=False)
     risk_type = Column(String, nullable=False)  # hate_speech, misinformation, scam, toxic, undisclosed_sponsorships
     reason = Column(Text, nullable=False)
