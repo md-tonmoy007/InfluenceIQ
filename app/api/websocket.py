@@ -10,7 +10,7 @@ import redis.asyncio as aioredis
 import structlog
 
 from app.config import settings
-from app.services.event_log import get_event_replay
+from app.services.event_log import aget_event_replay
 
 logger = structlog.get_logger()
 router = APIRouter(tags=["websocket"])
@@ -39,7 +39,11 @@ async def websocket_campaign_stream(
     if last_event_id is not None:
         try:
             log.info("Replaying events", last_event_id=last_event_id)
-            missed_events = get_event_replay(campaign_id_str, last_event_id)
+            async_redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            try:
+                missed_events = await aget_event_replay(async_redis, campaign_id_str, last_event_id)
+            finally:
+                await async_redis.close()
             for event in missed_events:
                 await websocket.send_json(event)
             log.info("Replayed events successfully", count=len(missed_events))
@@ -48,8 +52,8 @@ async def websocket_campaign_stream(
             # Continue connection despite replay failure to preserve service availability
 
     # Step 2: Establish Redis pub/sub subscription
-    async_redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-    pubsub = async_redis.pubsub()
+    pubsub_redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    pubsub = pubsub_redis.pubsub()
     channel_name = f"campaign:{campaign_id_str}"
     
     try:
@@ -145,12 +149,12 @@ async def websocket_campaign_stream(
         # Step 3: Cleanup resources to prevent memory leaks
         log.info("Cleaning up WebSocket session resources")
         is_active = False
-        
+
         # Unsubscribe and close Redis connections
         try:
             await pubsub.unsubscribe(channel_name)
             await pubsub.close()
-            await async_redis.close()
+            await pubsub_redis.close()
             log.info("Successfully unsubscribed and closed Redis connection")
         except Exception as e:
             log.error("Error during Redis pub/sub cleanup", error=str(e))

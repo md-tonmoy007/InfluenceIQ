@@ -39,8 +39,8 @@ services:
   backend-core:
     build:
       context: .
-      dockerfile: platform/Dockerfile
-    command: uvicorn backend_core.app:app --host 0.0.0.0 --port 8000 --reload
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     env_file: .env
     ports:
       - "8002:8000"
@@ -55,11 +55,11 @@ services:
   worker_ai_agent:
     build:
       context: .
-      dockerfile: platform/Dockerfile
+      dockerfile: Dockerfile
     command: celery -A ai_agent_services.worker:celery_app worker -Q ai_agent_queue -c 2 -n ai_agent@%h
     env_file: .env
     environment:
-      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
+      PYTHONPATH: /workspace
     volumes:
       - .:/workspace
     depends_on:
@@ -69,11 +69,11 @@ services:
   worker_scraping:
     build:
       context: .
-      dockerfile: platform/Dockerfile
+      dockerfile: Dockerfile
     command: celery -A scraping_service.worker:celery_app worker -Q scraping_queue -c 8 -n scraping@%h
     env_file: .env
     environment:
-      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
+      PYTHONPATH: /workspace
     volumes:
       - .:/workspace
     depends_on:
@@ -83,11 +83,11 @@ services:
   worker_scoring:
     build:
       context: .
-      dockerfile: platform/Dockerfile
+      dockerfile: Dockerfile
     command: celery -A scoring_service.worker:celery_app worker -Q scoring_queue -c 4 -n scoring@%h
     env_file: .env
     environment:
-      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
+      PYTHONPATH: /workspace
     volumes:
       - .:/workspace
     depends_on:
@@ -97,11 +97,11 @@ services:
   flower:
     build:
       context: .
-      dockerfile: platform/Dockerfile
+      dockerfile: Dockerfile
     command: celery -A ai_agent_services.worker:celery_app flower --port=5555
     env_file: .env
     environment:
-      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
+      PYTHONPATH: /workspace
     ports:
       - "5555:5555"
     volumes:
