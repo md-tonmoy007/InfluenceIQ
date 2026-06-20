@@ -2,6 +2,7 @@
 CLAUDE.md
 .claude/
 .antigravitycli/
+.commandcode/
 
 # Python
 __pycache__/

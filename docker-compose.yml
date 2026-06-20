@@ -52,11 +52,11 @@ services:
       redis:
         condition: service_healthy
 
-  worker_search:
+  worker_ai_agent:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A app.celery_app:celery_app worker -Q search_queue -c 2 -n search@%h
+    command: celery -A ai_agent_services.worker:celery_app worker -Q ai_agent_queue -c 2 -n ai_agent@%h
     env_file: .env
     environment:
       PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
@@ -66,11 +66,11 @@ services:
       redis:
         condition: service_healthy
 
-  worker_crawl:
+  worker_scraping:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A app.celery_app:celery_app worker -Q crawl_queue -c 8 -n crawl@%h
+    command: celery -A scraping_service.worker:celery_app worker -Q scraping_queue -c 8 -n scraping@%h
     env_file: .env
     environment:
       PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
@@ -80,25 +80,11 @@ services:
       redis:
         condition: service_healthy
 
-  worker_extract:
+  worker_scoring:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A app.celery_app:celery_app worker -Q extract_queue -c 4 -n extract@%h
-    env_file: .env
-    environment:
-      PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
-    volumes:
-      - .:/workspace
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  worker_score:
-    build:
-      context: .
-      dockerfile: platform/Dockerfile
-    command: celery -A app.celery_app:celery_app worker -Q score_queue -c 2 -n score@%h
+    command: celery -A scoring_service.worker:celery_app worker -Q scoring_queue -c 4 -n scoring@%h
     env_file: .env
     environment:
       PYTHONPATH: /workspace/backend:/workspace/platform:/workspace
@@ -112,7 +98,7 @@ services:
     build:
       context: .
       dockerfile: platform/Dockerfile
-    command: celery -A app.celery_app:celery_app flower --port=5555
+    command: celery -A ai_agent_services.worker:celery_app flower --port=5555
     env_file: .env
     environment:
       PYTHONPATH: /workspace/backend:/workspace/platform:/workspace

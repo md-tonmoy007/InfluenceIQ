@@ -13,7 +13,6 @@ from app.services.pipeline_state import (
     initialize_pipeline_state,
     get_pipeline_state,
 )
-from app.tasks.search import generate_queries
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -42,8 +41,9 @@ def create_campaign(
     # Initialize tracking state in Redis
     initialize_pipeline_state(campaign_id_str)
 
-    # Dispatch Celery task pipeline asynchronously (starting with query generation)
-    generate_queries.delay(campaign_id_str)
+    # TODO: Dispatch Celery task pipeline asynchronously (starting with query generation).
+    # Task definitions were migrated to per-service workers during the multiservice refactor.
+    # generate_queries.delay(campaign_id_str)
 
     return {
         "campaign_id": db_campaign.id,

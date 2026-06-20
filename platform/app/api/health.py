@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
 from app.db.session import get_db
+from app.service_roles import WORKER_QUEUES
 from app.services.redis_client import redis_client
 
 router = APIRouter(prefix="/health", tags=["health"])
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/health", tags=["health"])
 @router.get("")
 def get_health(db: Session = Depends(get_db)) -> dict:
     """Returns application integration health, Celery worker counts, and queue depths."""
-    queues = ["search_queue", "crawl_queue", "extract_queue", "score_queue"]
+    queues = WORKER_QUEUES
     
     # Fetch queue depths from Redis
     queue_depths = {}

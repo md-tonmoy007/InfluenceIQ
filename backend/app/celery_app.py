@@ -4,16 +4,12 @@ from celery import Celery
 
 from app.config import settings
 
+# Legacy monolith celery app — kept for health endpoint compatibility.
+# Per-service celery apps are created via create_celery_app() in celery_factory.py.
 celery_app = Celery(
     "influenceiq",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=[
-        "app.tasks.search",
-        "app.tasks.crawl",
-        "app.tasks.extract",
-        "app.tasks.score",
-    ],
 )
 
 celery_app.conf.update(
@@ -25,12 +21,6 @@ celery_app.conf.update(
     result_expires=21600,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
-    task_routes={
-        "app.tasks.search.*":  {"queue": "search_queue"},
-        "app.tasks.crawl.*":   {"queue": "crawl_queue"},
-        "app.tasks.extract.*": {"queue": "extract_queue"},
-        "app.tasks.score.*":   {"queue": "score_queue"},
-    },
     task_default_retry_delay=2,
     task_annotations={
         "*": {
