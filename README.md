@@ -1,6 +1,6 @@
 # InfluenceIQ
 
-InfluenceIQ is an AI-powered trust-aware influencer discovery platform. The docs in [Docs/System-architecture.md](Docs/System-architecture.md) describe the product and pipeline goals; this repo packages that design as a multi-container, multi-service development stack.
+InfluenceIQ is an AI-powered trust-aware influencer discovery platform. The docs in [Docs/Architecture.md](Docs/Architecture.md) describe the product and pipeline goals; this repo packages that design as a multi-container, multi-service development stack.
 
 ## Service layout
 

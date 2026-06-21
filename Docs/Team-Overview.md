@@ -3,7 +3,7 @@
 **Project:** InfluenceIQ — AI-powered trust-aware influencer discovery platform
 **Duration:** 7-day hackathon
 **Team Size:** 5 members
-**Reference:** [System-architecture.md](System-architecture.md)
+**Reference:** [Architecture.md](Architecture.md)
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## 7-Day High-Level Timeline
 
-```
+```text
 Day 1  │ Foundation: Docker, schemas, contracts, mock data
 Day 2  │ Core scaffolding done, all roles unblocked
 Day 3  │ Core feature development (parallel work)

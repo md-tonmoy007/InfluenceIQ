@@ -22,7 +22,7 @@ You are the glue between every component. Frontend reads from you, Celery worker
 
 ### Day 1 — Schema + Skeleton
 
-- [ ] Define PostgreSQL schema (matches `System-architecture.md` Section 19)
+- [ ] Define PostgreSQL schema (matches `Architecture.md` data architecture)
   - `campaigns`, `influencers`, `influencer_scores`, `crawl_sources`, `brand_safety_flags`
 - [ ] Write SQLAlchemy models with relationships
 - [ ] Set up Alembic, generate initial migration, apply to dev DB
@@ -83,7 +83,7 @@ You are the glue between every component. Frontend reads from you, Celery worker
 
 ## Key Files You Own
 
-```
+```text
 platform/
 ├── main.py                   (FastAPI entrypoint)
 ├── api/
@@ -111,12 +111,12 @@ platform/
 
 ## Daily Dependencies
 
-| Day | What You Need From Whom |
-|-----|-------------------------|
-| 1 | Redis key schema (AI/DevOps), Influencer data model JSON (Scoring) |
-| 2 | Celery task signatures to dispatch (AI/DevOps) |
-| 3 | Celery workers publishing events to Redis channels (AI/DevOps) |
-| 5 | Workers writing to DB tables (Scraping, Scoring) |
+| Day | What You Need From Whom                                            |
+| --- | ------------------------------------------------------------------ |
+| 1   | Redis key schema (AI/DevOps), Influencer data model JSON (Scoring) |
+| 2   | Celery task signatures to dispatch (AI/DevOps)                     |
+| 3   | Celery workers publishing events to Redis channels (AI/DevOps)     |
+| 5   | Workers writing to DB tables (Scraping, Scoring)                   |
 
 ---
 
