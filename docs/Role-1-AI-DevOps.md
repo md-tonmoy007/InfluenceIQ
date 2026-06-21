@@ -1,124 +1,72 @@
-# Role 1: AI Orchestration + DevOps Lead
+# Role 1: Platform + Orchestration
 
-**Owner:** Team Lead (you)
-**Architecture Sections Owned:** 2, 6, 14, 15, 16, 20, 21, 22
+This role owns the runtime platform that keeps the API, workers, Redis, and database operating as one system.
 
-This is the critical path of the system. You own everything that makes the platform intelligent, runnable, and observable.
+## Mission
 
----
+Provide a reliable execution environment for campaign orchestration, queue routing, worker isolation, state tracking, and deployment. This role owns how the pipeline runs, not how influencers are scored.
 
-## Responsibilities
+## Owns
 
-- Docker Compose environment (FastAPI + Celery + Redis + PostgreSQL)
-- Celery configuration: 4 queues (search, crawl, extract, score) with retry policy
-- LLM integrations: query generation, brand safety classifier, identity resolution LLM pass
-- Trust scoring engine: normalization, weighted formula, score versioning
-- Flower monitoring + `/health` endpoint
-- Redis key design (URL cache, pipeline state, event log, rate limit counters)
-- Deployment to Railway/Render
+- Docker and service composition for API, frontend, Redis, PostgreSQL, workers, and Flower
+- Environment configuration in `backend/core/config.py` and runtime secrets handling
+- Redis connectivity, cache primitives, pipeline state, and event replay storage in `backend/core/cache/`
+- Celery app construction and task routing in `backend/core/celery/`
+- Worker process topology in `backend/workers/ai_agent/`, `backend/workers/scraping/`, and `backend/workers/scoring/`
+- Queue health, worker startup conventions, retry posture, logging, and deployment observability
 
----
+## Interfaces Consumed
 
-## 7-Day Todo List
+- Pipeline task names from `backend/pipeline/tasks/`
+- API startup and runtime requirements from `backend/api/main.py`
+- Database connectivity requirements from `backend/core/database/`
 
-### Day 1 — Foundation
+## Interfaces Produced
 
-- [ ] Create `docker-compose.yml` with FastAPI, Redis, PostgreSQL services
-- [ ] Define Celery app config (`celery_app.py`) with 4 task routes
-- [ ] Document Redis key schema (publish to team Slack/doc):
-  - `url_cache:{sha256}` — 48h TTL
-  - `pipeline_events:{campaign_id}` — 1h TTL
-  - `pipeline_state:{campaign_id}` — 2h TTL
-  - `rate_limit:{domain}` — 10s TTL
-- [ ] Set up `.env.example` with all required keys (OpenAI/Anthropic, Brave, OpenSerp)
-- [ ] Publish Celery task signature contracts to backend + scraping engineers
+- Queue routing contract in `backend/core/celery/roles.py`
+- Runtime queue set:
+  - `ai_agent_queue`
+  - `scraping_queue`
+  - `scoring_queue`
+- Redis state and replay primitives:
+  - `pipeline_state:{campaign_id}`
+  - `pipeline_events:{campaign_id}`
+- Process and health topology for local dev and deployment
 
-### Day 2 — LLM Skeleton + Worker Pool
+## Key Workflows
 
-- [ ] Write query generation prompt + LLM client wrapper
-- [ ] Define worker startup scripts for each queue (concurrency: search=2, crawl=8, extract=4, score=2)
-- [ ] Wire Flower into Docker Compose (`/flower` endpoint)
-- [ ] Test: trigger a dummy Celery task from FastAPI, confirm it lands in correct queue
-- [ ] Set hard LLM token budget per task type and document it
+- Start the FastAPI app with access to PostgreSQL and Redis.
+- Start the three worker roles with queue assignments that match `backend/core/celery/roles.py`.
+- Ensure task adapters can update Redis state and append replayable events while pipeline jobs run.
+- Keep Flower and service logs usable for diagnosing stuck queues, replay gaps, and retry storms.
+- Preserve deterministic behavior when optional LLM or ML adapters are disabled or unavailable.
 
-### Day 3 — Core LLM Tasks
+## Non-Goals
 
-- [ ] Implement `generate_queries` Celery task (campaign → search queries)
-- [ ] Implement `classify_brand_safety` task (content → risk flags + reason)
-- [ ] Implement `resolve_identity_llm` task (Pass 3 of identity resolution)
-- [ ] Add Celery retry decorators with exponential backoff to all tasks
-- [ ] Verify task chaining works (`chain()` and `chord()` primitives)
+- Does not define recommendation formulas, brand-safety rules, or extraction heuristics.
+- Does not own public REST response shape beyond health and runtime behavior.
+- Does not duplicate pipeline-domain persistence logic that belongs in backend or pipeline code.
 
-### Day 4 — Scoring Engine
+## Key Files And Directories
 
-- [ ] Implement sub-score normalization function (any raw input → [0, 100])
-- [ ] Implement weighted final score formula with brand-customizable weights
-- [ ] Add confidence penalty for low-data influencers (cap at 70 if <3 sources)
-- [ ] Implement score versioning: store `score_version`, `computed_at`, `data_source_count`
-- [ ] Write `score_influencer` Celery task that takes all sub-scores → final grade
+- `docker-compose.yml`
+- `backend/core/config.py`
+- `backend/core/celery/app.py`
+- `backend/core/celery/factory.py`
+- `backend/core/celery/roles.py`
+- `backend/core/cache/redis_client.py`
+- `backend/core/cache/pipeline_state.py`
+- `backend/core/cache/event_log.py`
+- `backend/workers/`
+- `README.md`
 
-### Day 5 — Integration + Monitoring
+## Handoff Contracts
 
-- [ ] Wire end-to-end pipeline: trigger campaign → all 4 queues fire in sequence
-- [ ] Implement `/health` endpoint (queue depths, worker counts, DB/Redis status)
-- [ ] Verify Flower shows all queues, workers, and task states correctly
-- [ ] Add structured logging to all Celery tasks (campaign_id, task_id, duration)
-- [ ] Pipeline state hash updates correctly across all phases
-
-### Day 6 — Hardening + Deployment
-
-- [ ] Deploy to Railway/Render (FastAPI + Celery workers as separate services)
-- [ ] Configure managed Redis + PostgreSQL
-- [ ] Run 3 full campaigns end-to-end and fix failures
-- [ ] Add alerting thresholds (queue depth > 100, failure rate > 10%)
-- [ ] Verify partial results return when pipeline fails mid-run
-
-### Day 7 — Demo Prep
-
-- [ ] Pre-run 2–3 demo campaigns, verify cached results in DB
-- [ ] Confirm Flower dashboard is presentable (clean state, no error spam)
-- [ ] Test rollback plan: if live demo fails, fallback to cached results
-- [ ] Help teammates with last-minute LLM tweaks (prompts, edge cases)
-- [ ] Final smoke test: full pipeline runs in under 90 seconds on demo query
-
----
-
-## Key Files You Own
-
-```
-platform/
-├── celery_app.py
-├── tasks/
-│   ├── search.py
-│   ├── extract.py        (LLM portions)
-│   └── score.py
-├── llm/
-│   ├── client.py
-│   ├── prompts/
-│   └── budget.py
-├── scoring/
-│   ├── normalize.py
-│   ├── formula.py
-│   └── versioning.py
-docker-compose.yml
-flower.config.py
-.env.example
-```
-
----
-
-## Phase 2 — Verification System
-
-- Integrate credential verification APIs (LinkedIn API, academic databases)
-- Train lightweight ML classifier for fraud detection (replace heuristic)
-- Add background re-scoring job (Celery beat) to refresh stale influencer scores weekly
-- Expand LLM prompts to extract claimed credentials with confidence scores
-- Add cost/quota tracking dashboard per campaign
-
-## Phase 3 — Knowledge Graph
-
-- Build graph embedding pipeline (Node2Vec or GraphSAGE) for influencer-relationship vectors
-- Migrate scoring formula to graph-aware (trust propagation through network)
-- Set up vector recommendation engine using pgvector + influencer embeddings
-- Orchestrate batch graph computation jobs via Celery beat
-- Multi-region worker deployment for scale
+- To Backend API + Data:
+  - Redis and Celery must be reachable with stable configuration.
+  - `pipeline_state` and `pipeline_events` behavior must match the API replay and polling assumptions.
+- To Pipeline Intelligence:
+  - Task routes and queue names must stay stable or be changed in lockstep with task producers/consumers.
+  - Worker environments must expose the feature flags and credentials required by optional adapters.
+- To Frontend:
+  - Operational incidents should fail as partial or terminal campaign states instead of silent hangs.

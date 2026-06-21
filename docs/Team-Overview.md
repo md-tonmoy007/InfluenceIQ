@@ -1,107 +1,55 @@
-# Team Work Distribution — Overview
+# Team Ownership Overview
 
-**Project:** InfluenceIQ — AI-powered trust-aware influencer discovery platform
-**Duration:** 7-day hackathon
-**Team Size:** 5 members
-**Reference:** [Architecture.md](Architecture.md)
+**Project:** InfluenceIQ  
+**Team Size:** 4 people  
+**Canonical Architecture:** [Architecture.md](Architecture.md)
 
----
+This document describes current-state ownership for the implemented system. It is not a build schedule. Each role owns a durable part of the product, its contracts, and the operational seams other roles depend on.
 
-## Team Roles
+## Roles
 
-| #   | Role                             | Member Focus                                | Owns Sections                |
-| --- | -------------------------------- | ------------------------------------------- | ---------------------------- |
-| 1   | AI Orchestration + DevOps Lead   | LLM integration, Celery, Docker, monitoring | 2, 6, 14, 15, 16, 20, 21, 22 |
-| 2   | Frontend Developer (UI Designer) | Next.js dashboard, WebSocket UI             | 3, 18 (client-side)          |
-| 3   | Backend API + Database Engineer  | FastAPI, PostgreSQL, WebSocket server       | 4, 5, 18 (server), 19        |
-| 4   | Scraping & Crawling Engineer     | Playwright, rate limiting, URL cache        | 7, 8, 9                      |
-| 5   | Extraction & Scoring Engineer    | NLP, identity resolution, scoring rules     | 10, 11, 12, 13               |
+| Role | Focus | Owns | Primary interfaces |
+| --- | --- | --- | --- |
+| Platform + Orchestration | Runtime topology, queues, config, deployment, observability | Docker, env/config, Redis, Celery app and routes, worker topology, health and logging | Celery task routing, Redis `pipeline_state:{campaign_id}`, Redis `pipeline_events:{campaign_id}` |
+| Frontend | Brand-facing product surface | Next.js routes, campaign submission UX, live pipeline progress UX, recommendation and profile views, API/WebSocket client behavior | REST payloads, WebSocket event envelope, reconnect with `last_event_id` |
+| Backend API + Data | Public API surface and durable data model | FastAPI routers, request/response schemas, DB models and migrations, event replay surface, campaign state read APIs | REST contracts, WebSocket endpoint, PostgreSQL persistence contracts |
+| Pipeline Intelligence | Search-to-score domain logic | Search normalization, fetch/extract flow, provenance, influencer extraction, identity resolution, scoring, safety classification, ranking inputs | Task payloads, candidate/enrichment payloads, score/provenance persistence expectations |
 
----
+## Coordination Contracts
 
-## 7-Day High-Level Timeline
+These are the shared contracts that must stay stable across roles.
 
-```text
-Day 1  │ Foundation: Docker, schemas, contracts, mock data
-Day 2  │ Core scaffolding done, all roles unblocked
-Day 3  │ Core feature development (parallel work)
-Day 4  │ Core features integrated, end-to-end skeleton runs
-Day 5  │ Full integration, real data flowing
-Day 6  │ Hardening, demo path locked, edge cases fixed
-Day 7  │ Polish, pre-cached demo runs, presentation prep
-```
+| Contract | Source of truth | Producers | Consumers |
+| --- | --- | --- | --- |
+| REST request and response payloads | `backend/api/schemas/`, `backend/api/routers/` | Backend API + Data | Frontend, Platform for health/testing |
+| WebSocket event envelope | `docs/Architecture.md`, `backend/api/schemas/ws_event.py`, `backend/core/cache/event_log.py` | Backend API + Data, Pipeline Intelligence | Frontend |
+| Redis pipeline state | `backend/core/cache/pipeline_state.py` | Platform + Orchestration, Pipeline Intelligence task adapters | Backend API + Data, Frontend via REST/WebSocket |
+| Redis event replay log | `backend/core/cache/event_log.py` | Pipeline task adapters | Backend API + Data, Frontend |
+| Queue routing and worker topology | `backend/core/celery/roles.py`, `backend/workers/` | Platform + Orchestration | Backend API + Data, Pipeline Intelligence |
+| Score and provenance persistence | `backend/core/database/models.py` | Pipeline Intelligence, Backend API + Data | Frontend, Backend API + Data |
 
----
+## Shared Rules
 
-## Critical Coordination Points
+- The architecture source of truth is [Architecture.md](Architecture.md). Role docs summarize ownership; they do not redefine the system.
+- The operational queue model is fixed at three queues unless the architecture changes:
+  - `ai_agent_queue`
+  - `scraping_queue`
+  - `scoring_queue`
+- WebSocket clients reconnect with `last_event_id` and must receive the same event envelope shape on replay and live delivery.
+- Redis `pipeline_state` is fast status, not a replacement for durable PostgreSQL records.
+- Source provenance and score outputs must stay linked. Recommendations are only valid if the stored score can still be traced back to sources and campaign context.
+- Optional ML and LLM adapters may enrich the pipeline, but deterministic paths remain the baseline contract.
 
-### Day 1 Contracts (must be agreed by EOD Day 1)
+## Role Boundaries
 
-| Contract                    | Owner            | Consumers                  |
-| --------------------------- | ---------------- | -------------------------- |
-| Redis key schema            | AI/DevOps Lead   | Backend, Scraping          |
-| WebSocket event JSON schema | Backend Engineer | Frontend, AI/DevOps        |
-| PostgreSQL schema           | Backend Engineer | Scoring, Scraping          |
-| Celery task signatures      | AI/DevOps Lead   | Backend, Scraping, Scoring |
-| Influencer data model JSON  | Scoring Engineer | Backend, Frontend          |
+- Platform + Orchestration owns runtime reliability and queue correctness, not campaign-specific scoring logic.
+- Frontend owns presentation and interaction flows, not business-rule duplication or alternative scoring formulas.
+- Backend API + Data owns public API contracts and durable persistence, not search heuristics or scoring-policy internals.
+- Pipeline Intelligence owns extraction, identity, scoring, and safety logic, not deployment topology or frontend rendering.
 
-### Daily Sync (15 min, every morning)
+## Active Role Docs
 
-- What's blocking you?
-- What contract did you finalize yesterday?
-- What contract do you need today?
-
----
-
-## Risk Mitigation
-
-| Risk                           | Probability | Owner             | Mitigation                                                                   |
-| ------------------------------ | ----------- | ----------------- | ---------------------------------------------------------------------------- |
-| Instagram/YouTube bans scraper | High        | Scraping Engineer | Test against real targets on Day 2, use Playwright fingerprinting from start |
-| LLM cost overrun               | Medium      | AI/DevOps Lead    | Hard token budget per task, blocklist before LLM                             |
-| Integration takes too long     | High        | All               | No new features after Day 5 — only fixes                                     |
-| Live demo fails                | High        | All               | Pre-cache 2–3 demo campaigns, record backup video                            |
-| WebSocket disconnects mid-demo | Medium      | Backend Engineer  | Event replay from Redis must work by Day 4                                   |
-
----
-
-## Demo Strategy
-
-- Pre-run 2–3 compelling campaigns on Day 6 and cache results
-- Live demo triggers a fast/simple new query for real-time visibility
-- Fall back to cached results if live run times out
-- Show Flower dashboard during demo for system credibility
-
----
-
-## Phase 2 (Post-Hackathon) — Verification System
-
-| Role      | Phase 2 Focus                                                 |
-| --------- | ------------------------------------------------------------- |
-| AI/DevOps | Credential verification APIs, advanced fraud ML classifier    |
-| Frontend  | Influencer history timeline, score trend charts               |
-| Backend   | Audit log tables, score versioning APIs, multi-tenant support |
-| Scraping  | LinkedIn integration, certification scraping, deeper crawl    |
-| Scoring   | ML-based credibility model, training data pipeline            |
-
----
-
-## Phase 3 (Long-term) — Knowledge Graph
-
-| Role      | Phase 3 Focus                                              |
-| --------- | ---------------------------------------------------------- |
-| AI/DevOps | Graph embedding pipelines, vector recommendation engine    |
-| Frontend  | Network visualization, relationship explorer               |
-| Backend   | Graph database integration (Neo4j or AGE), graph API layer |
-| Scraping  | Cross-platform relationship discovery, citation graph      |
-| Scoring   | Trust propagation algorithms, authority graph scoring      |
-
----
-
-## File Index
-
-- [Role 1: AI Orchestration + DevOps Lead](Role-1-AI-DevOps.md)
-- [Role 2: Frontend Developer](Role-2-Frontend.md)
-- [Role 3: Backend API + Database](Role-3-Backend.md)
-- [Role 4: Scraping & Crawling](Role-4-Scraping.md)
-- [Role 5: Extraction & Scoring](Role-5-Scoring.md)
+- [Role 1: Platform + Orchestration](Role-1-AI-DevOps.md)
+- [Role 2: Frontend](Role-2-Frontend.md)
+- [Role 3: Backend API + Data](Role-3-Backend.md)
+- [Role 4: Pipeline Intelligence](Role-4-Pipeline-Intelligence.md)

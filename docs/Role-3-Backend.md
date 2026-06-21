@@ -1,158 +1,69 @@
-# Role 3: Backend API + Database Engineer
+# Role 3: Backend API + Data
 
-**Architecture Sections Owned:** 4 (backend stack), 5 (API layer), 18 (WebSocket server), 19 (database)
+This role owns the public API surface and the durable data model that the rest of the system depends on.
 
-You are the glue between every component. Frontend reads from you, Celery workers write through you, Redis state is queried via you.
+## Mission
 
----
+Provide stable FastAPI contracts, durable PostgreSQL persistence, campaign state read surfaces, and WebSocket replay behavior that expose pipeline work safely to clients.
 
-## Responsibilities
+## Owns
 
-- PostgreSQL schema: all tables (campaigns, influencers, influencer_scores, crawl_sources, brand_safety_flags)
-- SQLAlchemy models + Alembic migrations
-- FastAPI REST endpoints (campaign CRUD, influencer retrieval, dashboard data)
-- WebSocket server + event broadcast to subscribed clients
-- WebSocket reconnection: event replay from Redis list
-- Pipeline state polling endpoint (REST fallback if WebSocket fails)
-- Authentication stub (single-user or API key — keep minimal for hackathon)
+- FastAPI app composition in `backend/api/main.py`
+- HTTP route handlers in `backend/api/routers/`
+- Request and response schemas in `backend/api/schemas/`
+- SQLAlchemy models, sessions, and migrations in `backend/core/database/`
+- Database-backed campaign, influencer, source, and score persistence contracts
+- WebSocket replay surface and client stream attachment in `backend/api/routers/websocket.py`
 
----
+## Interfaces Consumed
 
-## 7-Day Todo List
+- Redis pipeline state and replay log from `backend/core/cache/`
+- Queue-dispatched pipeline work started through `backend.pipeline.tasks`
+- Pipeline outputs persisted through shared database models
 
-### Day 1 — Schema + Skeleton
+## Interfaces Produced
 
-- [ ] Define PostgreSQL schema (matches `Architecture.md` data architecture)
-  - `campaigns`, `influencers`, `influencer_scores`, `crawl_sources`, `brand_safety_flags`
-- [ ] Write SQLAlchemy models with relationships
-- [ ] Set up Alembic, generate initial migration, apply to dev DB
-- [ ] Scaffold FastAPI app with empty route handlers for all endpoints
-- [ ] Publish WebSocket event JSON schema to frontend + AI/DevOps lead
-- [ ] Add CORS middleware (allow Next.js dev origin)
+- `POST /api/campaigns`
+- `GET /api/campaigns/{id}`
+- `GET /api/campaigns/{id}/state`
+- `GET /api/campaigns/{id}/influencers`
+- `GET /api/influencers/{id}`
+- `/ws/campaign/{campaign_id}?last_event_id=N`
+- Durable tables such as campaigns, influencers, crawl sources, and influencer scores
 
-### Day 2 — Core REST Endpoints
+## Key Workflows
 
-- [ ] `POST /api/campaigns` — create campaign, dispatch root Celery task, return campaign_id
-- [ ] `GET /api/campaigns/{id}` — return campaign + current pipeline state from Redis
-- [ ] `GET /api/campaigns/{id}/influencers` — return scored influencers (paginated)
-- [ ] `GET /api/campaigns/{id}/state` — return pipeline state hash (REST fallback)
-- [ ] Add Pydantic request/response models matching frontend contract
-- [ ] Test with curl: full campaign create → state poll loop works
+- Create a campaign row, initialize Redis pipeline state, and dispatch pipeline execution.
+- Translate database models and Redis state into public REST payloads.
+- Replay missed events from `pipeline_events:{campaign_id}` before attaching the WebSocket client to the live stream.
+- Expose ranked campaign recommendations with score and provenance data attached.
+- Expose canonical influencer profiles without leaking pipeline-internal implementation details into the public contract.
 
-### Day 3 — WebSocket Server
+## Non-Goals
 
-- [ ] WebSocket endpoint at `/ws/campaign/{campaign_id}`
-- [ ] On connect: subscribe to Redis pub/sub channel `campaign:{id}`
-- [ ] On Celery worker publishes event → forward to all subscribed clients
-- [ ] Append every event to Redis list `pipeline_events:{campaign_id}` (TTL 1h)
-- [ ] Handle client disconnect cleanly (unsubscribe, no resource leaks)
+- Does not own search-provider behavior, extraction heuristics, or scoring policy.
+- Does not own queue topology or worker scaling strategy.
+- Does not duplicate pipeline-domain reasoning inside route handlers unless needed for contract translation.
 
-### Day 4 — Reconnection Replay
+## Key Files And Directories
 
-- [ ] On WebSocket connect, accept `?last_event_id=N` query param
-- [ ] If param present: replay all events from Redis list with ID > N
-- [ ] Then attach to live pub/sub feed for new events
-- [ ] Test scenario: kill WebSocket mid-pipeline, reconnect, verify all events received
-- [ ] Add heartbeat/ping every 20s to detect dead connections
+- `backend/api/main.py`
+- `backend/api/routers/campaigns.py`
+- `backend/api/routers/influencers.py`
+- `backend/api/routers/websocket.py`
+- `backend/api/routers/health.py`
+- `backend/api/schemas/`
+- `backend/core/database/models.py`
+- `backend/core/database/session.py`
+- `backend/core/database/migrations/`
 
-### Day 5 — Integration + Data Flow
+## Handoff Contracts
 
-- [ ] Verify Celery workers can write to PostgreSQL via shared SQLAlchemy session
-- [ ] Verify Celery workers can publish events to Redis that reach WebSocket clients
-- [ ] Add filtering query params to `GET /influencers`: platform, niche, region, grade, follower_size
-- [ ] Implement source provenance JOIN: each influencer response includes `sources[]`
-- [ ] Add request logging middleware (timing, status codes)
-
-### Day 6 — Hardening
-
-- [ ] Add database indexes (campaign_id on influencer_scores, source_url on crawl_sources)
-- [ ] Add pagination + sort to influencer endpoint (default: by final_score DESC)
-- [ ] Handle edge cases: campaign not found (404), pipeline still running (200 with partial), pipeline failed (200 with partial + error flag)
-- [ ] Add `GET /health` integration with AI/DevOps lead's monitoring endpoint
-- [ ] Test 3 full campaigns end-to-end via API
-
-### Day 7 — Demo Prep
-
-- [ ] Seed database with 2–3 pre-cached demo campaign results
-- [ ] Add `/api/demo/reset` endpoint to restore clean demo state quickly
-- [ ] Verify all queries respond in under 200ms on demo data
-- [ ] Help frontend debug any last-minute integration issues
-- [ ] Document API in a short README for judges
-
----
-
-## Key Files You Own
-
-```text
-platform/
-├── main.py                   (FastAPI entrypoint)
-├── api/
-│   ├── campaigns.py
-│   ├── influencers.py
-│   ├── websocket.py
-│   └── health.py
-├── db/
-│   ├── models.py             (SQLAlchemy)
-│   ├── session.py
-│   └── migrations/           (Alembic)
-├── schemas/                  (Pydantic)
-│   ├── campaign.py
-│   ├── influencer.py
-│   └── events.py
-├── services/
-│   ├── pipeline_state.py     (Redis state read/write)
-│   └── event_log.py          (Redis event list read/write)
-└── middleware/
-    ├── cors.py
-    └── logging.py
-```
-
----
-
-## Daily Dependencies
-
-| Day | What You Need From Whom                                            |
-| --- | ------------------------------------------------------------------ |
-| 1   | Redis key schema (AI/DevOps), Influencer data model JSON (Scoring) |
-| 2   | Celery task signatures to dispatch (AI/DevOps)                     |
-| 3   | Celery workers publishing events to Redis channels (AI/DevOps)     |
-| 5   | Workers writing to DB tables (Scraping, Scoring)                   |
-
----
-
-## WebSocket Event Schema (You Define This)
-
-```json
-{
-  "event_id": 42,
-  "type": "score.calculated",
-  "campaign_id": "abc-123",
-  "timestamp": "2026-05-21T10:30:00Z",
-  "payload": {
-    "influencer_id": "uuid",
-    "final_score": 87.5,
-    "grade": "A",
-    "confidence": "High"
-  }
-}
-```
-
-Publish this schema to the team on Day 1. Frontend and AI/DevOps build against it.
-
----
-
-## Phase 2 — Verification System Backend
-
-- Add `score_history` table for tracking score changes over time
-- Add `credential_verifications` table linking influencers to verified credentials
-- Implement audit log on every score change (who/what/when)
-- Multi-tenant support: `brands` table, scope all queries by brand_id
-- API key authentication + rate limiting per brand
-
-## Phase 3 — Knowledge Graph Backend
-
-- Integrate Apache AGE (PostgreSQL graph extension) or migrate to Neo4j
-- Build graph query layer: `GET /api/influencers/{id}/network`
-- Endpoint for relationship discovery: `GET /api/influencers/{id}/cites`, `/cited-by`
-- Async batch jobs for graph metric computation (PageRank, centrality)
-- GraphQL layer for flexible graph traversal queries
+- From Platform + Orchestration:
+  - Redis and Celery contracts must support campaign initialization, state reads, and event replay.
+- From Pipeline Intelligence:
+  - Persisted score outputs must include enough provenance and explanation data to satisfy API consumers.
+  - Event payloads must fit the public event envelope and remain safe for replay.
+- To Frontend:
+  - Partial campaigns, failures, and completed campaigns must all return explicit lifecycle states.
+  - The same event shape must be used for replayed and live WebSocket delivery.

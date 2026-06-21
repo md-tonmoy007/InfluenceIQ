@@ -1,144 +1,66 @@
-# Role 2: Frontend Developer
+# Role 2: Frontend
 
-**Owner:** UI Designer (also codes)
-**Architecture Sections Owned:** 3 (full frontend), 18 (client-side WebSocket consumer)
+This role owns the brand-facing workflow surface in `frontend/src/`.
 
-You own everything the user sees. Build against contracts and mock data so you're never blocked by backend availability.
+## Mission
 
----
+Turn campaign creation, live pipeline progress, and ranked recommendations into a coherent product experience while treating backend contracts as the source of truth.
 
-## Responsibilities
+## Owns
 
-- Campaign submission form (product, industry, audience, platform, budget)
-- Real-time workflow visualization (WebSocket consumer, progress steps)
-- Influencer recommendation dashboard (ranking, filters, trust grade badges)
-- Trust score explanation panel (signal breakdown, source citations)
-- Brand safety flag display with warning UI
-- WebSocket reconnect handling on client side
-- Responsive design (desktop demo + mobile fallback)
+- Next.js App Router pages and layouts in `frontend/src/app/`
+- Product flows for landing, onboarding, campaign brief creation, discover, shortlist, profile, lists, and settings
+- API client mapping and response normalization in `frontend/src/lib/api.ts`
+- WebSocket URL construction and reconnect behavior in `frontend/src/lib/websocket.ts`
+- Client-side event typing in `frontend/src/types/events.ts`
+- Recommendation presentation, filters, profile rendering, and progress UI in `frontend/src/components/`
 
----
+## Interfaces Consumed
 
-## 7-Day Todo List
+- REST endpoints under `/api/campaigns`, `/api/influencers`, and health/demo routes exposed by `backend/api/routers/`
+- WebSocket stream at `/ws/campaign/{campaign_id}?last_event_id=N`
+- Campaign, influencer, and event schemas from `backend/api/schemas/` and the architecture doc
+- Pipeline state fields such as `phase`, `urls_discovered`, `urls_processed`, `influencers_found`, and `scores_computed`
 
-### Day 1 — Setup + Mocks
+## Interfaces Produced
 
-- [ ] Initialize Next.js project with TailwindCSS + shadcn/ui
-- [ ] Create mock data fixtures (3 campaigns, 10 influencers each)
-- [ ] Create mock WebSocket event stream (TypeScript file emitting events on interval)
-- [ ] Get WebSocket event JSON schema contract from Backend Engineer
-- [ ] Get Influencer data model JSON contract from Scoring Engineer
-- [ ] Set up routing: `/`, `/campaign/new`, `/campaign/[id]`, `/campaign/[id]/results`
+- Campaign submission payloads sent from the brief flow to `POST /api/campaigns`
+- WebSocket reconnect requests carrying `last_event_id`
+- UI state derived from canonical `pipeline_state` and replayed/live event envelopes
 
-### Day 2 — Campaign Submission Form
+## Key Workflows
 
-- [ ] Build campaign form with all fields (product, industry, audience, platforms, budget)
-- [ ] Add form validation (Zod or react-hook-form)
-- [ ] Add weight customization UI (sliders for relevance/credibility/engagement/sentiment/brand safety)
-- [ ] Submit handler → POST to `/api/campaigns` → redirect to live workflow page
-- [ ] Style with shadcn/ui components (Card, Input, Slider, Button)
+- Submit a campaign brief and transition the user into a live pipeline view.
+- Poll and stream campaign progress without inventing alternate client-side lifecycle rules.
+- Render partial results while campaigns are still running or when a terminal partial state is returned.
+- Present recommendation score breakdowns, source-backed explanations, and safety warnings without mutating backend meaning.
+- Fetch canonical influencer profiles on demand and keep profile views aligned to campaign-specific score data.
 
-### Day 3 — Real-Time Workflow Visualization
+## Non-Goals
 
-- [ ] Build WebSocket client hook (`useCampaignStream(campaignId)`)
-- [ ] Implement reconnect logic (send `campaign_id` on reconnect for event replay)
-- [ ] Build progress component showing pipeline phases:
-  - Generating queries → Searching → Scraping → Extracting → Scoring → Complete
-- [ ] Show live counts: URLs discovered, pages scraped, influencers found
-- [ ] Handle event types: `query.generated`, `url.discovered`, `page.scraped`, `influencer.found`, `score.calculated`
+- Does not define scoring formulas, grade boundaries, or extraction logic.
+- Does not own queue, worker, or Redis behavior.
+- Does not persist alternate campaign or influencer truth outside the API contract.
 
-### Day 4 — Influencer Dashboard
+## Key Files And Directories
 
-- [ ] Influencer card component: avatar, name, platform icons, trust grade badge (A+/A/B/C/D)
-- [ ] Ranking list view with sort options (trust, relevance, engagement)
-- [ ] Filter panel (platform, niche, region, follower size, grade)
-- [ ] Connect to `GET /api/campaigns/{id}/influencers` endpoint
-- [ ] Loading skeletons + empty states
+- `frontend/src/app/`
+- `frontend/src/components/briefs/`
+- `frontend/src/components/discover/`
+- `frontend/src/components/shortlist/`
+- `frontend/src/components/profile/`
+- `frontend/src/lib/api.ts`
+- `frontend/src/lib/websocket.ts`
+- `frontend/src/types/campaign.ts`
+- `frontend/src/types/influencer.ts`
+- `frontend/src/types/events.ts`
 
-### Day 5 — Trust Score Explanation Panel
+## Handoff Contracts
 
-- [ ] Click influencer card → modal/slideover with full breakdown
-- [ ] Show each sub-score with bar visualization (relevance, credibility, engagement, sentiment, brand safety)
-- [ ] Display reason list: positive signals (+) and negative signals (-)
-- [ ] Show confidence level badge (High/Medium/Low) + score freshness
-- [ ] Display brand safety warnings prominently with source URL citations
-- [ ] Show source provenance (links to where data was extracted)
-
-### Day 6 — Polish + Edge Cases
-
-- [ ] Partial results banner: "Pipeline ended early — showing 8 of 12 expected influencers"
-- [ ] Connection lost indicator + automatic reconnect UX
-- [ ] Empty state when no influencers found
-- [ ] Error toasts for API failures
-- [ ] Add subtle animations (Framer Motion for card entry, progress transitions)
-- [ ] Test full flow on mobile viewport
-
-### Day 7 — Demo Prep
-
-- [ ] Add "Demo Mode" toggle that uses pre-cached campaign data
-- [ ] Polish typography, spacing, color palette
-- [ ] Verify all demo scenarios render correctly
-- [ ] Add loading state for the live demo trigger
-- [ ] Help record demo video walkthrough
-- [ ] Final QA pass on all screens
-
----
-
-## Key Files You Own
-
-```
-frontend/
-├── app/
-│   ├── page.tsx                          (landing)
-│   ├── campaign/new/page.tsx             (submission form)
-│   └── campaign/[id]/page.tsx            (live workflow + results)
-├── components/
-│   ├── CampaignForm.tsx
-│   ├── PipelineProgress.tsx
-│   ├── InfluencerCard.tsx
-│   ├── InfluencerDashboard.tsx
-│   ├── TrustScorePanel.tsx
-│   ├── BrandSafetyWarning.tsx
-│   └── WeightCustomizer.tsx
-├── hooks/
-│   ├── useCampaignStream.ts
-│   └── useInfluencers.ts
-├── lib/
-│   ├── api.ts
-│   ├── websocket.ts
-│   └── mocks/
-└── types/
-    ├── campaign.ts
-    ├── influencer.ts
-    └── events.ts
-```
-
----
-
-## Daily Dependencies
-
-| Day | What You Need From Whom                                                     |
-| --- | --------------------------------------------------------------------------- |
-| 1   | WebSocket event schema (Backend), Influencer JSON schema (Scoring)          |
-| 3   | Working WebSocket endpoint emitting mock events (Backend)                   |
-| 4   | `GET /api/campaigns/{id}/influencers` returning real or mock data (Backend) |
-| 5   | Trust score breakdown with reasons (Scoring)                                |
-| 6   | Pre-cached demo campaign IDs (AI/DevOps Lead)                               |
-
----
-
-## Phase 2 — Verification System UI
-
-- Influencer history timeline (show score changes over time)
-- Score trend charts using Recharts or Tremor
-- Credential verification badges (LinkedIn-verified, certificate-verified)
-- Admin dashboard for managing campaigns across multiple brands
-- Export to PDF / CSV functionality
-
-## Phase 3 — Knowledge Graph UI
-
-- Interactive network visualization using D3 or Cytoscape.js
-- Influencer relationship explorer (who cites whom, who follows whom)
-- Trust propagation visualization (show how authority flows through network)
-- Cluster view: group influencers by community
-- Comparison view: side-by-side influencer trust profiles
+- From Backend API + Data:
+  - REST payload shapes must remain stable or versioned.
+  - The WebSocket event envelope must match replay and live delivery.
+- From Platform + Orchestration:
+  - Connection and replay behavior must preserve `last_event_id` semantics.
+- From Pipeline Intelligence:
+  - Score explanations, provenance fields, and safety warnings must remain attributable and machine-readable.
