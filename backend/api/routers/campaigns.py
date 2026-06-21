@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -7,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from backend.api.schemas.campaign import CampaignCreate, CampaignResponse
-from backend.api.schemas.influencer import InfluencerResponse, SubScores
+from backend.api.schemas.influencer import CrawlSourceResponse, InfluencerResponse, SubScores
 from backend.core.cache.pipeline_state import (
     get_pipeline_state,
     initialize_pipeline_state,
@@ -22,8 +23,7 @@ router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 def create_campaign(
     campaign_data: CampaignCreate, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    """Creates a campaign in the DB, sets up Redis state tracking, and dispatches the Celery pipeline."""
-    # Create DB campaign entry
+    """Create a campaign, initialize transient state, and dispatch the pipeline."""
     db_campaign = models.Campaign(
         product=campaign_data.product,
         niche=campaign_data.industry,
@@ -32,61 +32,55 @@ def create_campaign(
         preferred_platforms=campaign_data.preferred_platforms,
         budget_range=campaign_data.budget_range,
         weights=campaign_data.weights.model_dump() if campaign_data.weights else None,
+        status="running",
+        started_at=datetime.now(UTC),
     )
     db.add(db_campaign)
     db.commit()
     db.refresh(db_campaign)
 
     campaign_id_str = str(db_campaign.id)
-
-    # Initialize tracking state in Redis
     initialize_pipeline_state(campaign_id_str)
 
-    # Dispatch the full Celery pipeline: generate_queries → execute_search
-    # → fetch_page → extract_content → extract_influencers → score_influencer
-    # → classify_brand_safety. The chain is fanned out across the
-    # ai_agent / scraping / scoring workers (see app/tasks/__init__.py).
-    from backend.pipeline.tasks import start_pipeline
-    start_pipeline(campaign_id_str)
+    try:
+        from backend.pipeline.tasks import start_pipeline
+
+        start_pipeline(campaign_id_str)
+    except Exception as exc:
+        db_campaign.status = "failed"
+        db_campaign.failed_at = datetime.now(UTC)
+        db_campaign.failure_reason = str(exc)
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {exc}") from exc
 
     return {
         "campaign_id": db_campaign.id,
-        "status": "started",
-        "pipeline_state": get_pipeline_state(campaign_id_str),
+        "status": db_campaign.status,
+        "pipeline_state": get_campaign_state_payload(db_campaign, campaign_id_str),
     }
 
 
 @router.get("/{id}", response_model=dict[str, Any])
 def get_campaign(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Retrieves campaign metadata along with the current pipeline execution state."""
+    """Retrieve campaign metadata along with current transient pipeline state."""
     db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
     if not db_campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     campaign_id_str = str(id)
-    # Fetch execution state from Redis
-    state = get_pipeline_state(campaign_id_str) or {
-        "campaign_id": campaign_id_str,
-        "phase": "finished",
-        "message": "Redis state expired, read database for outcomes."
-    }
-
     return {
         "campaign": CampaignResponse.model_validate(db_campaign),
-        "pipeline_state": state,
+        "pipeline_state": get_campaign_state_payload(db_campaign, campaign_id_str),
     }
 
 
 @router.get("/{id}/state", response_model=dict[str, Any])
-def get_campaign_state(id: UUID) -> dict[str, Any]:
-    """Fast-path fallback to retrieve only execution progress from Redis state cache."""
-    campaign_id_str = str(id)
-    state = get_pipeline_state(campaign_id_str)
-    if not state:
-        raise HTTPException(
-            status_code=404, detail="State cache not found or expired for campaign"
-        )
-    return state
+def get_campaign_state(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Retrieve execution progress, falling back to the durable campaign lifecycle state."""
+    db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
+    if not db_campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return get_campaign_state_payload(db_campaign, str(id))
 
 
 @router.get("/{id}/influencers", response_model=list[InfluencerResponse])
@@ -99,34 +93,22 @@ def get_campaign_influencers(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[InfluencerResponse]:
-    """Retrieves scored and ranked influencers discovered for a specific campaign.
-    Supports filtering, pagination, and sorting by final score.
-    """
-    # Ensure campaign exists
+    """Retrieve ranked influencers for a campaign with durable provenance details."""
     db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
     if not db_campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    # Build query joining influencer_scores and influencers
     query = (
         db.query(models.InfluencerScore, models.Influencer)
         .join(models.Influencer, models.InfluencerScore.influencer_id == models.Influencer.id)
         .filter(models.InfluencerScore.campaign_id == id)
     )
 
-    # Apply platform filters
     if platform:
-        # Check platforms JSONB field for presence of the specific platform key
         query = query.filter(models.Influencer.platforms.has_key(platform.lower()))
-
-    # Apply niche filter
     if niche:
-        # Check if niche is mentioned in the canonical name or platforms or credentials
         query = query.filter(models.Influencer.canonical_name.ilike(f"%{niche}%"))
-
-    # Apply grade filter
     if grade:
-        # Helper to map grades back to score boundaries
         grade_bounds = {
             "A+": (90.0, 100.0),
             "A": (80.0, 89.99),
@@ -141,35 +123,11 @@ def get_campaign_influencers(
                 models.InfluencerScore.final_score <= bounds[1],
             )
 
-    # Order by final score DESC (highest trust first)
-    query = query.order_by(models.InfluencerScore.final_score.desc())
-
-    # Paginate
-    results = query.limit(limit).offset(offset).all()
+    results = query.order_by(models.InfluencerScore.final_score.desc()).limit(limit).offset(offset).all()
 
     response_list = []
     for score, inf in results:
-        # Fetch sources for this influencer and campaign to satisfy provenance requirements
-        sources_list = (
-            db.query(models.CrawlSource)
-            .filter(
-                models.CrawlSource.campaign_id == id,
-                models.CrawlSource.influencer_id == inf.id
-            )
-            .all()
-        )
-
-        from backend.api.schemas.influencer import CrawlSourceResponse
-        sources_response = [
-            CrawlSourceResponse(
-                url=src.url,
-                title=src.title,
-                relevance_score=src.relevance_score,
-                status=src.status
-            )
-            for src in sources_list
-        ]
-
+        sources_response = _campaign_influencer_sources(db, id, inf.id)
         response_list.append(
             InfluencerResponse(
                 influencer_id=inf.id,
@@ -189,9 +147,73 @@ def get_campaign_influencers(
                 data_source_count=score.data_source_count,
                 score_version=score.score_version,
                 computed_at=score.computed_at,
+                signal_scores=score.signal_scores or {},
+                risk_category=score.risk_category,
+                detection_category=score.detection_category,
+                positive_reasons=score.positive_reasons or [],
+                negative_reasons=score.negative_reasons or [],
                 sources=sources_response,
             )
         )
 
     return response_list
 
+
+def get_campaign_state_payload(campaign: models.Campaign, campaign_id_str: str) -> dict[str, Any]:
+    state = get_pipeline_state(campaign_id_str)
+    if state:
+        state.setdefault("status", campaign.status)
+        state.setdefault("started_at", campaign.started_at.isoformat() if campaign.started_at else None)
+        return state
+    return {
+        "campaign_id": campaign_id_str,
+        "status": campaign.status,
+        "phase": campaign.status,
+        "started_at": campaign.started_at.isoformat() if campaign.started_at else None,
+        "completed_at": campaign.completed_at.isoformat() if campaign.completed_at else None,
+        "failed_at": campaign.failed_at.isoformat() if campaign.failed_at else None,
+        "failure_reason": campaign.failure_reason,
+        "message": "Redis state unavailable; returning durable campaign lifecycle state.",
+    }
+
+
+def _campaign_influencer_sources(db: Session, campaign_id: UUID, influencer_id: UUID) -> list[CrawlSourceResponse]:
+    links = (
+        db.query(models.CrawlSourceInfluencer, models.CrawlSource)
+        .join(models.CrawlSource, models.CrawlSource.id == models.CrawlSourceInfluencer.crawl_source_id)
+        .filter(
+            models.CrawlSource.campaign_id == campaign_id,
+            models.CrawlSourceInfluencer.influencer_id == influencer_id,
+        )
+        .all()
+    )
+    if links:
+        return [
+            CrawlSourceResponse(
+                url=source.url,
+                title=source.title,
+                relevance_score=source.relevance_score,
+                status=source.status,
+                mention_id=link.mention_id,
+                mention=link.mention,
+            )
+            for link, source in links
+        ]
+
+    legacy_sources = (
+        db.query(models.CrawlSource)
+        .filter(
+            models.CrawlSource.campaign_id == campaign_id,
+            models.CrawlSource.influencer_id == influencer_id,
+        )
+        .all()
+    )
+    return [
+        CrawlSourceResponse(
+            url=src.url,
+            title=src.title,
+            relevance_score=src.relevance_score,
+            status=src.status,
+        )
+        for src in legacy_sources
+    ]

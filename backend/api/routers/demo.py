@@ -26,6 +26,7 @@ def reset_database(db: Session = Depends(get_db)) -> dict[str, str]:
         db.query(models.BrandSafetyFlag).delete()
         db.query(models.CredentialVerification).delete()
         db.query(models.InfluencerScore).delete()
+        db.query(models.CrawlSourceInfluencer).delete()
         db.query(models.CrawlSource).delete()
         db.query(models.Influencer).delete()
         db.query(models.Campaign).delete()
@@ -79,6 +80,9 @@ def seed_database(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "sentiment": 0.10,
                 "brand_safety": 0.10
             },
+            status="completed",
+            started_at=datetime.utcnow() - timedelta(days=2, hours=3),
+            completed_at=datetime.utcnow() - timedelta(days=2),
             created_at=datetime.utcnow() - timedelta(days=2)
         )
         db.add(campaign_a)
@@ -101,6 +105,9 @@ def seed_database(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "sentiment": 0.10,
                 "brand_safety": 0.20
             },
+            status="partial",
+            started_at=datetime.utcnow() - timedelta(days=1, hours=6),
+            completed_at=datetime.utcnow() - timedelta(days=1),
             created_at=datetime.utcnow() - timedelta(days=1)
         )
         db.add(campaign_b)

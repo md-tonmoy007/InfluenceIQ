@@ -81,7 +81,7 @@ test-api:
 	$(COMPOSE) exec backend-core uv run --project backend python /workspace/scripts/test_suite.py
 
 test-unit:
-	PYTHONPATH=./backend DATABASE_URL=postgresql+psycopg2://x:x@localhost:5432/x \
+	PYTHONPATH=./backend DATABASE_URL=postgresql+psycopg://x:x@localhost:5432/x \
 	  REDIS_URL=redis://localhost:6379/0 \
 	  CELERY_BROKER_URL=redis://localhost:6379/0 \
 	  CELERY_RESULT_BACKEND=redis://localhost:6379/1 \
@@ -90,7 +90,7 @@ test-unit:
 	                        backend/tests/pipeline/ -q
 
 test-ml:
-	PYTHONPATH=./backend DATABASE_URL=postgresql+psycopg2://x:x@localhost:5432/x \
+	PYTHONPATH=./backend DATABASE_URL=postgresql+psycopg://x:x@localhost:5432/x \
 	  REDIS_URL=redis://localhost:6379/0 \
 	  CELERY_BROKER_URL=redis://localhost:6379/0 \
 	  CELERY_RESULT_BACKEND=redis://localhost:6379/1 \

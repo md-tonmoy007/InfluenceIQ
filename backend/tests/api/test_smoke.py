@@ -20,7 +20,7 @@ import os
 import unittest
 from pathlib import Path
 
-os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://x:x@localhost:5432/x")
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://x:x@localhost:5432/x")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("CELERY_BROKER_URL", "redis://localhost:6379/0")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")

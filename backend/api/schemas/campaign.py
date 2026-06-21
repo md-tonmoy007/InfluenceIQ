@@ -44,12 +44,17 @@ class CampaignResponse(BaseModel):
     id: UUID
     brand_id: UUID | None
     product: str
-    niche: str  # industry
+    niche: str
     goals: str | None
     target_audience: str | None
     preferred_platforms: list[str] | None
     budget_range: str | None
     weights: dict[str, float] | None
+    status: str
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    failed_at: datetime | None = None
+    failure_reason: str | None = None
     created_at: datetime
 
     class Config:

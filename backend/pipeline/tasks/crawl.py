@@ -1,22 +1,4 @@
-"""Crawl-phase Celery tasks.
-
-Two task bodies live here:
-
-* :func:`fetch_page` (``backend.pipeline.tasks.crawl.fetch_page``,
-  ``scraping_queue``) — loads a ``CrawlSource`` row, fetches the
-  URL via :func:`backend.pipeline.content.fetcher.fetch_url`, and
-  stores the HTML.
-
-* :func:`extract_content` (``backend.pipeline.tasks.crawl.extract_content``,
-  ``scraping_queue``) — runs
-  :func:`backend.pipeline.content.content_extractor.extract_role5_content`
-  over the page and persists the structured result. On success it
-  hands off to :func:`backend.pipeline.tasks.extract.extract_influencers`.
-
-Fetch errors are caught and recorded on the row; the worker retry
-policy is applied via ``self.retry`` so transient outages
-(``httpx.HTTPError``, ``ConnectionError``) get a second chance.
-"""
+"""Crawl-phase Celery tasks."""
 
 from __future__ import annotations
 
@@ -29,21 +11,20 @@ from sqlalchemy.exc import OperationalError
 from backend.core.database import models
 from backend.pipeline.content.content_extractor import extract_role5_content
 from backend.pipeline.content.fetcher import fetch_url
-from backend.pipeline.tasks._common import db_session, publish_event, set_phase
+from backend.pipeline.tasks._common import (
+    db_session,
+    mark_campaign_failed,
+    publish_event,
+    refresh_campaign_status,
+    set_phase,
+)
 
 log = logging.getLogger(__name__)
 
 
 @shared_task(name="backend.pipeline.tasks.crawl.fetch_page", bind=True, max_retries=3)
 def fetch_page(self, campaign_id: str, crawl_source_id: str) -> dict:
-    """Fetch the URL behind a ``CrawlSource`` row and persist the HTML.
-
-    On transient network failures the task re-raises so Celery can
-    apply its exponential-backoff retry. On permanent failures (4xx,
-    5xx with no fallback, parse errors) the row is marked ``failed``
-    with the error message and the chain continues with the next
-    source.
-    """
+    """Fetch the URL behind a ``CrawlSource`` row and persist the HTML."""
     log.info("fetch_page campaign_id=%s crawl_source_id=%s", campaign_id, crawl_source_id)
     with db_session() as session:
         source = session.get(models.CrawlSource, crawl_source_id)
@@ -56,7 +37,6 @@ def fetch_page(self, campaign_id: str, crawl_source_id: str) -> dict:
     try:
         page = fetch_url(url)
     except Exception as exc:
-        # Transient I/O — let Celery retry with backoff.
         log.warning("fetch_url transient failure for %s: %s", url, exc)
         try:
             raise self.retry(exc=exc, countdown=min(2 ** self.request.retries, 30))
@@ -68,7 +48,6 @@ def fetch_page(self, campaign_id: str, crawl_source_id: str) -> dict:
     html = page.get("html", "")
     error = page.get("error")
     if status_code >= 500 and not html:
-        # 5xx with no body — retry.
         msg = error or f"status {status_code}"
         try:
             raise self.retry(exc=RuntimeError(msg), countdown=min(2 ** self.request.retries, 30))
@@ -85,29 +64,26 @@ def fetch_page(self, campaign_id: str, crawl_source_id: str) -> dict:
         source.error_message = error
         if title_hint and not source.title:
             source.title = title_hint
-        # ``fetched_at`` records the persist time (timezone-aware UTC).
         source.fetched_at = datetime.now(UTC)
+        refresh_campaign_status(session, campaign_id)
 
-    publish_event(campaign_id, "page.fetched",
-                  crawl_source_id=crawl_source_id, url=url,
-                  status=status_code, cached=bool(page.get("cached", False)))
+    publish_event(
+        campaign_id,
+        "page.fetched",
+        crawl_source_id=crawl_source_id,
+        url=url,
+        status=status_code,
+        cached=bool(page.get("cached", False)),
+    )
     set_phase(campaign_id, urls_scraped=_bump_counter(campaign_id, "urls_scraped"))
 
-    # Hand off to content extraction with the fresh page dict.
     extract_content.delay(campaign_id, crawl_source_id, page)
     return {"crawl_source_id": crawl_source_id, "status": "scraped", "url": url}
 
 
 @shared_task(name="backend.pipeline.tasks.crawl.extract_content", bind=True, max_retries=2)
 def extract_content(self, campaign_id: str, crawl_source_id: str, page: dict) -> dict:
-    """Extract structured content from a fetched page and persist it.
-
-    The page dict is the same shape :func:`extract_role5_content`
-    accepts (URL, HTML, status, etc.). The function returns a
-    ``content`` dict that already carries a ``role5_candidate`` block
-    — we store the title and the role5 payload and pass the full
-    content dict to the next task.
-    """
+    """Extract structured content from a fetched page and persist it."""
     log.info("extract_content campaign_id=%s crawl_source_id=%s", campaign_id, crawl_source_id)
     try:
         content = extract_role5_content(page)
@@ -121,22 +97,26 @@ def extract_content(self, campaign_id: str, crawl_source_id: str, page: dict) ->
         if source is None:
             return {"crawl_source_id": crawl_source_id, "status": "missing"}
         source.title = content.get("title") or source.title
-        # The full extracted text (without HTML markup) — bounded by
-        # what the content extractor already truncated.
         source.content = content.get("content", "")
         source.status = "extracted"
+        if source.html is None:
+            source.html = page.get("html", "")
         if not source.relevance_score:
             source.relevance_score = content.get("metrics", {}).get("average_engagement")
+        refresh_campaign_status(session, campaign_id)
 
-    publish_event(campaign_id, "content.extracted",
-                  crawl_source_id=crawl_source_id,
-                  url=content.get("url"),
-                  title=content.get("title"),
-                  social_links=content.get("social_links", []),
-                  metrics=content.get("metrics", {}))
-    set_phase(campaign_id, urls_scraped=_bump_counter(campaign_id, "urls_scraped"))
+    publish_event(
+        campaign_id,
+        "content.extracted",
+        crawl_source_id=crawl_source_id,
+        url=content.get("url"),
+        title=content.get("title"),
+        social_links=content.get("social_links", []),
+        metrics=content.get("metrics", {}),
+    )
 
-    from backend.pipeline.tasks.extract import extract_influencers  # avoid circular import
+    from backend.pipeline.tasks.extract import extract_influencers
+
     extract_influencers.delay(campaign_id, crawl_source_id, content)
     return {
         "crawl_source_id": crawl_source_id,
@@ -145,13 +125,7 @@ def extract_content(self, campaign_id: str, crawl_source_id: str, page: dict) ->
     }
 
 
-# ---------------------------------------------------------------------------
-# Private helpers
-# ---------------------------------------------------------------------------
-
-
 def _mark_failed(campaign_id: str, crawl_source_id: str, error: str) -> None:
-    """Mark a ``CrawlSource`` row as failed without raising on secondary errors."""
     try:
         with db_session() as session:
             source = session.get(models.CrawlSource, crawl_source_id)
@@ -159,23 +133,16 @@ def _mark_failed(campaign_id: str, crawl_source_id: str, error: str) -> None:
                 return
             source.status = "failed"
             source.error_message = error
-        publish_event(campaign_id, "crawl.failed",
-                      crawl_source_id=crawl_source_id, error=error)
+            mark_campaign_failed(session, campaign_id, error)
+        publish_event(campaign_id, "crawl.failed", crawl_source_id=crawl_source_id, error=error)
         set_phase(campaign_id, urls_failed=_bump_counter(campaign_id, "urls_failed"))
     except OperationalError:
-        # The DB is down too — there is nothing useful to do here.
         log.exception("Cannot mark %s failed: DB unreachable", crawl_source_id)
 
 
 def _bump_counter(campaign_id: str, field: str) -> int:
-    """Atomically increment a numeric counter in the pipeline-state hash.
-
-    Implemented as a read-modify-write because the state hash carries
-    multiple counters; the operation is fast and the lock is not held
-    across Redis round-trips. For the per-campaign QPS the pipeline
-    operates at (single digits) the race window is irrelevant.
-    """
     from backend.core.cache.pipeline_state import get_pipeline_state
+
     state = get_pipeline_state(campaign_id) or {}
     return int(state.get(field, 0)) + 1
 

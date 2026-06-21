@@ -28,6 +28,8 @@ class CrawlSourceResponse(BaseModel):
     title: str | None = None
     relevance_score: float | None = None
     status: str
+    mention_id: str | None = None
+    mention: dict | None = None
 
     class Config:
         from_attributes = True
@@ -41,17 +43,19 @@ class InfluencerResponse(BaseModel):
     credentials: list[str] | None = Field(default_factory=list)
     mentions: list[dict] | None = Field(default_factory=list)
 
-    # Latest score metrics
     final_score: float | None = None
     sub_scores: SubScores | None = None
-    confidence: str | None = None  # High / Medium / Low
+    confidence: str | None = None
     data_source_count: int = 0
     score_version: str | None = None
     computed_at: datetime | None = None
+    signal_scores: dict | None = None
+    risk_category: str | None = None
+    detection_category: str | None = None
+    positive_reasons: list[str] | None = Field(default_factory=list)
+    negative_reasons: list[str] | None = Field(default_factory=list)
 
-    # Source provenance
     sources: list[CrawlSourceResponse] | None = Field(default_factory=list)
 
     class Config:
         from_attributes = True
-

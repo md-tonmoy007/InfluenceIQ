@@ -48,9 +48,8 @@ def get_influencer_scores(id: UUID, db: Session = Depends(get_db)) -> list[dict[
 
     scores = db.query(models.InfluencerScore).filter(models.InfluencerScore.influencer_id == id).all()
 
-    response_list = []
-    for s in scores:
-        response_list.append({
+    return [
+        {
             "score_id": s.id,
             "campaign_id": s.campaign_id,
             "final_score": s.final_score,
@@ -62,10 +61,16 @@ def get_influencer_scores(id: UUID, db: Session = Depends(get_db)) -> list[dict[
             "confidence_level": s.confidence_level,
             "data_source_count": s.data_source_count,
             "score_version": s.score_version,
-            "computed_at": s.computed_at
-        })
-
-    return response_list
+            "signal_scores": s.signal_scores or {},
+            "risk_category": s.risk_category,
+            "detection_category": s.detection_category,
+            "positive_reasons": s.positive_reasons or [],
+            "negative_reasons": s.negative_reasons or [],
+            "source_provenance": s.source_provenance or [],
+            "computed_at": s.computed_at,
+        }
+        for s in scores
+    ]
 
 
 @router.get("/{id}/safety", response_model=list[dict[str, Any]])
@@ -80,18 +85,17 @@ def get_influencer_safety_flags(id: UUID, db: Session = Depends(get_db)) -> list
 
     flags = db.query(models.BrandSafetyFlag).filter(models.BrandSafetyFlag.influencer_id == id).all()
 
-    response_list = []
-    for f in flags:
-        response_list.append({
+    return [
+        {
             "flag_id": f.id,
             "campaign_id": f.campaign_id,
             "source_url": f.source_url,
             "risk_type": f.risk_type,
             "reason": f.reason,
-            "created_at": f.created_at
-        })
-
-    return response_list
+            "created_at": f.created_at,
+        }
+        for f in flags
+    ]
 
 
 @router.get("/{id}/verifications", response_model=list[dict[str, Any]])
@@ -106,15 +110,14 @@ def get_influencer_verifications(id: UUID, db: Session = Depends(get_db)) -> lis
 
     verifications = db.query(models.CredentialVerification).filter(models.CredentialVerification.influencer_id == id).all()
 
-    response_list = []
-    for v in verifications:
-        response_list.append({
+    return [
+        {
             "verification_id": v.id,
             "credential_type": v.credential_type,
             "credential_value": v.credential_value,
             "verified": v.verified,
             "verified_at": v.verified_at,
-            "created_at": v.created_at
-        })
-
-    return response_list
+            "created_at": v.created_at,
+        }
+        for v in verifications
+    ]

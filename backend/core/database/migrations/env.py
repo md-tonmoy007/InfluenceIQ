@@ -12,6 +12,7 @@ from backend.core.database.models import (  # noqa: F401
     BrandSafetyFlag,
     Campaign,
     CrawlSource,
+    CrawlSourceInfluencer,
     CredentialVerification,
     Influencer,
     InfluencerScore,

@@ -32,7 +32,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 # Environment: must be set BEFORE the app modules are imported.
 # ---------------------------------------------------------------------------
-os.environ.setdefault("DATABASE_URL", "postgresql+psycopg2://x:x@localhost:5432/x")
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://x:x@localhost:5432/x")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("CELERY_BROKER_URL", "redis://localhost:6379/0")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")

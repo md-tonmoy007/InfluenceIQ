@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -45,18 +46,23 @@ class User(Base):
 
 
 class Campaign(Base):
-    """Stores brand campaign metadata and scoring weight customizations."""
+    """Stores brand campaign metadata, lifecycle state, and scoring customizations."""
     __tablename__ = "campaigns"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     brand_id = Column(UUID(as_uuid=True), ForeignKey("brands.id"), nullable=True)
     product = Column(String, nullable=False)
-    niche = Column(String, nullable=False)  # Industry/niche
+    niche = Column(String, nullable=False)
     goals = Column(Text, nullable=True)
     target_audience = Column(Text, nullable=True)
-    preferred_platforms = Column(JSONB, nullable=True)  # List of strings e.g. ["instagram", "youtube"]
+    preferred_platforms = Column(JSONB, nullable=True)
     budget_range = Column(String, nullable=True)
-    weights = Column(JSONB, nullable=True)  # custom weight distribution dict
+    weights = Column(JSONB, nullable=True)
+    status = Column(String, nullable=False, default="pending")
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    failed_at = Column(DateTime, nullable=True)
+    failure_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     brand = relationship("Brand", back_populates="campaigns")
@@ -71,20 +77,23 @@ class Influencer(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     canonical_name = Column(String, nullable=False)
-    platforms = Column(JSONB, nullable=False)  # e.g. {"instagram": "@handle", "youtube": "youtube.com/channel"}
-    credentials = Column(JSONB, nullable=True)  # list of credentials
-    mentions = Column(JSONB, nullable=True)  # list of raw mentions mapping context
+    platforms = Column(JSONB, nullable=False)
+    credentials = Column(JSONB, nullable=True)
+    mentions = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     scores = relationship("InfluencerScore", back_populates="influencer", cascade="all, delete-orphan")
     crawl_sources = relationship("CrawlSource", back_populates="influencer")
+    crawl_source_links = relationship(
+        "CrawlSourceInfluencer", back_populates="influencer", cascade="all, delete-orphan"
+    )
     brand_safety_flags = relationship("BrandSafetyFlag", back_populates="influencer", cascade="all, delete-orphan")
     verifications = relationship("CredentialVerification", back_populates="influencer", cascade="all, delete-orphan")
 
 
 class InfluencerScore(Base):
-    """Stores metrics and sub-scores for a specific scoring run."""
+    """Stores metrics, score explanations, and source provenance for a scoring run."""
     __tablename__ = "influencer_scores"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -98,9 +107,15 @@ class InfluencerScore(Base):
     sentiment_score = Column(Float, nullable=False)
     brand_safety_score = Column(Float, nullable=False)
 
-    confidence_level = Column(String, nullable=False)  # High / Medium / Low
+    confidence_level = Column(String, nullable=False)
     data_source_count = Column(Integer, nullable=False, default=0)
     score_version = Column(String, nullable=False, default="v1.0")
+    signal_scores = Column(JSONB, nullable=True)
+    risk_category = Column(String, nullable=True)
+    detection_category = Column(String, nullable=True)
+    positive_reasons = Column(JSONB, nullable=True)
+    negative_reasons = Column(JSONB, nullable=True)
+    source_provenance = Column(JSONB, nullable=True)
     computed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     influencer = relationship("Influencer", back_populates="scores")
@@ -108,7 +123,7 @@ class InfluencerScore(Base):
 
 
 class CrawlSource(Base):
-    """Tracks URLs discovered, fetched and parsed during execution."""
+    """Tracks URLs discovered, fetched, parsed, and attributed during execution."""
     __tablename__ = "crawl_sources"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -117,15 +132,38 @@ class CrawlSource(Base):
 
     url = Column(String, nullable=False)
     title = Column(String, nullable=True)
+    html = Column(Text, nullable=True)
     content = Column(Text, nullable=True)
     relevance_score = Column(Float, nullable=True)
-    status = Column(String, nullable=False, default="pending")  # pending, scraped, failed
+    status = Column(String, nullable=False, default="pending")
     error_message = Column(Text, nullable=True)
     fetched_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     campaign = relationship("Campaign", back_populates="crawl_sources")
     influencer = relationship("Influencer", back_populates="crawl_sources")
+    influencer_links = relationship(
+        "CrawlSourceInfluencer", back_populates="crawl_source", cascade="all, delete-orphan"
+    )
+
+
+class CrawlSourceInfluencer(Base):
+    """Durable attribution between a crawl source and one or more influencers."""
+    __tablename__ = "crawl_source_influencers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    crawl_source_id = Column(UUID(as_uuid=True), ForeignKey("crawl_sources.id"), nullable=False)
+    influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id"), nullable=False)
+    mention_id = Column(String, nullable=True)
+    mention = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    crawl_source = relationship("CrawlSource", back_populates="influencer_links")
+    influencer = relationship("Influencer", back_populates="crawl_source_links")
+
+    __table_args__ = (
+        UniqueConstraint("crawl_source_id", "influencer_id", "mention_id", name="uq_crawl_source_influencer_mention"),
+    )
 
 
 class BrandSafetyFlag(Base):
@@ -137,7 +175,7 @@ class BrandSafetyFlag(Base):
     campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id"), nullable=False)
 
     source_url = Column(String, nullable=False)
-    risk_type = Column(String, nullable=False)  # hate_speech, misinformation, scam, toxic, undisclosed_sponsorships
+    risk_type = Column(String, nullable=False)
     reason = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -151,7 +189,7 @@ class CredentialVerification(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id"), nullable=False)
-    credential_type = Column(String, nullable=False)  # education, certification, license
+    credential_type = Column(String, nullable=False)
     credential_value = Column(String, nullable=False)
     verified = Column(Boolean, default=False, nullable=False)
     verified_at = Column(DateTime, nullable=True)
@@ -160,11 +198,12 @@ class CredentialVerification(Base):
     influencer = relationship("Influencer", back_populates="verifications")
 
 
-# Indexes for efficient filtering and relational joins
 Index("idx_influencer_scores_campaign", InfluencerScore.campaign_id)
 Index("idx_influencer_scores_influencer", InfluencerScore.influencer_id)
 Index("idx_crawl_sources_campaign", CrawlSource.campaign_id)
 Index("idx_crawl_sources_url", CrawlSource.url)
+Index("idx_crawl_source_influencers_source", CrawlSourceInfluencer.crawl_source_id)
+Index("idx_crawl_source_influencers_influencer", CrawlSourceInfluencer.influencer_id)
 Index("idx_brand_safety_influencer", BrandSafetyFlag.influencer_id)
 Index("idx_brand_safety_campaign", BrandSafetyFlag.campaign_id)
 Index("idx_credential_verifications_influencer", CredentialVerification.influencer_id)
