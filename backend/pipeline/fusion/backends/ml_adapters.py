@@ -6,11 +6,10 @@ versions of the heuristic pipelines. When all flags are off (the
 default) nothing is imported and behaviour is byte-for-byte identical
 to the pre-upgrade heuristics.
 
-The ``backend.ml`` package lives at the repository root. It is **not** a
-hard dependency: if it is not installed, every adapter returns the
-``(None, {})`` tuple (or ``""`` for the LLM explainer) and the
-heuristic path takes over. Install it with ``pip install -e ./backend.ml``
-to opt in.
+The ``backend.ml`` package lives in-tree under ``backend/ml``. It is **not** a
+hard dependency: if its heavier ML dependencies are unavailable, every adapter
+returns the ``(None, {})`` tuple (or ``""`` for the LLM explainer) and the
+heuristic path takes over.
 
 Environment flags
 =================

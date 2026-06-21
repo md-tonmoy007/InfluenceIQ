@@ -20,16 +20,9 @@ back to a deterministic implementation when the adapter is disabled or when
 
 ## Install
 
-```bash
-# from the repo root
-pip install -e ./backend/ml
-
-# with the LLM (HTTP) adapter enabled
-pip install -e "./backend/ml[llm]"
-
-# with the GNN adapters
-pip install -e "./backend/ml[gnn]"
-```
+`backend/ml` is kept in-tree. The default backend uv environment does not install the
+heavy ML-only dependencies automatically; add them separately when you enable these
+adapters.
 
 ## Run the FastAPI service
 

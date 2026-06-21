@@ -1,7 +1,9 @@
-.PHONY: help up down restart ps logs migrate db-revision db-upgrade seed test test-api test-unit test-ml ml-install ml-run health lint
+.PHONY: help up down restart ps logs migrate db-revision db-upgrade seed test test-api test-unit test-ml ml-install ml-run health lint sync
 
 # Host port mappings
 API_URL = http://localhost:8002
+UV_BACKEND = uv --project backend
+COMPOSE = docker compose --env-file backend/.env
 
 help:
 	@echo "=========================================================================="
@@ -24,55 +26,59 @@ help:
 	@echo "  make test         - Run the WebSocket and event replay integration test"
 	@echo "  make test-api     - Run the comprehensive Python API unit/integration suite"
 	@echo "  make test-unit    - Run the fast offline unit tests (no docker required)"
-	@echo "  make test-ml      - Run the optional backend.ml tests (requires make ml-install)"
+	@echo "  make test-ml      - Run the optional backend.ml tests"
+	@echo "  make sync         - Create/update the backend uv environment with dev deps"
 	@echo "  make health       - Check detailed system health and Celery queue statuses"
 	@echo "  make lint         - Run ruff over the whole tree"
 	@echo ""
 	@echo "Optional Backend:"
-	@echo "  make ml-install   - Install the optional backend.ml ML package"
-	@echo "  make ml-run       - Run the backend.ml FastAPI service (after ml-install)"
+	@echo "  make ml-install   - No-op: backend.ml is in-tree; sync runtime deps if needed"
+	@echo "  make ml-run       - Run the backend.ml FastAPI service"
 	@echo "=========================================================================="
 
+sync:
+	$(UV_BACKEND) sync --dev
+
 up:
-	docker compose up -d
+	$(COMPOSE) up --build -d --remove-orphans
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 restart:
-	docker compose restart
+	$(COMPOSE) restart
 
 ps:
-	docker compose ps
+	$(COMPOSE) ps
 
 logs:
-	docker compose logs -f backend-core
+	$(COMPOSE) logs -f backend-core
 
 db-revision:
 	@read -p "Enter migration message: " msg; \
-	docker compose exec backend-core alembic revision --autogenerate -m "$$msg"
+	$(COMPOSE) exec backend-core uv run --project backend alembic -c backend/alembic.ini revision --autogenerate -m "$$msg"
 
 db-upgrade:
-	docker compose exec backend-core alembic upgrade head
+	$(COMPOSE) exec backend-core uv run --project backend alembic -c backend/alembic.ini upgrade head
 
 migrate:
 	@echo "Generating migration..."
-	docker compose exec backend-core alembic revision --autogenerate -m "auto_migration"
+	$(COMPOSE) exec backend-core uv run --project backend alembic -c backend/alembic.ini revision --autogenerate -m "auto_migration"
 	@echo "Applying migration..."
-	docker compose exec backend-core alembic upgrade head
+	$(COMPOSE) exec backend-core uv run --project backend alembic -c backend/alembic.ini upgrade head
 
 seed:
 	@echo "Seeding/Resetting demo data..."
 	@curl -s -X POST $(API_URL)/api/demo/seed | jq || curl -s -X POST $(API_URL)/api/demo/seed
 
 test:
-	docker compose exec backend-core python /workspace/scripts/verify_websocket.py
+	$(COMPOSE) exec backend-core uv run --project backend python /workspace/scripts/verify_websocket.py
 
 test-pipeline:
-	docker compose exec backend-core python /workspace/scripts/smoke_campaign.py
+	$(COMPOSE) exec backend-core uv run --project backend python /workspace/scripts/smoke_campaign.py
 
 test-api:
-	docker compose exec backend-core python /workspace/scripts/test_suite.py
+	$(COMPOSE) exec backend-core uv run --project backend python /workspace/scripts/test_suite.py
 
 test-unit:
 	PYTHONPATH=./backend DATABASE_URL=postgresql+psycopg2://x:x@localhost:5432/x \
@@ -80,8 +86,8 @@ test-unit:
 	  CELERY_BROKER_URL=redis://localhost:6379/0 \
 	  CELERY_RESULT_BACKEND=redis://localhost:6379/1 \
 	  QDRANT_URL=http://localhost:6333 \
-	  python3 -m pytest backend/tests/api/test_smoke.py \
-	                     backend/tests/pipeline/ -q
+	  $(UV_BACKEND) run pytest backend/tests/api/test_smoke.py \
+	                        backend/tests/pipeline/ -q
 
 test-ml:
 	PYTHONPATH=./backend DATABASE_URL=postgresql+psycopg2://x:x@localhost:5432/x \
@@ -89,20 +95,20 @@ test-ml:
 	  CELERY_BROKER_URL=redis://localhost:6379/0 \
 	  CELERY_RESULT_BACKEND=redis://localhost:6379/1 \
 	  QDRANT_URL=http://localhost:6333 \
-	  python3 -m pytest backend/tests/ml/ -q
+	  $(UV_BACKEND) run pytest backend/tests/ml/ -q
 
 lint:
-	@command -v ruff >/dev/null 2>&1 || { echo "Install ruff: pip install ruff"; exit 1; }
-	ruff check .
+	cd backend && uv run --project . ruff check --config ruff.toml . ../scripts
 
 ml-install:
-	pip install -e ./backend/ml
+	@echo "backend.ml is in-tree and has no separate package metadata."
+	@echo "Use 'make sync' for core deps; add ML-only deps separately if you enable them."
 
 ml-run:
 	@if [ ! -d "backend/ml" ]; then \
-	  echo "Run 'make ml-install' first."; exit 1; \
+	  echo "backend/ml is missing."; exit 1; \
 	fi
-	ML_ROLE=all python3 -m backend.ml.api
+	ML_ROLE=all $(UV_BACKEND) run python -m backend.ml.api
 
 health:
 	@curl -s $(API_URL)/health | jq || curl -s $(API_URL)/health

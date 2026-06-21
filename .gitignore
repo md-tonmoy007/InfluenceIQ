@@ -43,9 +43,12 @@ frontend/.DS_Store
 # Environment & secrets
 .env
 .env.*
+backend/.env
+backend/.env.*
 .env.local
 .env.*.local
 !.env.example
+!backend/.env.example
 !frontend/.env.example
 *.pem
 *.key

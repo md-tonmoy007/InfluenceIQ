@@ -7,7 +7,7 @@ This document is the practical local-development companion to [architecture.md](
 - Docker + Docker Compose
 - Python 3.11+
 - Node.js 20+
-- `pip` for optional local Python installs
+- `uv`
 - `jq` optional, for prettier `make health` and `make seed` output
 
 ## Repository Layout
@@ -19,9 +19,10 @@ This document is the practical local-development companion to [architecture.md](
 
 ## Environment Setup
 
-1. Copy `.env.example` to `.env`.
+1. Copy `backend/.env.example` to `backend/.env`.
 2. Review any provider keys you want to enable.
 3. For frontend-only local work, review `frontend/.env.example`.
+4. Create the backend environment with `uv sync --project backend --dev`.
 
 The default Docker stack expects these exposed ports:
 
@@ -54,6 +55,7 @@ make down
 Run fast offline tests without Docker:
 
 ```bash
+make sync
 make test-unit
 ```
 
@@ -112,12 +114,11 @@ make seed
 The `backend/ml` package is optional.
 
 ```bash
-make ml-install
 make test-ml
 make ml-run
 ```
 
-Keep ML adapters disabled in `.env` unless you have installed the package and configured its dependencies.
+Keep ML adapters disabled in `backend/.env` unless you have installed any extra ML dependencies you need and configured them.
 
 ## Development Conventions
 

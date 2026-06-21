@@ -42,13 +42,14 @@ services:
   backend-core:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
-    env_file: .env
+    env_file: backend/.env
     ports:
       - "8002:8000"
     volumes:
       - .:/workspace
+      - backend_venv:/workspace/backend/.venv
     environment:
       PYTHONPATH: /workspace
     healthcheck:
@@ -71,13 +72,14 @@ services:
   worker_ai_agent:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     command: celery -A backend.workers.ai_agent.worker:celery_app worker -Q ai_agent_queue -c 2 -n ai_agent@%h
-    env_file: .env
+    env_file: backend/.env
     environment:
       PYTHONPATH: /workspace
     volumes:
       - .:/workspace
+      - backend_venv:/workspace/backend/.venv
     healthcheck:
       # Celery's `inspect ping` round-trips through the broker.
       test: ["CMD", "celery", "-A", "backend.workers.ai_agent.worker:celery_app", "inspect", "ping", "-t", "2"]
@@ -93,13 +95,14 @@ services:
   worker_scraping:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     command: celery -A backend.workers.scraping.worker:celery_app worker -Q scraping_queue -c 8 -n scraping@%h
-    env_file: .env
+    env_file: backend/.env
     environment:
       PYTHONPATH: /workspace
     volumes:
       - .:/workspace
+      - backend_venv:/workspace/backend/.venv
     healthcheck:
       test: ["CMD", "celery", "-A", "backend.workers.scraping.worker:celery_app", "inspect", "ping", "-t", "2"]
       interval: 30s
@@ -114,13 +117,14 @@ services:
   worker_scoring:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     command: celery -A backend.workers.scoring.worker:celery_app worker -Q scoring_queue -c 4 -n scoring@%h
-    env_file: .env
+    env_file: backend/.env
     environment:
       PYTHONPATH: /workspace
     volumes:
       - .:/workspace
+      - backend_venv:/workspace/backend/.venv
     healthcheck:
       test: ["CMD", "celery", "-A", "backend.workers.scoring.worker:celery_app", "inspect", "ping", "-t", "2"]
       interval: 30s
@@ -135,15 +139,16 @@ services:
   flower:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile
     command: celery -A backend.workers.ai_agent.worker:celery_app flower --port=5555
-    env_file: .env
+    env_file: backend/.env
     environment:
       PYTHONPATH: /workspace
     ports:
       - "5555:5555"
     volumes:
       - .:/workspace
+      - backend_venv:/workspace/backend/.venv
     depends_on:
       redis:
         condition: service_healthy
@@ -156,7 +161,7 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
         NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-ws://localhost:8000}
-    env_file: .env
+    env_file: backend/.env
     ports:
       - "3002:3000"
     depends_on:
@@ -168,3 +173,4 @@ volumes:
   postgres_data:
   redis_data:
   qdrant_data:
+  backend_venv:

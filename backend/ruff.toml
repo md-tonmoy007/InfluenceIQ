@@ -6,9 +6,9 @@ target-version = "py311"
 # it; the maintainers of backend.ml can run `ruff check backend/ml/`
 # separately when they want to clean it up.
 extend-exclude = [
-    "backend/ml",
-    ".venv",
-    "frontend",
+    "ml",
+    "../.venv",
+    "../frontend",
 ]
 
 [lint]
@@ -28,20 +28,20 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"backend/tests/*" = ["B", "E402"]
-"scripts/*" = ["B", "E402"]
-"backend/tests/pipeline/*" = ["B", "E402"]
+"tests/*" = ["B", "E402"]
+"../scripts/*" = ["B", "E402"]
+"tests/pipeline/*" = ["B", "E402"]
 # The pre-existing backend/pipeline/analysis/* files have a style
 # of multi-statement-if (`if cond: do_x(); do_y()`) that ruff E701
 # flags. They are out of scope for this refactor; tracked for a
 # follow-up cleanup PR.
-"backend/pipeline/analysis/*.py" = ["E701", "E702"]
-"backend/pipeline/detection/detection_classifier.py" = ["UP042"]
-"backend/pipeline/fusion/normalize.py" = ["E701"]
-"backend/pipeline/fusion/components.py" = ["E701"]
-"backend/pipeline/fusion/sub_scores.py" = ["E701"]
-"backend/pipeline/extraction/contact_info.py" = ["E402"]
-"backend/pipeline/orchestrator/pipeline.py" = ["F841"]
+"pipeline/analysis/*.py" = ["E701", "E702"]
+"pipeline/detection/detection_classifier.py" = ["UP042"]
+"pipeline/fusion/normalize.py" = ["E701"]
+"pipeline/fusion/components.py" = ["E701"]
+"pipeline/fusion/sub_scores.py" = ["E701"]
+"pipeline/extraction/contact_info.py" = ["E402"]
+"pipeline/orchestrator/pipeline.py" = ["F841"]
 
 [format]
 quote-style = "double"

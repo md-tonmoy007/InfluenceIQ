@@ -16,12 +16,21 @@ All Python backend code is grouped under `backend/` with four layers:
 - `backend.core/` — cross-cutting infrastructure (config, db, cache, celery setup)
 - `backend.pipeline/` — role-5 domain (orchestrator, tasks, analysis, detection, fusion, content)
 - `backend.workers/` — per-role Celery shims
-- `backend.ml/` — *optional* ML backend (install via `make ml-install`)
+- `backend.ml/` — *optional* ML backend kept in-tree
+
+## Python environment
+
+```bash
+cp backend/.env.example backend/.env
+uv sync --project backend --dev
+```
+
+This repo now uses `backend/pyproject.toml` and `backend/uv.lock` as the Python source of truth.
 
 ## Run
 
 ```bash
-docker compose up --build
+make up
 ```
 
 Endpoints:
@@ -33,12 +42,13 @@ Endpoints:
 ## Tests
 
 ```bash
+make sync        # create/update the backend uv environment
 make test-unit   # fast offline tests (no docker required)
-make test-ml     # optional backend.ml tests (requires make ml-install first)
+make test-ml     # optional backend.ml tests
 ```
 
 ## Notes
 
 - The task implementations are still placeholders from the hackathon scaffold; this refactor changes runtime boundaries, queue ownership, and container topology.
 - Queue routing is service-oriented: `ai_agent_queue`, `scraping_queue`, and `scoring_queue`.
-- The optional `backend.ml` package (formerly `umgl_ai`) installs the heavy torch/transformers stack. Without it, every adapter falls back to deterministic behaviour.
+- `backend/ml` is optional at runtime. Its heavier ML dependencies are intentionally not part of the default backend sync, and adapters fall back to deterministic behaviour when unavailable.
