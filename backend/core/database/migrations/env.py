@@ -7,6 +7,16 @@ from sqlalchemy import engine_from_config, pool
 from backend.core.config import settings
 
 # Import models so they are registered on the Base.metadata
+from backend.core.database.models import (  # noqa: F401
+    Brand,
+    BrandSafetyFlag,
+    Campaign,
+    CrawlSource,
+    CredentialVerification,
+    Influencer,
+    InfluencerScore,
+    User,
+)
 from backend.core.database.session import Base
 
 # this is the Alembic Config object, which provides
@@ -69,9 +79,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

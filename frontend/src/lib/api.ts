@@ -1,5 +1,10 @@
 import type { CampaignBriefPayload } from "@/types/campaign";
 import type { InfluencerRecommendation } from "@/types/influencer";
+import {
+  getAccessToken,
+  refreshAccessToken,
+  clearTokens,
+} from "@/lib/auth";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
@@ -103,19 +108,65 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
     throw new Error("NEXT_PUBLIC_API_BASE_URL is not configured");
   }
 
+  const token = getAccessToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+
   const response = await fetch(apiUrl(path), {
     ...init,
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
     cache: "no-store",
   });
 
+  // On 401, try a single token refresh then retry
+  if (response.status === 401) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      headers.Authorization = `Bearer ${newToken}`;
+      const retryResponse = await fetch(apiUrl(path), {
+        ...init,
+        credentials: "include",
+        headers,
+        cache: "no-store",
+      });
+      if (retryResponse.ok) {
+        return retryResponse.json() as Promise<T>;
+      }
+    }
+    clearTokens();
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    throw new Error("Session expired");
+  }
+
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with status ${response.status}`);
+    let message: string;
+    try {
+      const body = await response.json();
+      message = body.detail ?? body.message ?? JSON.stringify(body);
+    } catch {
+      message = await response.text().catch(() => "");
+    }
+    // Map status codes to readable messages when no detail is returned
+    if (!message) {
+      const statusMessages: Record<number, string> = {
+        400: "Invalid request. Please check your input.",
+        401: "Invalid email or password.",
+        403: "You don't have permission to do that.",
+        404: "Service unavailable. Please try again.",
+        409: "An account with this email already exists.",
+        422: "Please check your input and try again.",
+        429: "Too many requests. Please wait a moment.",
+        500: "Something went wrong. Please try again.",
+      };
+      message = statusMessages[response.status] ?? `Request failed (${response.status})`;
+    }
+    throw new Error(message);
   }
 
   return response.json() as Promise<T>;
@@ -214,20 +265,26 @@ export const signup = async (payload: {
   name: string;
   email: string;
   password: string;
-}): Promise<{ user: CurrentUser }> =>
-  requestJson<{ user: CurrentUser }>("/api/auth/signup", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+}): Promise<{ user: CurrentUser; access_token: string; refresh_token: string }> =>
+  requestJson<{ user: CurrentUser; access_token: string; refresh_token: string }>(
+    "/api/auth/signup",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
 
 export const login = async (payload: {
   email: string;
   password: string;
-}): Promise<{ user: CurrentUser }> =>
-  requestJson<{ user: CurrentUser }>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+}): Promise<{ user: CurrentUser; access_token: string; refresh_token: string }> =>
+  requestJson<{ user: CurrentUser; access_token: string; refresh_token: string }>(
+    "/api/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
 
 export const logout = async (): Promise<{ status: string }> =>
   requestJson<{ status: string }>("/api/auth/logout", {

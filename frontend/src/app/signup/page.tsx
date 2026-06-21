@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signup } from "@/lib/api";
+import { setTokens } from "@/lib/auth";
 import "../signup.css";
 
 export default function SignupPage() {
@@ -20,12 +21,13 @@ export default function SignupPage() {
     setError("");
 
     try {
-      await signup({
+      const result = await signup({
         company_name: String(form.get("company_name") ?? ""),
         name: String(form.get("name") ?? ""),
         email: String(form.get("email") ?? ""),
         password: String(form.get("password") ?? ""),
       });
+      setTokens(result.access_token, result.refresh_token);
       router.push("/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create account.");

@@ -43,7 +43,7 @@ export default function LandingPage() {
               <a href="#">Pricing</a>
             </nav>
             <div className="nav-cta">
-              <a className="signin" href="#">Sign in</a>
+              <Link className="signin" href="/login">Sign in</Link>
               <Link className="btn btn-primary" href="/signup" id="cta-getstarted">
                 Get Started
                 <span className="arrow" aria-hidden="true">&rarr;</span>

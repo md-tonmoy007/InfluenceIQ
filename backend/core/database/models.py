@@ -32,6 +32,18 @@ class Brand(Base):
     campaigns = relationship("Campaign", back_populates="brand", cascade="all, delete-orphan")
 
 
+class User(Base):
+    """Registered user accounts for authentication and campaign ownership."""
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    company_name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Campaign(Base):
     """Stores brand campaign metadata and scoring weight customizations."""
     __tablename__ = "campaigns"

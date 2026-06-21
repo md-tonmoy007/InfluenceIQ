@@ -49,5 +49,11 @@ class Settings(BaseSettings):
     CONFIDENCE_CAP_THRESHOLD: int = 3
     CONFIDENCE_CAP_VALUE: int = 70
 
+    # Auth / JWT
+    JWT_SECRET_KEY: str = "change-me-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
 
 settings = Settings()

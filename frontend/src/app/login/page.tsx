@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { login } from "@/lib/api";
+import { setTokens } from "@/lib/auth";
 import "../signup.css";
 
 export default function LoginPage() {
@@ -20,10 +21,11 @@ export default function LoginPage() {
     setError("");
 
     try {
-      await login({
+      const result = await login({
         email: String(form.get("email") ?? ""),
         password: String(form.get("password") ?? ""),
       });
+      setTokens(result.access_token, result.refresh_token);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to log in.");
