@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import logging
 import os
 import re
@@ -27,8 +29,37 @@ from backend.pipeline.tasks._common import (
 log = logging.getLogger(__name__)
 
 
+_FALSEY = frozenset({"", "0", "false", "no", "off"})
+_BOOLEAN = frozenset({"1", "true", "yes", "on"}) | _FALSEY
+
+
 def _flag(name: str) -> bool:
-    return os.environ.get(name, "0").strip().lower() in frozenset({"1", "true", "yes", "on"})
+    """Truthy if env is set to anything other than a falsey token.
+
+    Note ``AI_AGENT_LLM_QUERY_PLANNING`` doubles as a model selector: a
+    value like ``openai/gpt-oss-20b:free`` enables the LLM path *and* is
+    used as the per-request model override (see :func:`_query_model_override`).
+    """
+    return os.environ.get(name, "").strip().lower() not in _FALSEY
+
+
+def _query_model_override() -> str | None:
+    """Return the model id when ``AI_AGENT_LLM_QUERY_PLANNING`` holds one.
+
+    A bare boolean toggle (``1``/``true``/...) returns ``None`` so the
+    adapter's configured default model is used.
+    """
+    raw = os.environ.get("AI_AGENT_LLM_QUERY_PLANNING", "").strip()
+    if not raw or raw.lower() in _BOOLEAN:
+        return None
+    return raw
+
+
+def _run_predict(result: Any) -> Any:
+    """Resolve a possibly-async ``predict_text`` result in a sync task."""
+    if inspect.isawaitable(result):
+        return asyncio.run(result)
+    return result
 
 
 def _normalize_tokens(text: str) -> set[str]:
@@ -139,17 +170,33 @@ def _llm_generate_queries(payload: dict[str, Any]) -> list[str] | None:
             return None
 
         prompt = _build_llm_query_prompt(payload)
-        text = llm_backend.predict_text(prompt, max_tokens=256, temperature=0.3)  # type: ignore[union-attr]
+        # Budget headroom: reasoning models (e.g. gpt-oss) spend the early
+        # tokens on a reasoning trace, so a tight cap yields empty content.
+        # 1024 stays well under TOKEN_BUDGET_QUERY_GEN (2000).
+        text = _run_predict(
+            llm_backend.predict_text(  # type: ignore[union-attr]
+                prompt, max_tokens=1024, temperature=0.3, model=_query_model_override()
+            )
+        )
         if not text or text.startswith("[stub:"):
             return None
 
         import json
-        parsed = json.loads(text)
+        parsed = json.loads(_strip_code_fence(text))
         queries_raw = parsed if isinstance(parsed, list) else parsed.get("queries", [])
         queries = [str(q).strip() for q in queries_raw if q and str(q).strip()]
         return queries[:5] if len(queries) >= 3 else None
     except Exception:
         return None
+
+
+def _strip_code_fence(text: str) -> str:
+    """Strip a leading ```json / ``` fence some models wrap JSON in."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```[a-zA-Z]*\n?", "", stripped)
+        stripped = re.sub(r"\n?```$", "", stripped)
+    return stripped.strip()
 
 
 def _build_llm_query_prompt(payload: dict[str, Any]) -> str:

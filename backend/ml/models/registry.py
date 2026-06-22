@@ -40,6 +40,7 @@ _REGISTRY: dict[str, str] = {
     "bert_moe": "backend.ml.models.bert_moe:BertMoeAdapter",
     # LLM explainer
     "llama_explainer": "backend.ml.models.llama_explainer:LlamaExplainerAdapter",
+    "openrouter": "backend.ml.models.openrouter_llm:OpenRouterAdapter",
     # GNN backends
     "gat": "backend.ml.models.gat:GatAdapter",
     "graphsage": "backend.ml.models.graphsage:GraphSageAdapter",
@@ -104,7 +105,7 @@ class ModelRegistry:
             "bert_moe",
         }:
             return "distilbert_spam"
-        if name.startswith("llama") or name == "llama_explainer":
+        if name.startswith("llama") or name in {"llama_explainer", "openrouter"}:
             return "llama_explainer"
         if name in {"gat", "graphsage", "gcn", "ggt"}:
             return "graphsage"

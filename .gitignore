@@ -92,3 +92,4 @@ frontend/audit/original-screenshots/
 *.tmp
 
 .puku/
+backend/.env

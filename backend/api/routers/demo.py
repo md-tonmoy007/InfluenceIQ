@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.core.database import models
@@ -13,6 +14,58 @@ from backend.core.database.session import get_db
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/demo", tags=["demo"])
+
+
+class QueryGenRequest(BaseModel):
+    """Brief fields for the query-generation smoke endpoint.
+
+    Mirrors the pipeline payload shape (``campaign_query_payload``): ``niche``
+    is the field the generator reads, not ``industry``.
+    """
+    product: str = Field(default="", max_length=255)
+    niche: str = Field(default="", max_length=255)
+    goals: str | None = Field(default=None, max_length=1000)
+    target_audience: str | None = Field(default=None, max_length=1000)
+    preferred_platforms: list[str] = Field(default_factory=list)
+
+
+@router.post("/query-gen", response_model=dict[str, Any])
+def test_query_generation(req: QueryGenRequest) -> dict[str, Any]:
+    """Run query generation against a brief without persisting a campaign.
+
+    Exercises the same code path as ``generate_queries`` (LLM path with
+    deterministic fallback) and reports which path produced the queries plus
+    the active LLM backend, so you can confirm gpt-oss is actually wired.
+    """
+    from backend.ml.models.registry import registry
+    from backend.pipeline.tasks.search import (
+        _flag,
+        _generate_planned_queries,
+        _llm_generate_queries,
+        _query_model_override,
+    )
+
+    payload = req.model_dump()
+
+    llm_queries = _llm_generate_queries(payload)
+    queries = _generate_planned_queries(payload)
+
+    reg = registry()
+    backend_name = reg.resolve_name("llm")
+    try:
+        info = reg.get(backend_name).info()
+        backend_info = {"name": info.name, "model": info.version, "loaded": info.loaded}
+    except Exception as exc:  # noqa: BLE001 — diagnostics endpoint
+        backend_info = {"name": backend_name, "error": str(exc)}
+
+    return {
+        "queries": queries,
+        "count": len(queries),
+        "source": "llm" if llm_queries is not None else "deterministic",
+        "llm_enabled": _flag("AI_AGENT_LLM_QUERY_PLANNING"),
+        "model_override": _query_model_override(),
+        "backend": backend_info,
+    }
 
 
 @router.post("/reset", response_model=dict[str, str])
