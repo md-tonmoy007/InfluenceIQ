@@ -40,6 +40,9 @@ sync:
 	$(UV_BACKEND) sync --dev
 
 up:
+	$(COMPOSE) up -d
+
+up-build:
 	$(COMPOSE) up --build -d --remove-orphans
 
 down:
