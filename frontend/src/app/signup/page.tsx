@@ -55,22 +55,22 @@ export default function SignupPage() {
           <div className="row">
             <div className="field">
               <label>Company name</label>
-              <input name="company_name" required defaultValue="Northwind Outdoor" />
+              <input name="company_name" required />
             </div>
             <div className="field">
               <label>Your name</label>
-              <input name="name" required defaultValue="Elena Marchetti" />
+              <input name="name" required />
             </div>
           </div>
 
           <div className="field">
             <label>Work email</label>
-            <input name="email" type="email" required defaultValue="elena@northwind.co" />
+            <input name="email" type="email" required />
           </div>
 
           <div className="field">
             <label>Password</label>
-            <input name="password" type="password" required minLength={8} defaultValue="password123" />
+            <input name="password" type="password" required minLength={8} />
           </div>
 
           {error ? (

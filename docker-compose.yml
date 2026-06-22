@@ -43,7 +43,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
+    command: >
+      sh -c "alembic -c backend/alembic.ini upgrade head &&
+             uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload"
     env_file: backend/.env
     ports:
       - "8002:8000"
@@ -158,12 +160,16 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8002}
-        NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-ws://localhost:8002}
+      target: dev
     env_file: backend/.env
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8002}
+      NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-ws://localhost:8002}
     ports:
       - "3002:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
     depends_on:
       backend-core:
         condition: service_started
@@ -174,3 +180,4 @@ volumes:
   redis_data:
   qdrant_data:
   backend_venv:
+  frontend_node_modules:

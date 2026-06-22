@@ -13,7 +13,7 @@
   .progress .bar{flex:0 0 40px;height:2px;background:var(--line);border-radius:2px;position:relative;overflow:hidden}
   .progress .bar.done::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,var(--violet),var(--coral));animation:fillBar .5s ease-out forwards}
   @keyframes fillBar{from{transform:translateX(-100%)}to{transform:none}}
-  .quit{color:var(--muted);font-size:13px}.quit:hover{color:var(--ink)}
+  .quit{color:var(--muted);font-size:13px;background:none;border:0;font-family:inherit;cursor:pointer;padding:0}.quit:hover{color:var(--ink)}.quit:disabled{cursor:not-allowed;opacity:0.6}
 
   .body{flex:1;display:grid;place-items:center;padding:64px 32px}
   .card{width:100%;max-width:620px;background:#fff;border:1px solid var(--line);border-radius:22px;padding:44px 48px;box-shadow:0 40px 80px -40px rgba(60,50,120,0.18);animation:cIn .5s cubic-bezier(.2,.8,.2,1)}
@@ -65,7 +65,9 @@
   .slider .thumb{position:absolute;top:50%;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid var(--violet);transform:translate(-50%,-50%);box-shadow:0 4px 12px -4px rgba(120,80,255,0.5);pointer-events:none}
   .scale{display:flex;justify-content:space-between;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-soft);letter-spacing:0.06em}
 
+  .error{color:#d42c2c;font-size:13px;margin-top:16px}
   .actions{display:flex;justify-content:space-between;align-items:center;margin-top:28px;gap:12px}
+  .next:disabled,.back:disabled{opacity:0.6;cursor:not-allowed}
   .next{height:46px;padding:0 22px;border:0;border-radius:12px;background:linear-gradient(180deg,var(--violet),oklch(0.50 0.22 285));color:#fff;font-size:14px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 8px 22px -6px rgba(120,80,255,0.45);transition:transform .2s;font-family:inherit}
   .next:hover{transform:translateY(-1px)}
   .back{height:46px;padding:0 18px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:13.5px;color:var(--ink-soft);cursor:pointer;font-family:inherit;transition:background .2s}

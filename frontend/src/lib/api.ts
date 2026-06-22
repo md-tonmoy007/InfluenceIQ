@@ -151,8 +151,13 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
     cache: "no-store",
   });
 
-  // On 401, try a single token refresh then retry
-  if (response.status === 401) {
+  // On 401, try a single token refresh then retry — but only for
+  // authenticated endpoints. Auth endpoints (login/signup) intentionally
+  // return 401 for bad credentials, and we must surface that to the caller
+  // rather than bouncing the page to /login.
+  const isAuthEndpoint =
+    path === "/api/auth/login" || path === "/api/auth/signup";
+  if (response.status === 401 && !isAuthEndpoint) {
     const newToken = await refreshAccessToken();
     if (newToken) {
       headers.Authorization = `Bearer ${newToken}`;
@@ -177,7 +182,20 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
     let message: string;
     try {
       const body = await response.json();
-      message = body.detail ?? body.message ?? JSON.stringify(body);
+      // Backend wraps errors in an ErrorEnvelope
+      // (backend/api/schemas/errors.py): { error: { code, message, ... } }.
+      // Fall back to FastAPI's default { detail } for non-wrapped responses,
+      // then to { message }, then to the raw body.
+      const envelope = body as {
+        error?: { message?: string };
+        detail?: string;
+        message?: string;
+      };
+      message =
+        envelope.error?.message ??
+        envelope.detail ??
+        envelope.message ??
+        JSON.stringify(body);
     } catch {
       message = await response.text().catch(() => "");
     }
@@ -394,3 +412,28 @@ export const logout = async (): Promise<{ status: string }> =>
 
 export const getMe = async (): Promise<CurrentUser> =>
   requestJson<CurrentUser>("/api/auth/me");
+
+export type OnboardingPayload = {
+  brand_name: string;
+  industry?: string | null;
+  company_size?: string | null;
+  country?: string | null;
+  goals?: string[] | null;
+  platforms?: string[] | null;
+  monthly_budget?: number | null;
+};
+
+export type BrandProfile = OnboardingPayload & {
+  id: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export const submitOnboarding = async (
+  payload: OnboardingPayload
+): Promise<BrandProfile> =>
+  requestJson<BrandProfile>("/api/onboarding", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

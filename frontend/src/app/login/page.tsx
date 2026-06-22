@@ -52,12 +52,12 @@ export default function LoginPage() {
         <form className="form" onSubmit={handleSubmit}>
           <div className="field">
             <label>Work email</label>
-            <input name="email" type="email" required defaultValue="elena@northwind.co" />
+            <input name="email" type="email" required />
           </div>
 
           <div className="field">
             <label>Password</label>
-            <input name="password" type="password" required defaultValue="password123" />
+            <input name="password" type="password" required />
           </div>
 
           {error ? (

@@ -9,6 +9,7 @@ from backend.core.config import settings
 # Import models so they are registered on the Base.metadata
 from backend.core.database.models import (  # noqa: F401
     Brand,
+    BrandProfile,
     BrandSafetyFlag,
     Campaign,
     CrawlSource,

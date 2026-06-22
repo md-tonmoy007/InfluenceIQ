@@ -44,6 +44,36 @@ class User(Base):
     company_name = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    brand_profile = relationship(
+        "BrandProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class BrandProfile(Base):
+    """Onboarding answers describing the brand a user manages.
+
+    One-to-one with :class:`User`; created/updated by the onboarding
+    wizard (POST /api/onboarding) and used to calibrate match scoring
+    defaults for that user's campaigns.
+    """
+    __tablename__ = "brand_profiles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    brand_name = Column(String, nullable=False)
+    industry = Column(String, nullable=True)
+    company_size = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    goals = Column(JSONB, nullable=True)
+    platforms = Column(JSONB, nullable=True)
+    monthly_budget = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="brand_profile")
+
 
 class Campaign(Base):
     """Stores brand campaign metadata, lifecycle state, and scoring customizations."""

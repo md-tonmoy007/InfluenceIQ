@@ -5,6 +5,14 @@ WORKDIR /app
 COPY frontend/package*.json ./
 RUN npm ci
 
+FROM deps AS dev
+
+WORKDIR /app
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev"]
+
 FROM node:22-alpine AS builder
 
 WORKDIR /app
