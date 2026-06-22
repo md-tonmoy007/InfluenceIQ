@@ -180,10 +180,13 @@ const toMatchRows = (influencers: InfluencerListResult['items']): MatchRow[] =>
       avatar: avatarFromName(item.name),
       avBg: gradientByPlatform[platform],
       match: Math.round(item.matchScore),
-      followers: formatCompactNumber(item.followers),
-      engagement: formatPercent(item.engagementRate),
-      avgViews: formatCompactNumber(estimateViews(item.followers, item.engagementRate)),
-      rate: item.rate,
+      followers: item.followers > 0 ? formatCompactNumber(item.followers) : '—',
+      engagement: item.engagementRate > 0 ? formatPercent(item.engagementRate) : '—',
+      avgViews:
+        item.followers > 0
+          ? formatCompactNumber(estimateViews(item.followers, item.engagementRate))
+          : '—',
+      rate: item.rate || '—',
       tier: toTier(item.followers),
       tags,
       verified: item.trustGrade === 'A+' || item.trustGrade === 'A',

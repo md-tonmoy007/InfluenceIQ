@@ -8,45 +8,73 @@ import {
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
-type BackendCampaign = {
-  campaign_id: string;
-  brand: string;
-  product: string;
-  category: string;
-  goal: string;
-  status: string;
-  created_at: string;
-  payload: Record<string, unknown>;
-  pipeline_state: CampaignState;
-  influencer_count: number;
-  partial_results_available: boolean;
-  error?: string | null;
-};
-
-type BackendInfluencer = {
+// Mirrors backend CampaignResponse (backend/api/schemas/campaign.py).
+type BackendCampaignResponse = {
   id: string;
-  name: string;
-  handle: string;
-  platform: string;
-  followers: number;
-  engagementRate: number;
-  matchScore: number;
-  trustGrade: "A+" | "A" | "B" | "C" | "D";
-  brandSafetyFlags: string[];
-  citations: string[];
-  rate: string;
-  sub_scores?: Record<string, number>;
-  score_payload?: Record<string, unknown>;
-  source_payload?: Record<string, unknown>;
+  product: string;
+  niche: string;
+  goals: string | null;
+  target_audience: string | null;
+  preferred_platforms: string[] | null;
+  budget_range: string | null;
+  weights: Record<string, number> | null;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  failure_reason: string | null;
+  created_at: string;
 };
 
+// GET /api/campaigns/{id} returns { campaign, pipeline_state }.
+type BackendCampaign = {
+  campaign: BackendCampaignResponse;
+  pipeline_state: CampaignState;
+};
+
+type BackendSubScores = {
+  relevance: number;
+  credibility: number;
+  engagement: number;
+  sentiment: number;
+  brand_safety: number;
+};
+
+type BackendCrawlSource = {
+  url: string;
+  title?: string | null;
+  relevance_score?: number | null;
+  status: string;
+  mention_id?: string | null;
+  mention?: Record<string, unknown> | null;
+};
+
+// Mirrors backend InfluencerResponse (backend/api/schemas/influencer.py).
+type BackendInfluencer = {
+  influencer_id: string;
+  canonical_name: string;
+  platforms: Record<string, string>;
+  credentials?: string[] | null;
+  mentions?: Array<Record<string, unknown>> | null;
+  final_score?: number | null;
+  sub_scores?: BackendSubScores | null;
+  confidence?: string | null;
+  data_source_count?: number;
+  score_version?: string | null;
+  computed_at?: string | null;
+  signal_scores?: Record<string, number> | null;
+  risk_category?: string | null;
+  detection_category?: string | null;
+  positive_reasons?: string[] | null;
+  negative_reasons?: string[] | null;
+  sources?: BackendCrawlSource[] | null;
+};
+
+// GET /api/campaigns/{id}/influencers returns keyset-paginated rows.
 type BackendInfluencerList = {
   items: BackendInfluencer[];
-  total: number;
+  next_cursor: string | null;
   limit: number;
-  offset: number;
-  filters: Record<string, string | number>;
-  sort: { by: string; direction: string };
 };
 
 export type CurrentUser = {
@@ -97,6 +125,7 @@ export type InfluencerListResult = {
   total: number;
   limit: number;
   offset: number;
+  nextCursor: string | null;
   filters: Record<string, string | number>;
   sort: { by: string; direction: string };
 };
@@ -172,46 +201,116 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
-const mapCampaign = (campaign: BackendCampaign): CampaignSummary => ({
-  campaignId: campaign.campaign_id,
-  brand: campaign.brand,
-  product: campaign.product,
-  category: campaign.category,
-  goal: campaign.goal,
-  status: campaign.status,
-  createdAt: campaign.created_at,
-  payload: campaign.payload,
-  pipelineState: campaign.pipeline_state,
-  influencerCount: campaign.influencer_count,
-  partialResultsAvailable: campaign.partial_results_available,
-  error: campaign.error,
-});
+const mapCampaign = (response: BackendCampaign): CampaignSummary => {
+  const { campaign, pipeline_state: state } = response;
+  return {
+    campaignId: campaign.id,
+    // Backend has no separate brand field; surface product as the label.
+    brand: campaign.product,
+    product: campaign.product,
+    category: campaign.niche,
+    goal: campaign.goals ?? "",
+    status: campaign.status,
+    createdAt: campaign.created_at,
+    payload: {
+      target_audience: campaign.target_audience,
+      preferred_platforms: campaign.preferred_platforms,
+      budget_range: campaign.budget_range,
+      weights: campaign.weights,
+    },
+    pipelineState: state ?? {},
+    influencerCount:
+      (state?.influencer_count as number | undefined) ??
+      (state?.influencers_found as number | undefined) ??
+      0,
+    partialResultsAvailable: state?.partial_results_available ?? false,
+    error: campaign.failure_reason ?? state?.error,
+  };
+};
 
-const mapInfluencer = (item: BackendInfluencer): InfluencerRecommendation => ({
-  id: item.id,
-  name: item.name,
-  handle: item.handle,
-  platform: item.platform,
-  followers: item.followers,
-  engagementRate: item.engagementRate,
-  matchScore: item.matchScore,
-  trustGrade: item.trustGrade,
-  brandSafetyFlags: item.brandSafetyFlags,
-  citations: item.citations,
-  rate: item.rate,
-  subScores: item.sub_scores ?? {},
-  scorePayload: item.score_payload ?? {},
-  sourcePayload: item.source_payload ?? {},
-});
+// Mirrors the grade bounds in backend get_campaign_influencers (campaigns.py).
+const gradeFromScore = (score: number): InfluencerRecommendation["trustGrade"] => {
+  if (score >= 90) return "A+";
+  if (score >= 80) return "A";
+  if (score >= 70) return "B";
+  if (score >= 60) return "C";
+  return "D";
+};
+
+const mapInfluencer = (item: BackendInfluencer): InfluencerRecommendation => {
+  const [platformKey, platformHandle] = Object.entries(item.platforms ?? {})[0] ?? ["", ""];
+  const finalScore = item.final_score ?? 0;
+  const subScores: Record<string, number> = item.sub_scores
+    ? {
+        relevance: item.sub_scores.relevance,
+        credibility: item.sub_scores.credibility,
+        engagement: item.sub_scores.engagement,
+        sentiment: item.sub_scores.sentiment,
+        brand_safety: item.sub_scores.brand_safety,
+      }
+    : {};
+  return {
+    id: item.influencer_id,
+    name: item.canonical_name,
+    handle: platformHandle || "@unknown",
+    platform: platformKey || "instagram",
+    // Follower count, true engagement rate, and dollar rate are not captured
+    // by the pipeline; the UI degrades these gracefully (shows "—").
+    followers: 0,
+    engagementRate: 0,
+    rate: "",
+    matchScore: finalScore,
+    trustGrade: gradeFromScore(finalScore),
+    brandSafetyFlags: item.negative_reasons ?? [],
+    citations: (item.sources ?? []).map((source) => source.url),
+    subScores,
+    scorePayload: {
+      signal_scores: item.signal_scores ?? {},
+      confidence: item.confidence,
+      data_source_count: item.data_source_count,
+      score_version: item.score_version,
+      computed_at: item.computed_at,
+      risk_category: item.risk_category,
+      detection_category: item.detection_category,
+      positive_reasons: item.positive_reasons ?? [],
+      negative_reasons: item.negative_reasons ?? [],
+    },
+    sourcePayload: {
+      sources: item.sources ?? [],
+      platforms: item.platforms ?? {},
+      credentials: item.credentials ?? [],
+      mentions: item.mentions ?? [],
+    },
+  };
+};
 
 export const createCampaign = async (
-  payload: CampaignBriefPayload
+  brief: CampaignBriefPayload
 ): Promise<{ campaignId: string; status: string }> => {
+  // Translate the UI brief into the backend CampaignCreate contract.
+  const targetAudience = [
+    brief.ages.length ? `Ages: ${brief.ages.join(", ")}` : "",
+    brief.gender && brief.gender !== "All" ? `Gender: ${brief.gender}` : "",
+    brief.locations.length ? `Locations: ${brief.locations.join(", ")}` : "",
+    brief.tier && brief.tier !== "No Preference" ? `Tier: ${brief.tier}` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+
+  const body = {
+    product: brief.product,
+    industry: brief.category,
+    goals: [brief.goal, brief.notes].filter(Boolean).join("\n\n") || null,
+    target_audience: targetAudience || null,
+    preferred_platforms: brief.platforms.length ? brief.platforms : null,
+    budget_range: brief.budget || null,
+  };
+
   const response = await requestJson<{ campaign_id: string; status: string }>(
     "/api/campaigns",
     {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     }
   );
   return {
@@ -238,13 +337,15 @@ export const getCampaignInfluencers = async (
   const response = await requestJson<BackendInfluencerList>(
     `/api/campaigns/${encodeURIComponent(campaignId)}/influencers${suffix}`
   );
+  const items = response.items.map(mapInfluencer);
   return {
-    items: response.items.map(mapInfluencer),
-    total: response.total,
+    items,
+    total: items.length,
     limit: response.limit,
-    offset: response.offset,
-    filters: response.filters,
-    sort: response.sort,
+    offset: 0,
+    nextCursor: response.next_cursor,
+    filters: {},
+    sort: { by: "match", direction: "desc" },
   };
 };
 

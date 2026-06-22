@@ -62,7 +62,7 @@ const tierClasses: Record<string, string> = {
   Premium: "tier-premium",
 };
 
-type LiveRow = TableCreator & { id: string };
+type LiveRow = Omit<TableCreator, "t"> & { id: string; t: TableCreator["t"] | "—" };
 
 const keyMap: Record<string, keyof LiveRow> = {
   name: "n",
@@ -306,10 +306,10 @@ export default function DiscoverTable({ items, campaignId }: DiscoverTableProps)
                     </td>
                     <td>{row.c}</td>
                     <td><span className={`tier-pill ${tierClasses[row.t] ?? "tier-established"}`}>{row.t}</span></td>
-                    <td className="r num">{fmt(row.f)}</td>
-                    <td className="r num">{formatCompactNumber(row.v)}</td>
-                    <td className="r">{row.e.toFixed(1)}%</td>
-                    <td className="r num">{fmtMoney(row.r)}</td>
+                    <td className="r num">{row.f > 0 ? fmt(row.f) : "—"}</td>
+                    <td className="r num">{row.f > 0 ? formatCompactNumber(row.v) : "—"}</td>
+                    <td className="r">{row.e > 0 ? `${row.e.toFixed(1)}%` : "—"}</td>
+                    <td className="r num">{row.f > 0 ? fmtMoney(row.r) : "—"}</td>
                     <td>{row.m}%</td>
                     <td>{row.loc}</td>
                     <td className="r">

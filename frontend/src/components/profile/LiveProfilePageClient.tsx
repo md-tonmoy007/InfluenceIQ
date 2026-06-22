@@ -10,13 +10,14 @@ import {
 import type { InfluencerRecommendation } from "@/types/influencer";
 import {
   avatarFromName,
-  estimateRateNumber,
-  estimateViews,
+  displayEngagement,
+  displayFollowers,
+  displayRate,
+  displayViews,
   extractCategory,
   extractLocation,
   extractTags,
   formatCompactNumber,
-  formatPercent,
   titleize,
 } from "@/lib/influencerPresentation";
 import ProfileInteractions from "./ProfileInteractions";
@@ -110,11 +111,11 @@ export default function LiveProfilePageClient({
       category: extractCategory(influencer),
       tags: extractTags(influencer),
       location: extractLocation(influencer),
-      followers: formatCompactNumber(influencer.followers),
-      avgViews: formatCompactNumber(estimateViews(influencer.followers, influencer.engagementRate)),
-      engagement: formatPercent(influencer.engagementRate),
+      followers: displayFollowers(influencer),
+      avgViews: displayViews(influencer),
+      engagement: displayEngagement(influencer),
       postsPerMonth: Number(engagementData.sample_size ?? 0),
-      rate: estimateRateNumber(influencer),
+      rate: displayRate(influencer),
       links,
       citations: influencer.citations,
       brandSafetyFlags: influencer.brandSafetyFlags,
@@ -245,7 +246,7 @@ export default function LiveProfilePageClient({
 
             <div className="rate-card">
               <div className="lab">Estimated rate per post</div>
-              <div className="v">${profile.rate.toLocaleString()}</div>
+              <div className="v">{profile.rate}</div>
               <div className="note">Derived from shortlist data and follower band.</div>
             </div>
 

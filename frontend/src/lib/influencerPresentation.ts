@@ -2,6 +2,10 @@ import type { InfluencerRecommendation } from "@/types/influencer";
 
 export type SupportedPlatform = "instagram" | "youtube" | "tiktok" | "facebook";
 
+// Metrics the pipeline does not capture (follower count, true engagement rate,
+// dollar rate) arrive as 0/"" and are shown as a dash rather than a fake value.
+export const DASH = "—";
+
 export const normalizePlatform = (value: string): SupportedPlatform => {
   const lowered = value.toLowerCase();
   if (lowered === "youtube" || lowered === "tiktok" || lowered === "facebook") {
@@ -35,6 +39,7 @@ export const estimateViews = (followers: number, engagementRate: number) =>
   Math.max(0, Math.round(followers * Math.max(engagementRate, 1) * 0.04));
 
 export const tierFromFollowers = (followers: number) => {
+  if (followers <= 0) return DASH;
   if (followers >= 500_000) return "Premium";
   if (followers >= 50_000) return "Established";
   return "Rising";
@@ -103,3 +108,20 @@ export const estimateRateNumber = (item: InfluencerRecommendation) => {
   }
   return Math.max(250, Math.round(item.followers * 0.01));
 };
+
+// Display wrappers that degrade to a dash when the underlying metric is absent.
+export const displayFollowers = (item: InfluencerRecommendation) =>
+  item.followers > 0 ? formatCompactNumber(item.followers) : DASH;
+
+export const displayViews = (item: InfluencerRecommendation) =>
+  item.followers > 0
+    ? formatCompactNumber(estimateViews(item.followers, item.engagementRate))
+    : DASH;
+
+export const displayEngagement = (item: InfluencerRecommendation) =>
+  item.engagementRate > 0 ? formatPercent(item.engagementRate) : DASH;
+
+export const displayRate = (item: InfluencerRecommendation) =>
+  item.followers > 0 || item.rate
+    ? `$${estimateRateNumber(item).toLocaleString()}`
+    : DASH;
