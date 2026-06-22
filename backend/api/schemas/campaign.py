@@ -42,14 +42,16 @@ class CampaignCreate(BaseModel):
 class CampaignResponse(BaseModel):
     """Response returned for queries requesting campaign info."""
     id: UUID
-    brand_id: UUID | None
+    brand_id: UUID | None = None
+    org_id: UUID | None = None
+    created_by: UUID | None = None
     product: str
     niche: str
-    goals: str | None
-    target_audience: str | None
-    preferred_platforms: list[str] | None
-    budget_range: str | None
-    weights: dict[str, float] | None
+    goals: str | None = None
+    target_audience: str | None = None
+    preferred_platforms: list[str] | None = None
+    budget_range: str | None = None
+    weights: dict[str, float] | None = None
     status: str
     started_at: datetime | None = None
     completed_at: datetime | None = None

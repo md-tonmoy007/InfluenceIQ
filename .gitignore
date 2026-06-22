@@ -90,3 +90,5 @@ frontend/audit/original-screenshots/
 # Misc
 *.bak
 *.tmp
+
+.puku/

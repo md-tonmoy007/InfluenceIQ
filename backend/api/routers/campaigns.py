@@ -1,14 +1,24 @@
 from __future__ import annotations
 
+import base64
+import json
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.api.schemas.campaign import CampaignCreate, CampaignResponse
 from backend.api.schemas.influencer import CrawlSourceResponse, InfluencerResponse, SubScores
+from backend.core.auth import decode_token
+from backend.core.cache.idempotency import (
+    clear_response,
+    get_stored_response,
+    store_response,
+)
 from backend.core.cache.pipeline_state import (
     get_pipeline_state,
     initialize_pipeline_state,
@@ -18,12 +28,71 @@ from backend.core.database.session import get_db
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
+_optional_oauth = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+
+def get_current_user_optional(
+    token: str | None = Depends(_optional_oauth),
+    access_token: str | None = Cookie(default=None, alias="access_token"),
+    db: Session = Depends(get_db),
+) -> models.User | None:
+    """Like :func:`backend.core.auth.get_current_user` but returns ``None`` when
+    no credential is supplied, instead of raising 401.
+
+    Lets the ``POST /api/campaigns`` endpoint stay open for the demo
+    seed path and unauthenticated clients while still wiring up
+    ownership whenever a real token is present.
+    """
+    raw_token = token or access_token
+    if not raw_token:
+        return None
+    try:
+        payload = decode_token(raw_token)
+    except HTTPException:
+        return None
+    if payload.get("type") != "access":
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        return None
+    return db.query(models.User).filter(models.User.id == user_uuid).first()
+
 
 @router.post("", response_model=dict[str, Any])
 def create_campaign(
-    campaign_data: CampaignCreate, db: Session = Depends(get_db)
+    campaign_data: CampaignCreate,
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> dict[str, Any]:
-    """Create a campaign, initialize transient state, and dispatch the pipeline."""
+    """Create a campaign, initialize transient state, and dispatch the pipeline.
+
+    The endpoint is idempotent at two layers:
+
+    1. **HTTP** — an ``Idempotency-Key`` header caches the response in
+       Redis for 1 hour; the same key + same owner returns the cached
+       body instead of creating a second campaign.
+    2. **Database** — a ``UNIQUE(created_by, product, niche)`` constraint
+       rejects a duplicate natural key with HTTP 409, even if the
+       client forgot the header.
+
+    ``current_user`` is optional so the demo seed path and unauthenticated
+    ``POST`` calls still work; when present, the campaign is owned by
+    that user and org-scoping kicks in.
+    """
+    owner_id = str(current_user.id) if current_user is not None else "anonymous"
+
+    # 1. Idempotency-Key fast path --------------------------------------------------
+    if idempotency_key:
+        cached = get_stored_response(owner_id, idempotency_key)
+        if cached is not None:
+            return cached["body"]
+
+    # 2. Build + insert ------------------------------------------------------------
     db_campaign = models.Campaign(
         product=campaign_data.product,
         niche=campaign_data.industry,
@@ -32,32 +101,60 @@ def create_campaign(
         preferred_platforms=campaign_data.preferred_platforms,
         budget_range=campaign_data.budget_range,
         weights=campaign_data.weights.model_dump() if campaign_data.weights else None,
+        created_by=current_user.id if current_user is not None else None,
         status="running",
         started_at=datetime.now(UTC),
     )
     db.add(db_campaign)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        # Natural-key collision: another campaign with the same
+        # (created_by, product, niche) already exists. Surface a
+        # structured 409 so the client can decide whether to fetch
+        # the existing row.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "A campaign with this product/niche already exists for this owner. "
+                "Use GET /api/campaigns/{id} to retrieve the existing campaign, "
+                "or send an Idempotency-Key header to retry safely."
+            ),
+        ) from exc
     db.refresh(db_campaign)
 
     campaign_id_str = str(db_campaign.id)
     initialize_pipeline_state(campaign_id_str)
 
-    try:
-        from backend.pipeline.tasks import start_pipeline
+    # 3. Dispatch pipeline (post-commit) ------------------------------------------
+    response_body: dict[str, Any] = {
+        "campaign_id": db_campaign.id,
+        "status": db_campaign.status,
+        "pipeline_state": get_campaign_state_payload(db_campaign, campaign_id_str),
+    }
 
-        start_pipeline(campaign_id_str)
+    try:
+        from backend.pipeline.tasks import start_campaign
+
+        start_campaign(campaign_id_str)
     except Exception as exc:
         db_campaign.status = "failed"
         db_campaign.failed_at = datetime.now(UTC)
         db_campaign.failure_reason = str(exc)
         db.commit()
+        # The campaign row was created; do not cache this as a
+        # successful idempotent response because the pipeline never
+        # started. The client can retry with the same key.
+        if idempotency_key:
+            clear_response(owner_id, idempotency_key)
         raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {exc}") from exc
 
-    return {
-        "campaign_id": db_campaign.id,
-        "status": db_campaign.status,
-        "pipeline_state": get_campaign_state_payload(db_campaign, campaign_id_str),
-    }
+    # 4. Cache successful response for Idempotency-Key retries --------------------
+    if idempotency_key:
+        store_response(owner_id, idempotency_key, 200, response_body)
+
+    return response_body
 
 
 @router.get("/{id}", response_model=dict[str, Any])
@@ -76,24 +173,64 @@ def get_campaign(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
 
 @router.get("/{id}/state", response_model=dict[str, Any])
 def get_campaign_state(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Retrieve execution progress, falling back to the durable campaign lifecycle state."""
+    """Retrieve execution progress, falling back to the durable campaign lifecycle state.
+
+    The response is augmented with ``last_event_id`` derived from the
+    Redis event counter so a WebSocket client that just opened the
+    connection can pass ``?last_event_id=N`` and receive only the
+    events it has not yet seen.
+    """
     db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
     if not db_campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
-    return get_campaign_state_payload(db_campaign, str(id))
+    payload = get_campaign_state_payload(db_campaign, str(id))
+    payload["last_event_id"] = _get_last_event_id(str(id))
+    return payload
 
 
-@router.get("/{id}/influencers", response_model=list[InfluencerResponse])
+def _get_last_event_id(campaign_id_str: str) -> int:
+    """Return the highest event_id emitted so far for ``campaign_id``.
+
+    Reads the event-id counter that :func:`backend.core.cache.event_log.emit_event`
+    maintains alongside the replay list. Returns 0 when the counter is
+    not present (e.g. campaign was created but no task has emitted yet).
+    """
+    try:
+        from backend.core.cache.event_log import EVENT_COUNTER_PREFIX
+        from backend.core.cache.redis_client import redis_client
+
+        counter_key = f"{EVENT_COUNTER_PREFIX}{campaign_id_str}"
+        raw = redis_client.get(counter_key)
+        return int(raw) if raw else 0
+    except Exception:
+        return 0
+
+
+@router.get("/{id}/influencers", response_model=dict[str, Any])
 def get_campaign_influencers(
     id: UUID,
     platform: str | None = Query(default=None, description="Filter by platform handle availability"),
     grade: str | None = Query(default=None, description="Filter by trust grade, e.g. 'A+', 'A'"),
     niche: str | None = Query(default=None, description="Filter by core niche"),
     limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    cursor: str | None = Query(
+        default=None,
+        description=(
+            "Opaque pagination cursor returned in the previous response's "
+            "`next_cursor` field. Preferred over `offset` for stable ranking "
+            "across writes."
+        ),
+    ),
+    offset: int = Query(default=0, ge=0, description="Pagination offset (legacy; prefer cursor)"),
     db: Session = Depends(get_db),
-) -> list[InfluencerResponse]:
-    """Retrieve ranked influencers for a campaign with durable provenance details."""
+) -> dict[str, Any]:
+    """Retrieve ranked influencers for a campaign with durable provenance details.
+
+    Returns ``{"items": [...], "next_cursor": "..."|"None", "limit": int}``.
+    Ordering is ``final_score DESC, data_source_count DESC, influencer_id``;
+    the cursor encodes the tie-breaker key so successive pages are stable
+    even when new InfluencerScore rows land mid-pagination.
+    """
     db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
     if not db_campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -123,10 +260,38 @@ def get_campaign_influencers(
                 models.InfluencerScore.final_score <= bounds[1],
             )
 
-    results = query.order_by(models.InfluencerScore.final_score.desc()).limit(limit).offset(offset).all()
+    # Stable ordering: final_score DESC, data_source_count DESC, influencer_id ASC.
+    query = query.order_by(
+        models.InfluencerScore.final_score.desc(),
+        models.InfluencerScore.data_source_count.desc(),
+        models.InfluencerScore.influencer_id.asc(),
+    )
+
+    # Cursor takes precedence over offset when both are provided.
+    if cursor:
+        cursor_decoded = _decode_cursor(cursor)
+        if cursor_decoded is None:
+            raise HTTPException(status_code=400, detail="Invalid cursor")
+        cursor_score, cursor_id = cursor_decoded
+        # Pagination keyset: rows strictly after (cursor_score, cursor_id).
+        query = query.filter(
+            (models.InfluencerScore.final_score < cursor_score)
+            | (
+                (models.InfluencerScore.final_score == cursor_score)
+                & (models.InfluencerScore.influencer_id > cursor_id)
+            )
+        )
+    else:
+        query = query.offset(offset)
+
+    # Fetch one extra row so we can decide if there's a next page.
+    rows = query.limit(limit + 1).all()
+    has_more = len(rows) > limit
+    page_rows = rows[:limit]
 
     response_list = []
-    for score, inf in results:
+    last_score_row: tuple[float, Any] | None = None
+    for score, inf in page_rows:
         sources_response = _campaign_influencer_sources(db, id, inf.id)
         response_list.append(
             InfluencerResponse(
@@ -155,8 +320,41 @@ def get_campaign_influencers(
                 sources=sources_response,
             )
         )
+        last_score_row = (score.final_score, inf.id)
 
-    return response_list
+    next_cursor: str | None = None
+    if has_more and last_score_row is not None:
+        next_cursor = _encode_cursor(last_score_row[0], str(last_score_row[1]))
+
+    return {
+        "items": response_list,
+        "next_cursor": next_cursor,
+        "limit": limit,
+    }
+
+
+def _encode_cursor(final_score: float, influencer_id: str) -> str:
+    """Encode a (final_score, influencer_id) keyset cursor.
+
+    Cursor format (URL-safe base64 of a JSON object) — opaque to
+    clients; clients should treat it as a string.
+    """
+    raw = json.dumps({"s": final_score, "i": influencer_id}, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def _decode_cursor(cursor: str) -> tuple[float, str] | None:
+    """Decode a cursor produced by :func:`_encode_cursor`.
+
+    Returns ``None`` on malformed input (the caller surfaces a 400).
+    """
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        raw = base64.urlsafe_b64decode((cursor + padding).encode("ascii"))
+        parsed = json.loads(raw.decode("utf-8"))
+        return float(parsed["s"]), str(parsed["i"])
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return None
 
 
 def get_campaign_state_payload(campaign: models.Campaign, campaign_id_str: str) -> dict[str, Any]:

@@ -87,6 +87,10 @@ test-unit:
 	  CELERY_RESULT_BACKEND=redis://localhost:6379/1 \
 	  QDRANT_URL=http://localhost:6333 \
 	  $(UV_BACKEND) run pytest backend/tests/api/test_smoke.py \
+	                        backend/tests/api/test_phase1_foundation.py \
+	                        backend/tests/api/test_phase3_api_surface.py \
+	                        backend/tests/api/test_phase4_websocket.py \
+	                        backend/tests/core/ \
 	                        backend/tests/pipeline/ -q
 
 test-ml:

@@ -4,8 +4,7 @@ import asyncio
 import os
 import unittest
 import uuid
-from datetime import datetime, UTC
-from types import SimpleNamespace
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://x:x@localhost:5432/x")
@@ -25,7 +24,7 @@ from backend.core.database.session import get_db
 
 
 class FakeQuery:
-    def __init__(self, session: "FakeSession", entities: tuple):
+    def __init__(self, session: FakeSession, entities: tuple):
         self.session = session
         self.entities = entities
 
@@ -257,8 +256,10 @@ class BackendContractsTest(unittest.TestCase):
         response = self.client.get(f"/api/campaigns/{campaign_id}/influencers")
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(len(body), 1)
-        row = body[0]
+        # Phase 3: response is now {items, next_cursor, limit}; check items.
+        self.assertEqual(len(body["items"]), 1)
+        self.assertIsNone(body["next_cursor"])
+        row = body["items"][0]
         self.assertEqual(row["risk_category"], "low")
         self.assertEqual(row["detection_category"], "trusted")
         self.assertEqual(row["positive_reasons"], ["licensed clinician"])

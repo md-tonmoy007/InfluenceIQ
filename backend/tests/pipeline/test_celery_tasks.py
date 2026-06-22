@@ -157,6 +157,7 @@ def _patched_db_session():
         return session
 
     patches = [
+        patch("backend.core.database.session._get_session_local", _factory),
         patch.object(common, "SessionLocal", _factory),
         patch.object(search_mod, "db_session", lambda: _session_ctx(_factory)),
         patch.object(crawl_mod, "db_session", lambda: _session_ctx(_factory)),

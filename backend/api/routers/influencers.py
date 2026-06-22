@@ -4,7 +4,8 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.core.database import models
@@ -15,8 +16,27 @@ router = APIRouter(prefix="/api/influencers", tags=["influencers"])
 
 
 @router.get("/{id}", response_model=dict[str, Any])
-def get_influencer_profile(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Retrieves canonical metadata for a specific influencer profile."""
+def get_influencer_profile(
+    id: UUID,
+    include_history: bool = Query(
+        default=False,
+        description="Include the most recent N campaign scores alongside the profile.",
+    ),
+    history_limit: int = Query(
+        default=5,
+        ge=1,
+        le=50,
+        description="How many recent score rows to return when include_history=true.",
+    ),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Retrieves canonical metadata for a specific influencer profile.
+
+    The base response is the persistent profile; pass ``include_history=true``
+    to receive a small ``score_history`` array of the most recent
+    ``InfluencerScore`` rows so the frontend can show "this influencer
+    has also ranked for these other campaigns" without an extra round trip.
+    """
     log = logger.bind(influencer_id=str(id))
     log.info("Fetching influencer profile")
 
@@ -25,7 +45,7 @@ def get_influencer_profile(id: UUID, db: Session = Depends(get_db)) -> dict[str,
         log.warning("Influencer not found")
         raise HTTPException(status_code=404, detail="Influencer profile not found")
 
-    return {
+    response: dict[str, Any] = {
         "id": inf.id,
         "canonical_name": inf.canonical_name,
         "platforms": inf.platforms or {},
@@ -34,6 +54,38 @@ def get_influencer_profile(id: UUID, db: Session = Depends(get_db)) -> dict[str,
         "created_at": inf.created_at,
         "updated_at": inf.updated_at,
     }
+
+    # Cross-campaign provenance: a small set of recent scores so the
+    # frontend can show "also ranked for…" without a follow-up call.
+    if include_history:
+        recent_scores = (
+            db.query(models.InfluencerScore)
+            .filter(models.InfluencerScore.influencer_id == id)
+            .order_by(models.InfluencerScore.computed_at.desc())
+            .limit(history_limit)
+            .all()
+        )
+        response["score_history"] = [
+            {
+                "score_id": s.id,
+                "campaign_id": s.campaign_id,
+                "final_score": s.final_score,
+                "computed_at": s.computed_at,
+                "score_version": s.score_version,
+                "risk_category": s.risk_category,
+                "detection_category": s.detection_category,
+            }
+            for s in recent_scores
+        ]
+        # Aggregate: how many campaigns has this influencer been scored in?
+        total = (
+            db.query(func.count(models.InfluencerScore.id))
+            .filter(models.InfluencerScore.influencer_id == id)
+            .scalar()
+        )
+        response["score_history_total"] = int(total or 0)
+
+    return response
 
 
 @router.get("/{id}/scores", response_model=list[dict[str, Any]])

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from backend.core.cache.event_log import emit_event
 from backend.core.cache.pipeline_state import update_pipeline_state
 from backend.core.database import models
-from backend.core.database.session import SessionLocal
+from backend.core.database.session import _get_session_local
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 @contextmanager
 def db_session() -> Iterator[Session]:
     """Yield a request-scoped DB session and close it deterministically."""
-    session = SessionLocal()
+    session = _get_session_local()()
     try:
         yield session
         session.commit()
@@ -38,6 +38,14 @@ def db_session() -> Iterator[Session]:
         raise
     finally:
         session.close()
+
+
+# Backwards-compat shim: some callers (and the existing test suite)
+# patch ``backend.pipeline.tasks._common.SessionLocal`` to inject a
+# fake session. Re-bind the legacy name so those patches keep working
+# even though the canonical entry point is now
+# :func:`_get_session_local`.
+SessionLocal = _get_session_local
 
 
 def get_campaign(session: Session, campaign_id: str) -> models.Campaign:

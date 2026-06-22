@@ -51,6 +51,8 @@ class Campaign(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     brand_id = Column(UUID(as_uuid=True), ForeignKey("brands.id"), nullable=True)
+    org_id = Column(UUID(as_uuid=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     product = Column(String, nullable=False)
     niche = Column(String, nullable=False)
     goals = Column(Text, nullable=True)
@@ -69,6 +71,15 @@ class Campaign(Base):
     scores = relationship("InfluencerScore", back_populates="campaign", cascade="all, delete-orphan")
     crawl_sources = relationship("CrawlSource", back_populates="campaign", cascade="all, delete-orphan")
     brand_safety_flags = relationship("BrandSafetyFlag", back_populates="campaign", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "created_by",
+            "product",
+            "niche",
+            name="uq_campaigns_owner_product_niche",
+        ),
+    )
 
 
 class Influencer(Base):
@@ -200,10 +211,21 @@ class CredentialVerification(Base):
 
 Index("idx_influencer_scores_campaign", InfluencerScore.campaign_id)
 Index("idx_influencer_scores_influencer", InfluencerScore.influencer_id)
+Index(
+    "idx_influencer_scores_campaign_final",
+    InfluencerScore.campaign_id,
+    InfluencerScore.final_score.desc(),
+)
 Index("idx_crawl_sources_campaign", CrawlSource.campaign_id)
 Index("idx_crawl_sources_url", CrawlSource.url)
+Index(
+    "idx_crawl_sources_campaign_status",
+    CrawlSource.campaign_id,
+    CrawlSource.status,
+)
 Index("idx_crawl_source_influencers_source", CrawlSourceInfluencer.crawl_source_id)
 Index("idx_crawl_source_influencers_influencer", CrawlSourceInfluencer.influencer_id)
 Index("idx_brand_safety_influencer", BrandSafetyFlag.influencer_id)
 Index("idx_brand_safety_campaign", BrandSafetyFlag.campaign_id)
 Index("idx_credential_verifications_influencer", CredentialVerification.influencer_id)
+Index("idx_campaigns_created_by", Campaign.created_by)
