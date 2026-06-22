@@ -3,13 +3,20 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { submitOnboarding } from "@/lib/api";
 
 export default function OnboardingStepper() {
   const router = useRouter();
   const [step, setStep] = useState(1);
+  const [brandName, setBrandName] = useState("Northwind Outdoor");
+  const [industry, setIndustry] = useState("Outdoor & activewear");
+  const [companySize, setCompanySize] = useState("11–50");
+  const [country, setCountry] = useState("Canada");
   const [goals, setGoals] = useState<string[]>(["awareness", "sales"]);
   const [platforms, setPlatforms] = useState<string[]>(["instagram", "tiktok"]);
   const [budget, setBudget] = useState(12500);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const go = (s: number) => {
     setStep(s);
@@ -32,7 +39,36 @@ export default function OnboardingStepper() {
     setBudget(parseInt(e.target.value, 10));
   };
 
-  const finish = () => {
+  const buildPayload = () => ({
+    brand_name: brandName,
+    industry,
+    company_size: companySize,
+    country,
+    goals,
+    platforms,
+    monthly_budget: budget,
+  });
+
+  const finish = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitOnboarding(buildPayload());
+      router.push("/dashboard?welcome=1");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save onboarding details");
+      setSubmitting(false);
+    }
+  };
+
+  const skip = async () => {
+    // Best-effort: persist whatever was filled in so far, but don't block
+    // the user from leaving onboarding if the save fails.
+    try {
+      await submitOnboarding(buildPayload());
+    } catch {
+      // ignored — skipping should never get stuck on a network error
+    }
     router.push("/dashboard?welcome=1");
   };
 
@@ -77,9 +113,9 @@ export default function OnboardingStepper() {
             <span className="step-label">Platforms</span>
           </div>
         </div>
-        <Link className="quit" href="/dashboard?welcome=1">
+        <button className="quit" onClick={skip} disabled={submitting}>
           Skip for now
-        </Link>
+        </button>
       </div>
 
       <div className="body">
@@ -96,12 +132,18 @@ export default function OnboardingStepper() {
             </p>
             <div className="field">
               <label>Brand name</label>
-              <input defaultValue="Northwind Outdoor" />
+              <input
+                value={brandName}
+                onChange={(e) => setBrandName(e.target.value)}
+              />
             </div>
             <div className="grid2">
               <div className="field">
                 <label>Industry</label>
-                <select defaultValue="Outdoor & activewear">
+                <select
+                  value={industry}
+                  onChange={(e) => setIndustry(e.target.value)}
+                >
                   <option>Outdoor & activewear</option>
                   <option>Beauty & skincare</option>
                   <option>Food & beverage</option>
@@ -114,7 +156,10 @@ export default function OnboardingStepper() {
               </div>
               <div className="field">
                 <label>Company size</label>
-                <select defaultValue="11–50">
+                <select
+                  value={companySize}
+                  onChange={(e) => setCompanySize(e.target.value)}
+                >
                   <option>1–10</option>
                   <option>11–50</option>
                   <option>51–200</option>
@@ -125,7 +170,10 @@ export default function OnboardingStepper() {
             </div>
             <div className="field">
               <label>Country</label>
-              <select defaultValue="Canada">
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+              >
                 <option>United States</option>
                 <option>Canada</option>
                 <option>United Kingdom</option>
@@ -439,20 +487,23 @@ export default function OnboardingStepper() {
               </div>
             </div>
 
+            {error && <p className="error">{error}</p>}
             <div className="actions">
-              <button className="back" onClick={() => go(2)}>
+              <button className="back" onClick={() => go(2)} disabled={submitting}>
                 ← Back
               </button>
-              <button className="next" onClick={finish}>
-                Finish Setup
-                <span
-                  style={{
-                    fontFamily: "Instrument Serif, serif",
-                    fontStyle: "italic",
-                  }}
-                >
-                  →
-                </span>
+              <button className="next" onClick={finish} disabled={submitting}>
+                {submitting ? "Saving…" : "Finish Setup"}
+                {!submitting && (
+                  <span
+                    style={{
+                      fontFamily: "Instrument Serif, serif",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    →
+                  </span>
+                )}
               </button>
             </div>
           </section>

@@ -9,7 +9,7 @@ from fastapi.openapi.utils import get_openapi
 from backend.api.middleware.cors import setup_cors
 from backend.api.middleware.error_handlers import register_error_handlers
 from backend.api.middleware.request_logging import setup_logging_middleware
-from backend.api.routers import auth, campaigns, demo, health, influencers, websocket
+from backend.api.routers import auth, campaigns, demo, health, influencers, onboarding, websocket
 from backend.api.schemas.errors import ErrorEnvelope
 from backend.core.config import settings
 from backend.core.lifecycle import StartupValidationError, validate_settings
@@ -78,6 +78,7 @@ register_error_handlers(app)
 # Register endpoints routers
 app.include_router(auth.router)
 app.include_router(health.router)
+app.include_router(onboarding.router)
 app.include_router(campaigns.router)
 app.include_router(influencers.router)
 app.include_router(demo.router)
@@ -111,6 +112,7 @@ def _custom_openapi() -> dict:
         routes=app.routes,
         tags=[
             {"name": "auth", "description": "Signup, login, token refresh, current-user lookup."},
+            {"name": "onboarding", "description": "Create/retrieve the current user's brand profile."},
             {"name": "campaigns", "description": "Create, retrieve, and inspect campaigns."},
             {"name": "influencers", "description": "Influencer profile, score history, brand-safety flags."},
             {"name": "websocket", "description": "Real-time pipeline event stream with replay."},
