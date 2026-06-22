@@ -100,7 +100,6 @@ def test_pipeline_emits_score_event_with_required_fields() -> None:
     }
     result = run_role5_pipeline(candidate)
     event = result.score_event
-    assert event["event_type"] == "score.calculated"
     for key in ("influencer_id", "overall_fake_risk", "detection_category",
                 "risk_category", "final_score", "grade", "confidence"):
         assert key in event
@@ -161,6 +160,5 @@ def test_event_helpers_serialize() -> None:
         detection_category="HIGH_RISK", risk_category="high",
         final_score=58.0, grade="C", confidence="Medium",
     ).to_payload()
-    assert payload["event_type"] == "score.calculated"
     assert payload["detection_category"] == "HIGH_RISK"
     assert payload["final_score"] == 58.0

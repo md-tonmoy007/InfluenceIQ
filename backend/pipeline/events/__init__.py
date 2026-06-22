@@ -27,6 +27,115 @@ from backend.pipeline.extraction.contact_info import (
 from backend.pipeline.fusion.versioning import computed_at
 
 
+# ---------------------------------------------------------------------------
+# Query & Search events
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class QueryGenerationCompleted:
+    campaign_id: str
+    query_count: int
+    queries: list[str]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "query_count": self.query_count,
+            "queries": list(self.queries),
+        }
+
+
+@dataclass
+class SearchExecuted:
+    campaign_id: str
+    query: str
+    index: int
+    result_count: int
+    crawl_source_ids: list[str]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "query": self.query,
+            "index": self.index,
+            "result_count": self.result_count,
+            "crawl_source_ids": list(self.crawl_source_ids),
+        }
+
+
+@dataclass
+class SearchFailed:
+    campaign_id: str
+    query: str
+    index: int
+    error: str
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "query": self.query,
+            "index": self.index,
+            "error": self.error,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Crawl / Fetch events
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PageFetched:
+    campaign_id: str
+    crawl_source_id: str
+    url: str
+    status: int
+    cached: bool
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "crawl_source_id": self.crawl_source_id,
+            "url": self.url,
+            "status": self.status,
+            "cached": self.cached,
+        }
+
+
+@dataclass
+class CrawlFailed:
+    campaign_id: str
+    crawl_source_id: str
+    error: str
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "crawl_source_id": self.crawl_source_id,
+            "error": self.error,
+        }
+
+
+@dataclass
+class ContentExtracted:
+    campaign_id: str
+    crawl_source_id: str
+    url: str | None
+    title: str | None
+    social_links: list[str]
+    metrics: dict[str, Any]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "crawl_source_id": self.crawl_source_id,
+            "url": self.url,
+            "title": self.title,
+            "social_links": list(self.social_links),
+            "metrics": dict(self.metrics),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Influencer events
+# ---------------------------------------------------------------------------
+
+
 @dataclass
 class InfluencerFound:
     name: str
@@ -35,6 +144,24 @@ class InfluencerFound:
 
     def to_payload(self) -> dict[str, Any]:
         return {"name": self.name, "platform": self.platform, "source": self.source}
+
+
+@dataclass
+class InfluencersNone:
+    campaign_id: str
+    crawl_source_id: str
+    url: str | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "crawl_source_id": self.crawl_source_id,
+            "url": self.url,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Identity events
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -49,6 +176,51 @@ class IdentityMerged:
             "merged_from": list(self.merged_from),
             "confidence": round(float(self.confidence), 4),
         }
+
+
+@dataclass
+class IdentityResolved:
+    campaign_id: str
+    candidate_a: dict[str, Any]
+    candidate_b: dict[str, Any]
+    merge: bool
+    confidence: float | None
+    reason: str
+    llm_used: bool
+    llm_note: str | None = None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "candidate_a": dict(self.candidate_a),
+            "candidate_b": dict(self.candidate_b),
+            "merge": self.merge,
+            "confidence": round(float(self.confidence), 4) if self.confidence is not None else None,
+            "reason": self.reason,
+            "llm_used": self.llm_used,
+            "llm_note": self.llm_note,
+        }
+
+
+@dataclass
+class IdentityAmbiguous:
+    campaign_id: str
+    candidate_a: dict[str, Any]
+    candidate_b: dict[str, Any]
+    confidence: float
+    reason: str
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "candidate_a": dict(self.candidate_a),
+            "candidate_b": dict(self.candidate_b),
+            "confidence": round(float(self.confidence), 4),
+            "reason": self.reason,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Score event
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -74,7 +246,6 @@ class ScoreCalculated:
 
     def to_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "event_type": "score.calculated",
             "influencer_id": self.influencer_id,
             "overall_fake_risk": round(float(self.overall_fake_risk), 2),
             "detection_category": self.detection_category,
@@ -94,8 +265,68 @@ class ScoreCalculated:
         return payload
 
 
+# ---------------------------------------------------------------------------
+# Brand-safety events
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BrandSafetyFlagged:
+    campaign_id: str
+    source_url: str
+    mention_label: str
+    influencer_id: str | None
+    flag_count: int
+    requires_llm_review: bool
+    sample_flags: list[dict[str, Any]]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "source_url": self.source_url,
+            "mention_label": self.mention_label,
+            "influencer_id": self.influencer_id,
+            "flag_count": self.flag_count,
+            "requires_llm_review": self.requires_llm_review,
+            "sample_flags": list(self.sample_flags),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Campaign lifecycle events
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CampaignCancelled:
+    campaign_id: str
+    reason: str
+    influencer_count: int
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "reason": self.reason,
+            "influencer_count": self.influencer_count,
+        }
+
+
+# ---------------------------------------------------------------------------
+# __all__
+# ---------------------------------------------------------------------------
+
+
 __all__ = [
+    "BrandSafetyFlagged",
+    "CampaignCancelled",
+    "ContentExtracted",
+    "CrawlFailed",
+    "IdentityAmbiguous",
     "IdentityMerged",
+    "IdentityResolved",
     "InfluencerFound",
+    "InfluencersNone",
+    "PageFetched",
+    "QueryGenerationCompleted",
     "ScoreCalculated",
+    "SearchExecuted",
+    "SearchFailed",
 ]

@@ -10,6 +10,7 @@ from celery import shared_task
 
 from backend.core.database import models
 from backend.pipeline.analysis.brand_safety_blocklist import scan_brand_safety
+from backend.pipeline.fusion.backends.ml_adapters import explain_via_llm
 from backend.pipeline.orchestrator.pipeline import run_role5_pipeline
 from backend.pipeline.tasks._common import (
     db_session,
@@ -54,6 +55,15 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
     signal_scores = result.signal_scores or {}
     risk_score = result.risk_score or {}
     detection = result.detection or {}
+
+    # Optional LLM explanation enrichment
+    llm_explanation = explain_via_llm(
+        influencer_id,
+        factors={k: float(v) for k, v in sub_scores.items() if isinstance(v, (int, float))},
+        evidence_ids=list(result.source_urls),
+    )
+    if llm_explanation:
+        result.score_event["explanation"] = llm_explanation
 
     with db_session() as session:
         existing = (
@@ -108,19 +118,7 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
     publish_event(
         campaign_id,
         "score.calculated",
-        influencer_id=influencer_id,
-        canonical_name=canonical_name,
-        grade=result.grade,
-        confidence=result.confidence,
-        final_score=score_row.final_score,
-        sub_scores=sub_scores,
-        signal_scores=signal_scores,
-        risk_category=risk_score.get("risk_category"),
-        detection_category=detection.get("category") if isinstance(detection, dict) else None,
-        data_source_count=result.data_source_count,
-        positive_reasons=result.positive_reasons,
-        negative_reasons=result.negative_reasons,
-        sources=sources_for_event,
+        **result.score_event,
     )
     set_phase(campaign_id, scores_computed=_bump_counter(campaign_id, "scores_computed"))
 

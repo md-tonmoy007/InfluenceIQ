@@ -9,6 +9,11 @@ from uuid import UUID, uuid4
 from celery import shared_task
 
 from backend.core.database import models
+from backend.pipeline.events import (
+    IdentityAmbiguous,
+    IdentityResolved,
+    InfluencersNone,
+)
 from backend.pipeline.extraction.entities import extract_influencer_mentions
 from backend.pipeline.identity.canonical import canonicalize_candidate
 from backend.pipeline.identity.resolver import resolve_candidates, resolve_identity_clusters
@@ -35,7 +40,15 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
         return {"crawl_source_id": crawl_source_id, "status": "failed", "error": str(exc)}
 
     if not mentions:
-        publish_event(campaign_id, "influencers.none", crawl_source_id=crawl_source_id, url=content.get("url"))
+        publish_event(
+            campaign_id,
+            "influencers.none",
+            **InfluencersNone(
+                campaign_id=campaign_id,
+                crawl_source_id=crawl_source_id,
+                url=content.get("url"),
+            ).to_payload(),
+        )
         return {"crawl_source_id": crawl_source_id, "status": "no_mentions"}
 
     new_influencer_ids: list[str] = []
@@ -205,10 +218,13 @@ def resolve_identity_cluster(self, campaign_id: str) -> dict:
             publish_event(
                 campaign_id,
                 "identity.ambiguous",
-                candidate_a=_candidate_preview(pair.get("candidate_a", {})),
-                candidate_b=_candidate_preview(pair.get("candidate_b", {})),
-                confidence=round(conf, 4),
-                reason=pair.get("reason", ""),
+                **IdentityAmbiguous(
+                    campaign_id=campaign_id,
+                    candidate_a=_candidate_preview(pair.get("candidate_a", {})),
+                    candidate_b=_candidate_preview(pair.get("candidate_b", {})),
+                    confidence=round(conf, 4),
+                    reason=str(pair.get("reason", "")),
+                ).to_payload(),
             )
             if use_llm:
                 resolve_identity_llm.delay(
@@ -246,7 +262,20 @@ def resolve_identity_llm(self, campaign_id: str, candidate_a: dict, candidate_b:
     }
     if use_llm:
         payload["llm_note"] = "LLM endpoint not configured; deterministic verdict returned"
-    publish_event(campaign_id, "identity.resolved", **payload)
+    publish_event(
+        campaign_id,
+        "identity.resolved",
+        **IdentityResolved(
+            campaign_id=campaign_id,
+            candidate_a=_candidate_preview(candidate_a),
+            candidate_b=_candidate_preview(candidate_b),
+            merge=bool(decision.get("merge", False)),
+            confidence=decision.get("confidence"),
+            reason=str(decision.get("reason", "")),
+            llm_used=use_llm,
+            llm_note="LLM endpoint not configured; deterministic verdict returned" if use_llm else None,
+        ).to_payload(),
+    )
     return decision
 
 

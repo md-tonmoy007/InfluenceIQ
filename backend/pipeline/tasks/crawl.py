@@ -11,6 +11,11 @@ from sqlalchemy.exc import OperationalError
 from backend.core.database import models
 from backend.pipeline.content.content_extractor import extract_role5_content
 from backend.pipeline.content.fetcher import fetch_url
+from backend.pipeline.events import (
+    ContentExtracted,
+    CrawlFailed,
+    PageFetched,
+)
 from backend.pipeline.tasks._common import (
     db_session,
     mark_campaign_failed,
@@ -70,10 +75,13 @@ def fetch_page(self, campaign_id: str, crawl_source_id: str) -> dict:
     publish_event(
         campaign_id,
         "page.fetched",
-        crawl_source_id=crawl_source_id,
-        url=url,
-        status=status_code,
-        cached=bool(page.get("cached", False)),
+        **PageFetched(
+            campaign_id=campaign_id,
+            crawl_source_id=crawl_source_id,
+            url=url,
+            status=status_code,
+            cached=bool(page.get("cached", False)),
+        ).to_payload(),
     )
     set_phase(campaign_id, urls_scraped=_bump_counter(campaign_id, "urls_scraped"))
 
@@ -108,11 +116,14 @@ def extract_content(self, campaign_id: str, crawl_source_id: str, page: dict) ->
     publish_event(
         campaign_id,
         "content.extracted",
-        crawl_source_id=crawl_source_id,
-        url=content.get("url"),
-        title=content.get("title"),
-        social_links=content.get("social_links", []),
-        metrics=content.get("metrics", {}),
+        **ContentExtracted(
+            campaign_id=campaign_id,
+            crawl_source_id=crawl_source_id,
+            url=content.get("url"),
+            title=content.get("title"),
+            social_links=content.get("social_links", []),
+            metrics=content.get("metrics", {}),
+        ).to_payload(),
     )
 
     from backend.pipeline.tasks.extract import extract_influencers
@@ -134,7 +145,15 @@ def _mark_failed(campaign_id: str, crawl_source_id: str, error: str) -> None:
             source.status = "failed"
             source.error_message = error
             mark_campaign_failed(session, campaign_id, error)
-        publish_event(campaign_id, "crawl.failed", crawl_source_id=crawl_source_id, error=error)
+        publish_event(
+            campaign_id,
+            "crawl.failed",
+            **CrawlFailed(
+                campaign_id=campaign_id,
+                crawl_source_id=crawl_source_id,
+                error=error,
+            ).to_payload(),
+        )
         set_phase(campaign_id, urls_failed=_bump_counter(campaign_id, "urls_failed"))
     except OperationalError:
         log.exception("Cannot mark %s failed: DB unreachable", crawl_source_id)

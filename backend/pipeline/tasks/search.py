@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from backend.core.database import models
 from backend.pipeline.content.search_providers import search_web
+from backend.pipeline.events import QueryGenerationCompleted, SearchExecuted, SearchFailed
 from backend.pipeline.tasks._common import (
     campaign_query_payload,
     db_session,
@@ -186,10 +187,19 @@ def generate_queries(self, campaign_id: str) -> dict:
         payload = campaign_query_payload(campaign)
         queries = _generate_planned_queries(payload)
         set_phase(campaign_id, phase="query_generation", urls_discovered=len(queries))
-        publish_event(campaign_id, "query.generation.completed", query_count=len(queries), queries=queries)
 
     for index, query in enumerate(queries):
         execute_search.delay(campaign_id, query, index)
+
+    publish_event(
+        campaign_id,
+        "query.generation.completed",
+        **QueryGenerationCompleted(
+            campaign_id=campaign_id,
+            query_count=len(queries),
+            queries=queries,
+        ).to_payload(),
+    )
 
     return {"campaign_id": campaign_id, "queries": queries, "count": len(queries)}
 
@@ -219,7 +229,16 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
         results = search_web(query, limit=limit)
     except Exception as exc:
         log.exception("search_web failed campaign_id=%s query=%r: %s", campaign_id, query, exc)
-        publish_event(campaign_id, "search.failed", query=query, index=index, error=str(exc))
+        publish_event(
+            campaign_id,
+            "search.failed",
+            **SearchFailed(
+                campaign_id=campaign_id,
+                query=query,
+                index=index,
+                error=str(exc),
+            ).to_payload(),
+        )
         with db_session() as session:
             mark_campaign_failed(session, campaign_id, str(exc))
         raise
@@ -270,10 +289,13 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
     publish_event(
         campaign_id,
         "search.executed",
-        query=query,
-        index=index,
-        result_count=len(results),
-        crawl_source_ids=created_ids,
+        **SearchExecuted(
+            campaign_id=campaign_id,
+            query=query,
+            index=index,
+            result_count=len(results),
+            crawl_source_ids=created_ids,
+        ).to_payload(),
     )
     set_phase(campaign_id, urls_discovered=len(created_ids))
 
