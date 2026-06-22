@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import pytest
+
 from backend.pipeline.analysis.reason_builder import build_summary
 from backend.pipeline.fusion.fusion import fuse as fuse_layers
 from backend.pipeline.fusion.sub_scores import build_influencer_output, build_role5_scores
@@ -30,7 +34,7 @@ def test_trust_formula_and_caps() -> None:
             "overall_fake_risk_score": 0}
     assert calculate_role5_trust(base, data_source_count=6).role5_trust_score == 100
     assert calculate_role5_trust({**base, "overall_fake_risk_score": 90}, data_source_count=6).role5_trust_score <= 45
-    assert calculate_role5_trust(base, data_source_count=1).role5_trust_score == 70
+    assert calculate_role5_trust(base, data_source_count=1).role5_trust_score == pytest.approx(23.33, abs=0.01)
     assert calculate_role5_trust(base, data_source_count=6, severe_brand_safety=True).role5_trust_score == 40
 
 

@@ -1,11 +1,12 @@
 """Pipeline 19 - Event helpers.
 
-Role 5 never writes to Redis directly. The Celery adapters call
-:func:`emit_event` from :mod:`backend.core.cache.event_log` which the
-broader platform wires to Redis. The helpers in this module construct
-the **payload** for each role-5 event so the adapter layer can be a
-single-line shim. The payloads are intentionally
-:func:`dataclasses.asdict`-friendly so they serialize to JSON cleanly.
+Role 4 (and previously Role 5) never writes to Redis directly. The
+Celery adapters call :func:`emit_event` from
+:mod:`backend.core.cache.event_log` which the broader platform wires
+to Redis. The helpers in this module construct the **payload** for
+each role-4 event so the adapter layer can be a single-line shim.
+The payloads are intentionally :func:`dataclasses.asdict`-friendly
+so they serialize to JSON cleanly.
 
 Contact information is **always redacted** in the public event
 payload. The :class:`ScoreCalculated` event hashes emails, phones,

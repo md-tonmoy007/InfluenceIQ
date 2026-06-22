@@ -15,6 +15,7 @@ TASK_QUEUE_BY_NAME: dict[str, str] = {
     "backend.pipeline.tasks.crawl.extract_content": "scraping_queue",
     # scoring — compute-heavy tasks (extraction + scoring)
     "backend.pipeline.tasks.extract.extract_influencers": "scoring_queue",
+    "backend.pipeline.tasks.extract.resolve_identity_cluster": "scoring_queue",
     "backend.pipeline.tasks.score.score_influencer": "scoring_queue",
 }
 
@@ -31,6 +32,7 @@ TASK_NAMES_BY_SERVICE: dict[str, list[str]] = {
     ],
     SCORING: [
         "backend.pipeline.tasks.extract.extract_influencers",
+        "backend.pipeline.tasks.extract.resolve_identity_cluster",
         "backend.pipeline.tasks.score.score_influencer",
     ],
 }

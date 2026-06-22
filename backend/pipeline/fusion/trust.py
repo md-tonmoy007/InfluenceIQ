@@ -125,6 +125,14 @@ def calculate_role5_trust(
         trust = min(trust, 70.0)
         caps.append("Sparse-data cap applied (max 70)")
 
+    # Sparse-data confidence multiplier: scale the final score by
+    # min(1.0, data_source_count / 3) when fewer than 3 sources.
+    # This degrades trust for candidates with very thin evidence.
+    if data_source_count < 3:
+        multiplier = min(1.0, data_source_count / 3.0)
+        trust = trust * multiplier
+        caps.append(f"Sparse-data confidence multiplier (x{multiplier:.2f})")
+
     return TrustResult(
         role5_trust_score=round(trust, 2),
         grade=grade_for_trust(trust),

@@ -4,8 +4,14 @@ from datetime import UTC, datetime
 
 import httpx
 
-from backend.pipeline.content.cache import get_cached_page, store_cached_page
+from backend.pipeline.content.cache import (
+    get_cached_page,
+    provider_is_available,
+    record_provider_failure,
+    store_cached_page,
+)
 from backend.pipeline.content.contracts import CrawlPage, normalize_url, platform_for_url
+from backend.pipeline.content.errors import classify_fetch_error
 from backend.pipeline.content.providers import fetch_platform_profile
 
 USER_AGENTS = [
@@ -54,6 +60,10 @@ def fetch_url(url: str, timeout: float = 15.0) -> dict:
     if cached:
         return cached
 
+    platform = platform_for_url(normalized_url)
+    if platform not in ("web", "unknown") and not provider_is_available(platform):
+        return _fallback_page(normalized_url, f"PROVIDER_DOWN: {platform} circuit breaker open")
+
     platform_page = fetch_platform_profile(normalized_url)
     if platform_page is not None:
         store_cached_page(normalized_url, platform_page)
@@ -71,13 +81,20 @@ def fetch_url(url: str, timeout: float = 15.0) -> dict:
         status = response.status_code
         error = None
     except httpx.HTTPError as exc:
+        error = classify_fetch_error(exc)
+        if platform not in ("web", "unknown"):
+            record_provider_failure(platform)
         html = _fallback_html(normalized_url)
         status = 599
-        error = str(exc)
 
-    if status in {403, 429} or not html.strip():
+    if error is None and status in {403, 429}:
+        error = classify_fetch_error(Exception("blocked"), status_code=status)
+        if platform not in ("web", "unknown"):
+            record_provider_failure(platform)
         html = _fallback_html(normalized_url)
-        error = error or f"blocked_or_empty_status_{status}"
+
+    if error is None and not html.strip():
+        error = f"PARSE_ERROR: empty content at {normalized_url}"
 
     page = CrawlPage(
         url=normalized_url,
@@ -91,3 +108,17 @@ def fetch_url(url: str, timeout: float = 15.0) -> dict:
     ).to_dict()
     store_cached_page(normalized_url, page)
     return page
+
+
+def _fallback_page(url: str, error: str) -> dict:
+    """Return a fallback page when the circuit breaker is open."""
+    return CrawlPage(
+        url=url,
+        status=503,
+        html=_fallback_html(url),
+        fetched_at=datetime.now(UTC).isoformat(),
+        cached=False,
+        provider="fallback",
+        error=error,
+        headers={},
+    ).to_dict()

@@ -141,4 +141,5 @@ def extract_role5_content(page: dict) -> dict:
         },
     }
     content["role5_candidate"] = _role5_candidate(content)
+    content["role4_candidate"] = content["role5_candidate"]
     return content

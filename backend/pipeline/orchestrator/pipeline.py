@@ -1,6 +1,7 @@
-"""End-to-end Role 5 pipeline orchestrator.
+"""End-to-end Role 4 pipeline orchestrator.
 
-This module is the single public entry point for role-5. It composes:
+This module is the single public entry point for role-4
+(Pipeline Intelligence). It composes:
 
 * :mod:`backend.pipeline.detection`        - 5 fake-risk detectors + classifier
 * :mod:`backend.pipeline.analysis`         - sentiment, engagement, credibility
@@ -8,8 +9,12 @@ This module is the single public entry point for role-5. It composes:
 
 The orchestrator is intentionally synchronous, deterministic, and
 free of I/O. It returns a fully-formed :class:`Role5PipelineResult`
-that matches the backend/frontend contract documented in
-``Role-5-Implementation.md`` and ``Role-5-Scoring.md``.
+(or its :class:`Role4PipelineResult` alias) that matches the
+backend/frontend contract documented in
+:doc:`/docs/Role-4-Pipeline-Intelligence.md`.
+
+Role-5 legacy names are kept as aliases for backward compatibility
+and will be removed after one release cycle.
 """
 
 from __future__ import annotations
@@ -58,6 +63,7 @@ from backend.pipeline.fusion.versioning import (
     MODEL_VERSION_ALIAS,
     computed_at,
     model_version_for,
+    role4_version_for,
 )
 
 
@@ -338,6 +344,12 @@ def run_role5_pipeline(candidate: dict[str, Any],
             graph_v2=False,    # inert in v1
             bot_rings_v2=False,  # inert in v1
         ),
+        "role4_model_version": role4_version_for(
+            semantic_v2=semantic_v2_used,
+            behavioral_v2=behavioral_v2_used,
+            graph_v2=False,
+            bot_rings_v2=False,
+        ),
         "model_version_v1_alias": MODEL_VERSION_ALIAS,
         "computed_at": computed_at(),
     }
@@ -441,4 +453,28 @@ def trust_grade_to_confidence(source_count: int, grade: str, sub_scores: dict[st
     return "High"
 
 
-__all__ = ["Role5PipelineResult", "run_role5_pipeline", "trust_grade_to_confidence"]
+# ---------------------------------------------------------------------------
+# Role-4 public aliases (backward-compatible with Role 5 internals)
+#
+# The v1 code path is identical — only the public symbol names change.
+# These aliases match the contract in docs/Role-4-Pipeline-Intelligence.md.
+# The Role-5 legacy names will be removed after one release cycle.
+# ---------------------------------------------------------------------------
+
+Role4PipelineResult = Role5PipelineResult
+"""Alias for :class:`Role5PipelineResult`. Role-4 charter name."""
+
+run_role4_pipeline = run_role5_pipeline
+"""Alias for :func:`run_role5_pipeline`. Role-4 charter entry point."""
+
+trust_grade_to_confidence_role4 = trust_grade_to_confidence
+"""Alias for role-4 contexts. Identical logic."""
+
+__all__ = [
+    "Role4PipelineResult",
+    "Role5PipelineResult",
+    "run_role4_pipeline",
+    "run_role5_pipeline",
+    "trust_grade_to_confidence",
+    "trust_grade_to_confidence_role4",
+]

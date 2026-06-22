@@ -77,7 +77,11 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
         score_row.brand_safety_score = float(sub_scores.get("brand_safety", 0.0))
         score_row.confidence_level = result.confidence
         score_row.data_source_count = result.data_source_count
-        score_row.score_version = risk_score.get("model_version") or "v1.0"
+        score_row.score_version = (
+            risk_score.get("role4_model_version")
+            or risk_score.get("model_version")
+            or "Role4-InfluenceScore-v1"
+        )
         score_row.signal_scores = signal_scores
         score_row.risk_category = risk_score.get("risk_category")
         score_row.detection_category = detection.get("category") if isinstance(detection, dict) else None

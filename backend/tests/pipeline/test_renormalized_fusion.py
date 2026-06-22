@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from backend.pipeline.fusion.fusion import DEFAULT_WEIGHTS, fuse
 from backend.pipeline.fusion.trust import (
     DEFAULT_POSITIVE_WEIGHTS,
@@ -73,8 +75,31 @@ def test_trust_formula_sparse_data_cap() -> None:
         "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
         "overall_fake_risk_score": 0,
     }, data_source_count=1)
-    assert trust.role5_trust_score == 70
+    # Sparse-data cap (max 70) + confidence multiplier (x0.33) → 23.33
+    assert trust.role5_trust_score == pytest.approx(23.33, abs=0.01)
     assert any("Sparse-data" in c for c in trust.caps)
+    assert any("confidence multiplier" in c for c in trust.caps)
+
+
+def test_trust_formula_sparse_data_multiplier_two_sources() -> None:
+    """With 2 sources the multiplier is 2/3 ≈ 0.67."""
+    trust = calculate_role5_trust({
+        "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
+        "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
+        "overall_fake_risk_score": 0,
+    }, data_source_count=2)
+    # Sparse-data cap (max 70) + confidence multiplier (x0.67) → 46.67
+    assert trust.role5_trust_score == pytest.approx(46.67, abs=0.01)
+
+
+def test_trust_formula_no_multiplier_with_three_sources() -> None:
+    """With 3+ sources no multiplier is applied."""
+    trust = calculate_role5_trust({
+        "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
+        "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
+        "overall_fake_risk_score": 0,
+    }, data_source_count=3)
+    assert trust.role5_trust_score == 100.0  # no caps, no multiplier
 
 
 def test_trust_formula_severe_brand_safety_cap() -> None:
@@ -88,14 +113,14 @@ def test_trust_formula_severe_brand_safety_cap() -> None:
 
 
 def test_trust_formula_combined_caps() -> None:
-    # All three caps fire -> the strictest one wins
+    # All three caps fire + confidence multiplier → 40 * 0.33 = 13.33
     trust = calculate_role5_trust({
         "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
         "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
         "overall_fake_risk_score": 90,
     }, data_source_count=1, severe_brand_safety=True)
-    assert trust.role5_trust_score == 40
-    assert len(trust.caps) == 3
+    assert trust.role5_trust_score == pytest.approx(13.33, abs=0.01)
+    assert len(trust.caps) == 4  # 3 caps + multiplier
 
 
 def test_trust_formula_default_weights_and_constants() -> None:

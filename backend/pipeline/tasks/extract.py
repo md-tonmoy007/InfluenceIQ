@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from uuid import UUID, uuid4
 
 from celery import shared_task
@@ -10,7 +11,7 @@ from celery import shared_task
 from backend.core.database import models
 from backend.pipeline.extraction.entities import extract_influencer_mentions
 from backend.pipeline.identity.canonical import canonicalize_candidate
-from backend.pipeline.identity.resolver import resolve_candidates
+from backend.pipeline.identity.resolver import resolve_candidates, resolve_identity_clusters
 from backend.pipeline.tasks._common import (
     db_session,
     publish_event,
@@ -19,6 +20,8 @@ from backend.pipeline.tasks._common import (
 )
 
 log = logging.getLogger(__name__)
+
+AUTO_MERGE_THRESHOLD = 0.85
 
 
 @shared_task(name="backend.pipeline.tasks.extract.extract_influencers", bind=True, max_retries=2)
@@ -113,6 +116,9 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
         mention_count=len(mentions),
     )
 
+    # Trigger identity cluster resolution after every extraction
+    resolve_identity_cluster.delay(campaign_id)
+
     for influencer_id in new_influencer_ids:
         from backend.pipeline.tasks.score import score_influencer
 
@@ -123,6 +129,103 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
         "mentions": len(mentions),
         "new_influencers": new_influencer_ids,
         "influencers": all_influencer_ids,
+    }
+
+
+@shared_task(name="backend.pipeline.tasks.extract.resolve_identity_cluster", bind=True, max_retries=2)
+def resolve_identity_cluster(self, campaign_id: str) -> dict:
+    """Campaign-wide identity cluster resolution.
+
+    Loads all influencer records for *campaign_id*, runs
+    :func:`resolve_identity_clusters`, and emits ``identity.merged``
+    events for confident matches (confidence >= 0.85). Pairs below
+    that threshold emit ``identity.ambiguous`` events and, when the
+    ``AI_AGENT_LLM_IDENTITY`` flag is on, are dispatched to
+    :func:`resolve_identity_llm`.
+    """
+    log.info("resolve_identity_cluster campaign_id=%s", campaign_id)
+    try:
+        campaign_uuid = UUID(campaign_id)
+    except (TypeError, ValueError) as exc:
+        log.warning("Invalid campaign_id %s: %s", campaign_id, exc)
+        return {"campaign_id": campaign_id, "status": "invalid_id"}
+
+    with db_session() as session:
+        campaign = session.get(models.Campaign, campaign_uuid)
+        if campaign is None:
+            return {"campaign_id": campaign_id, "status": "campaign_not_found"}
+
+        # Collect all influencers for this campaign
+        influencers = (
+            session.query(models.Influencer)
+            .join(models.CrawlSourceInfluencer)
+            .join(models.CrawlSource)
+            .filter(models.CrawlSource.campaign_id == campaign_uuid)
+            .distinct()
+            .all()
+        )
+        if not influencers:
+            return {"campaign_id": campaign_id, "status": "no_influencers", "influencer_count": 0}
+
+        # Build candidate dicts from ORM rows
+        candidates = []
+        for inf in influencers:
+            platforms = dict(inf.platforms or {})
+            profile_urls = [v for v in platforms.values() if isinstance(v, str)]
+            candidate = {
+                "influencer_id": str(inf.id),
+                "canonical_name": inf.canonical_name or "",
+                "platforms": platforms,
+                "profile_urls": profile_urls,
+                "credentials": list(inf.credentials or []),
+                "professional_titles": [],
+                "mentions": list(inf.mentions or []),
+            }
+            candidates.append(candidate)
+
+    # Run cluster resolution
+    def _emit(cid: str, event_type: str, payload: object) -> None:
+        if isinstance(payload, dict):
+            publish_event(cid, event_type, **payload)
+
+    result = resolve_identity_clusters(
+        candidates,
+        campaign_id=campaign_id,
+        event_emitter=_emit,
+    )
+
+    merge_count = len(result.get("merge_events", []))
+    ambiguous_pairs = result.get("ambiguous_pairs", [])
+
+    # Emit identity.ambiguous events for pairs below auto-merge threshold
+    use_llm = _llm_enabled()
+    for pair in ambiguous_pairs:
+        conf = float(pair.get("confidence", 0))
+        if conf < AUTO_MERGE_THRESHOLD:
+            publish_event(
+                campaign_id,
+                "identity.ambiguous",
+                candidate_a=_candidate_preview(pair.get("candidate_a", {})),
+                candidate_b=_candidate_preview(pair.get("candidate_b", {})),
+                confidence=round(conf, 4),
+                reason=pair.get("reason", ""),
+            )
+            if use_llm:
+                resolve_identity_llm.delay(
+                    campaign_id,
+                    pair["candidate_a"],
+                    pair["candidate_b"],
+                )
+
+    log.info(
+        "resolve_identity_cluster campaign_id=%s merges=%d ambiguous=%d llm=%s",
+        campaign_id, merge_count, len(ambiguous_pairs), use_llm,
+    )
+    return {
+        "campaign_id": campaign_id,
+        "merge_count": merge_count,
+        "ambiguous_count": len(ambiguous_pairs),
+        "llm_dispatched": use_llm and len(ambiguous_pairs) > 0,
     }
 
 
@@ -148,8 +251,6 @@ def resolve_identity_llm(self, campaign_id: str, candidate_a: dict, candidate_b:
 
 
 def _llm_enabled() -> bool:
-    import os
-
     return os.environ.get("AI_AGENT_LLM_IDENTITY", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -168,4 +269,8 @@ def _bump_counter(campaign_id: str, field: str, delta: int = 1) -> int:
     return int(state.get(field, 0)) + delta
 
 
-__all__ = ["extract_influencers", "resolve_identity_llm"]
+__all__ = [
+    "extract_influencers",
+    "resolve_identity_cluster",
+    "resolve_identity_llm",
+]
