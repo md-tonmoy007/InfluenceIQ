@@ -8,6 +8,7 @@ from backend.core.config import settings
 
 # Import models so they are registered on the Base.metadata
 from backend.core.database.models import (  # noqa: F401
+    ApiKey,
     Brand,
     BrandProfile,
     BrandSafetyFlag,
@@ -17,6 +18,9 @@ from backend.core.database.models import (  # noqa: F401
     CredentialVerification,
     Influencer,
     InfluencerScore,
+    IntegrationConnection,
+    NotificationPreference,
+    Subscription,
     User,
 )
 from backend.core.database.session import Base

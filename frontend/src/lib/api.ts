@@ -82,6 +82,8 @@ export type CurrentUser = {
   company_name: string;
   name: string;
   email: string;
+  role?: string | null;
+  timezone?: string | null;
 };
 
 export type CampaignSummary = {
@@ -214,6 +216,14 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
       message = statusMessages[response.status] ?? `Request failed (${response.status})`;
     }
     throw new Error(message);
+  }
+
+  // 204 No Content (and other empty-body success codes) have no
+  // JSON to parse. The settings page uses 204 for change-password,
+  // delete-account, and revoke-api-key, so the caller should
+  // receive `undefined` rather than a parse failure.
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return response.json() as Promise<T>;
@@ -436,4 +446,144 @@ export const submitOnboarding = async (
   requestJson<BrandProfile>("/api/onboarding", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+
+export const getOnboarding = async (): Promise<BrandProfile> =>
+  requestJson<BrandProfile>("/api/onboarding");
+
+// ---------------------------------------------------------------------------
+// Settings: profile, password, account deletion
+// ---------------------------------------------------------------------------
+
+export const updateProfile = async (payload: {
+  name?: string;
+  role?: string | null;
+  timezone?: string | null;
+}): Promise<CurrentUser> =>
+  requestJson<CurrentUser>("/api/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export const changePassword = async (payload: {
+  current_password: string;
+  new_password: string;
+}): Promise<void> => {
+  await requestJson<null>("/api/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deleteAccount = async (): Promise<void> => {
+  await requestJson<null>("/api/auth/me", {
+    method: "DELETE",
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Settings: notifications
+// ---------------------------------------------------------------------------
+
+export type NotificationPreferences = {
+  id: string;
+  user_id: string;
+  shortlist_ready: boolean;
+  creator_replied: boolean;
+  weekly_digest: boolean;
+  product_updates: boolean;
+  updated_at: string;
+};
+
+export const getNotificationPreferences = async (): Promise<NotificationPreferences> =>
+  requestJson<NotificationPreferences>("/api/settings/notifications");
+
+export const updateNotificationPreferences = async (
+  payload: Omit<NotificationPreferences, "id" | "user_id" | "updated_at">
+): Promise<NotificationPreferences> =>
+  requestJson<NotificationPreferences>("/api/settings/notifications", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+// ---------------------------------------------------------------------------
+// Settings: integrations (Slack / HubSpot stubs)
+// ---------------------------------------------------------------------------
+
+export type IntegrationProvider = "slack" | "hubspot";
+
+export type IntegrationStatus = {
+  provider: IntegrationProvider;
+  connected: boolean;
+  connected_at: string | null;
+};
+
+export const getIntegrations = async (): Promise<IntegrationStatus[]> =>
+  requestJson<IntegrationStatus[]>("/api/settings/integrations");
+
+export const connectIntegration = async (
+  provider: IntegrationProvider
+): Promise<IntegrationStatus> =>
+  requestJson<IntegrationStatus>(
+    `/api/settings/integrations/${provider}/connect`,
+    { method: "POST" }
+  );
+
+export const disconnectIntegration = async (
+  provider: IntegrationProvider
+): Promise<IntegrationStatus> =>
+  requestJson<IntegrationStatus>(
+    `/api/settings/integrations/${provider}/disconnect`,
+    { method: "POST" }
+  );
+
+// ---------------------------------------------------------------------------
+// Settings: API keys
+// ---------------------------------------------------------------------------
+
+export type ApiKey = {
+  id: string;
+  key_prefix: string;
+  created_at: string;
+  revoked_at: string | null;
+};
+
+export type ApiKeyCreated = ApiKey & {
+  // Plaintext key, returned once on creation. Never store this
+  // past the lifetime of the success banner.
+  key: string;
+};
+
+export const getApiKeys = async (): Promise<ApiKey[]> =>
+  requestJson<ApiKey[]>("/api/settings/api-keys");
+
+export const createApiKey = async (): Promise<ApiKeyCreated> =>
+  requestJson<ApiKeyCreated>("/api/settings/api-keys", {
+    method: "POST",
+  });
+
+export const revokeApiKey = async (id: string): Promise<void> => {
+  await requestJson<null>(`/api/settings/api-keys/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Settings: subscription (stub — no real Stripe wiring)
+// ---------------------------------------------------------------------------
+
+export type PlanId = "starter" | "pro" | "scale";
+
+export type Subscription = {
+  plan: string;
+  updated_at: string;
+};
+
+export const getSubscription = async (): Promise<Subscription> =>
+  requestJson<Subscription>("/api/settings/subscription");
+
+export const updateSubscription = async (plan: string): Promise<Subscription> =>
+  requestJson<Subscription>("/api/settings/subscription", {
+    method: "POST",
+    body: JSON.stringify({ plan }),
   });

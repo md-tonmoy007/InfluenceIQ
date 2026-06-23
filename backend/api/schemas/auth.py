@@ -39,6 +39,8 @@ class UserResponse(BaseModel):
     email: str
     name: str
     company_name: str
+    role: str | None = None
+    timezone: str | None = None
 
 
 class AuthResponse(BaseModel):

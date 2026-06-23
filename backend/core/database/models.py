@@ -42,10 +42,28 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     name = Column(String, nullable=False)
     company_name = Column(String, nullable=False)
+    role = Column(String, nullable=True)
+    timezone = Column(String, nullable=True, default="UTC")
+    deleted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     brand_profile = relationship(
         "BrandProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+    notification_preference = relationship(
+        "NotificationPreference",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    integration_connections = relationship(
+        "IntegrationConnection", back_populates="user", cascade="all, delete-orphan"
+    )
+    api_keys = relationship(
+        "ApiKey", back_populates="user", cascade="all, delete-orphan"
+    )
+    subscription = relationship(
+        "Subscription", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
 
 
@@ -259,3 +277,93 @@ Index("idx_brand_safety_influencer", BrandSafetyFlag.influencer_id)
 Index("idx_brand_safety_campaign", BrandSafetyFlag.campaign_id)
 Index("idx_credential_verifications_influencer", CredentialVerification.influencer_id)
 Index("idx_campaigns_created_by", Campaign.created_by)
+
+
+class NotificationPreference(Base):
+    """Per-user notification toggles shown on the settings page.
+
+    One-to-one with :class:`User`. The defaults match the values
+    hardcoded in the legacy ``SettingsToggles`` component: shortlist
+    ready & creator replied & product updates on, weekly digest off.
+    """
+    __tablename__ = "notification_preferences"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    shortlist_ready = Column(Boolean, nullable=False, default=True, server_default="true")
+    creator_replied = Column(Boolean, nullable=False, default=True, server_default="true")
+    weekly_digest = Column(Boolean, nullable=False, default=False, server_default="false")
+    product_updates = Column(Boolean, nullable=False, default=True, server_default="true")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="notification_preference")
+
+
+class IntegrationConnection(Base):
+    """Stub OAuth connection state for one provider (slack, hubspot, ...).
+
+    A real implementation would store access/refresh tokens here; we
+    just flip a boolean to drive the UI. Unique on
+    ``(user_id, provider)`` so each user gets one row per provider.
+    """
+    __tablename__ = "integration_connections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    provider = Column(String, nullable=False)
+    connected = Column(Boolean, nullable=False, default=False, server_default="false")
+    connected_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="integration_connections")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uq_integration_connections_user_provider"),
+    )
+
+
+class ApiKey(Base):
+    """API key issued to a user.
+
+    ``key_prefix`` is the first 8 characters of the key, displayed in
+    the UI so the user can recognise each key. ``key_hash`` is the
+    full key hashed with the same bcrypt context used for passwords —
+    we never store the plain key. The plain key is returned to the
+    caller exactly once, in the create-response.
+    """
+    __tablename__ = "api_keys"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    key_prefix = Column(String, nullable=False)
+    key_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="api_keys")
+
+
+class Subscription(Base):
+    """Stub subscription plan for a user.
+
+    One-to-one with :class:`User`. The ``plan`` field is a free-text
+    string (``"starter"`` / ``"pro"`` / ``"scale"``); the settings
+    UI flips it via ``POST /api/settings/subscription``. No payment
+    processing, no Stripe — the value is purely cosmetic.
+    """
+    __tablename__ = "subscriptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    plan = Column(String, nullable=False, default="starter", server_default="starter")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="subscription")

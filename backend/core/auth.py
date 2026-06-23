@@ -111,4 +111,13 @@ def get_current_user(
             detail="User not found",
         )
 
+    # Soft-deleted accounts (User.deleted_at set by
+    # DELETE /api/auth/me) are blocked from authenticating while
+    # their data is retained.
+    if user.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
     return user

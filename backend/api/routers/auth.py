@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,10 @@ from backend.api.schemas.auth import (
     RefreshResponse,
     SignupRequest,
     UserResponse,
+)
+from backend.api.schemas.settings import (
+    ChangePasswordRequest,
+    UpdateProfileRequest,
 )
 from backend.core.auth import (
     create_access_token,
@@ -59,6 +65,18 @@ def _clear_auth_cookies(response: Response) -> None:
     )
 
 
+def _user_to_response(user: User) -> UserResponse:
+    """Map a ``User`` ORM row to the :class:`UserResponse` shape."""
+    return UserResponse(
+        user_id=user.id,
+        email=user.email,
+        name=user.name,
+        company_name=user.company_name,
+        role=user.role,
+        timezone=user.timezone,
+    )
+
+
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def signup(
     payload: SignupRequest, response: Response, db: Session = Depends(get_db)
@@ -87,12 +105,7 @@ def signup(
     _set_auth_cookies(response, access_token, refresh_token)
 
     return AuthResponse(
-        user=UserResponse(
-            user_id=user.id,
-            email=user.email,
-            name=user.name,
-            company_name=user.company_name,
-        ),
+        user=_user_to_response(user),
         access_token=access_token,
         refresh_token=refresh_token,
     )
@@ -108,18 +121,21 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
             detail="Invalid email or password",
         )
 
+    if user.deleted_at is not None:
+        # Soft-deleted accounts cannot log back in; surface a generic
+        # 401 to avoid leaking which email is soft-deleted.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
     access_token = create_access_token(str(user.id))
     refresh_token = create_refresh_token(str(user.id))
 
     _set_auth_cookies(response, access_token, refresh_token)
 
     return AuthResponse(
-        user=UserResponse(
-            user_id=user.id,
-            email=user.email,
-            name=user.name,
-            company_name=user.company_name,
-        ),
+        user=_user_to_response(user),
         access_token=access_token,
         refresh_token=refresh_token,
     )
@@ -135,12 +151,68 @@ def logout(response: Response) -> dict[str, str]:
 @router.get("/me", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     """Return the currently authenticated user's profile."""
-    return UserResponse(
-        user_id=current_user.id,
-        email=current_user.email,
-        name=current_user.name,
-        company_name=current_user.company_name,
-    )
+    return _user_to_response(current_user)
+
+
+@router.patch("/me", response_model=UserResponse)
+def update_me(
+    payload: UpdateProfileRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserResponse:
+    """Partial update of the current user's profile (name / role / timezone)."""
+    if payload.name is not None:
+        current_user.name = payload.name
+    if payload.role is not None:
+        current_user.role = payload.role
+    if payload.timezone is not None:
+        current_user.timezone = payload.timezone
+
+    db.commit()
+    db.refresh(current_user)
+    return _user_to_response(current_user)
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Change the current user's password.
+
+    Requires the current password to confirm ownership. The new
+    password is stored as a bcrypt hash (same scheme as signup).
+    """
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    current_user.password_hash = hash_password(payload.new_password)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_me(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Soft-delete the current user's account.
+
+    Sets ``User.deleted_at = utcnow()`` and clears the auth cookies.
+    The row is retained so any data tied to the user (campaigns,
+    brand profile, etc.) is preserved; the user simply cannot
+    authenticate again. ``get_current_user`` filters on
+    ``deleted_at IS NULL`` to enforce this.
+    """
+    current_user.deleted_at = datetime.now(UTC)
+    db.commit()
+    _clear_auth_cookies(response)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/refresh", response_model=RefreshResponse)
