@@ -20,7 +20,26 @@ export default function DiscoverSearch() {
 
     setSubmitting(true);
     try {
-      const campaign = await createCampaign(buildCampaignPayloadFromQuery(trimmed));
+      const brief = buildCampaignPayloadFromQuery(trimmed);
+      const campaign = await createCampaign(brief, {
+        entryPoint: "discover_search",
+        searchQuery: trimmed,
+        campaignName: trimmed.slice(0, 120),
+        briefSnapshot: {
+          brand_name: brief.brand,
+          campaign_name: trimmed.slice(0, 120),
+          goal: brief.goal,
+          ages: brief.ages,
+          gender: brief.gender,
+          language: "English",
+          locations: brief.locations,
+          interests: [],
+          platforms: brief.platforms,
+          tier: brief.tier,
+          budget_text: brief.budget,
+          notes: brief.notes,
+        },
+      });
       const next = `/discover?campaignId=${encodeURIComponent(campaign.campaignId)}`;
       router.push(
         `/matching?campaignId=${encodeURIComponent(campaign.campaignId)}&next=${encodeURIComponent(next)}`

@@ -23,7 +23,15 @@ type BackendCampaignResponse = {
   completed_at: string | null;
   failed_at: string | null;
   failure_reason: string | null;
+  campaign_name: string | null;
+  entry_point: string | null;
+  search_query: string | null;
+  brief_snapshot: Record<string, unknown> | null;
   created_at: string;
+  updated_at: string | null;
+  influencer_count: number | null;
+  top_match_score: number | null;
+  last_activity_at: string | null;
 };
 
 // GET /api/campaigns/{id} returns { campaign, pipeline_state }.
@@ -68,6 +76,13 @@ type BackendInfluencer = {
   positive_reasons?: string[] | null;
   negative_reasons?: string[] | null;
   sources?: BackendCrawlSource[] | null;
+  primary_platform?: string | null;
+  primary_handle?: string | null;
+  follower_count?: number | null;
+  engagement_rate?: number | null;
+  avg_views?: number | null;
+  primary_category?: string | null;
+  primary_location?: string | null;
 };
 
 // GET /api/campaigns/{id}/influencers returns keyset-paginated rows.
@@ -130,6 +145,165 @@ export type InfluencerListResult = {
   nextCursor: string | null;
   filters: Record<string, string | number>;
   sort: { by: string; direction: string };
+};
+
+// ---------------------------------------------------------------------------
+// Workspace summary types (GET /api/workspace/summary)
+// ---------------------------------------------------------------------------
+
+export type WorkspaceViewer = {
+  user_id: string;
+  name: string;
+  email: string;
+  company_name: string;
+  role: string | null;
+  timezone: string;
+};
+
+export type WorkspaceGreeting = {
+  text: string;
+  date_label: string;
+  timestamp: string;
+};
+
+export type WorkspaceHeroCounts = {
+  active_campaigns: number;
+  completed_campaigns: number;
+  draft_campaigns: number;
+  failed_campaigns: number;
+  saved_lists: number;
+};
+
+export type WorkspaceStats = {
+  indexed_influencers: number;
+  categories_covered: number;
+  avg_match_score_30d: number;
+};
+
+export type WorkspaceRecentSearch = {
+  campaign_id: string;
+  label: string;
+  product: string;
+  niche: string;
+  goal: string | null;
+  status: string;
+  entry_point: string | null;
+  created_at: string;
+  updated_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
+export type WorkspaceSidebarCounts = {
+  briefs: number;
+  saved_lists: number;
+  discover: number;
+};
+
+export type WorkspaceUpgradeUsage = {
+  plan: string;
+  limit: number;
+  used: number;
+  remaining: number;
+};
+
+export type WorkspaceSummary = {
+  viewer: WorkspaceViewer;
+  greeting: WorkspaceGreeting;
+  hero_counts: WorkspaceHeroCounts;
+  stats_cards: WorkspaceStats;
+  recent_searches: WorkspaceRecentSearch[];
+  sidebar_counts: WorkspaceSidebarCounts;
+  upgrade_usage: WorkspaceUpgradeUsage;
+};
+
+// ---------------------------------------------------------------------------
+// Campaign list + facet types
+// ---------------------------------------------------------------------------
+
+export type CampaignListItem = {
+  id: string;
+  product: string;
+  niche: string;
+  goals: string | null;
+  status: string;
+  campaign_name: string | null;
+  entry_point: string | null;
+  search_query: string | null;
+  brief_snapshot: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  failure_reason: string | null;
+  preferred_platforms: string[] | null;
+  budget_range: string | null;
+  influencer_count: number | null;
+  top_match_score: number | null;
+  last_activity_at: string | null;
+};
+
+export type CampaignListResult = {
+  items: CampaignListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type CampaignFacet = { value: string; count: number };
+
+export type CampaignFacets = {
+  campaign_id: string;
+  platforms: CampaignFacet[];
+  trust_grades: CampaignFacet[];
+  categories: CampaignFacet[];
+  locations: CampaignFacet[];
+  follower_tiers: CampaignFacet[];
+  total: number;
+};
+
+// ---------------------------------------------------------------------------
+// Saved list types
+// ---------------------------------------------------------------------------
+
+export type SavedListSummary = {
+  id: string;
+  name: string;
+  status: "active" | "draft";
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+  avg_match_score: number | null;
+  platform_mix: Array<{ platform: string; count: number }>;
+  total_followers: number;
+  avg_engagement: number | null;
+};
+
+export type SavedListInfluencer = {
+  id: string;
+  canonical_name: string;
+  primary_platform: string | null;
+  primary_handle: string | null;
+  primary_category: string | null;
+  primary_location: string | null;
+  follower_count: number | null;
+  engagement_rate: number | null;
+  avg_views: number | null;
+  platforms: Record<string, string>;
+};
+
+export type SavedListItem = {
+  id: string;
+  influencer_id: string;
+  source_campaign_id: string | null;
+  match_score_snapshot: number | null;
+  added_at: string;
+  influencer: SavedListInfluencer | null;
+};
+
+export type SavedListDetail = SavedListSummary & {
+  items: SavedListItem[];
 };
 
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/$/, "")}${path}`;
@@ -229,6 +403,10 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+const requestVoid = async (path: string, init?: RequestInit): Promise<void> => {
+  await requestJson<null>(path, init);
+};
+
 const mapCampaign = (response: BackendCampaign): CampaignSummary => {
   const { campaign, pipeline_state: state } = response;
   return {
@@ -245,6 +423,7 @@ const mapCampaign = (response: BackendCampaign): CampaignSummary => {
       preferred_platforms: campaign.preferred_platforms,
       budget_range: campaign.budget_range,
       weights: campaign.weights,
+      brief_snapshot: campaign.brief_snapshot,
     },
     pipelineState: state ?? {},
     influencerCount:
@@ -280,12 +459,13 @@ const mapInfluencer = (item: BackendInfluencer): InfluencerRecommendation => {
   return {
     id: item.influencer_id,
     name: item.canonical_name,
-    handle: platformHandle || "@unknown",
-    platform: platformKey || "instagram",
-    // Follower count, true engagement rate, and dollar rate are not captured
-    // by the pipeline; the UI degrades these gracefully (shows "—").
-    followers: 0,
-    engagementRate: 0,
+    handle: platformHandle || item.primary_handle || "@unknown",
+    platform: item.primary_platform || platformKey || "instagram",
+    // Best-effort metrics from the persisted Influencer row; stay 0
+    // when the pipeline didn't capture them so the UI keeps rendering
+    // "—" rather than fabricating numbers.
+    followers: item.follower_count ?? 0,
+    engagementRate: item.engagement_rate ?? 0,
     rate: "",
     matchScore: finalScore,
     trustGrade: gradeFromScore(finalScore),
@@ -312,8 +492,20 @@ const mapInfluencer = (item: BackendInfluencer): InfluencerRecommendation => {
   };
 };
 
+export type CampaignCreateOptions = {
+  /** Origin of the campaign submission. */
+  entryPoint: "brief_form" | "discover_search" | "topbar_search";
+  /** Display label for the workspace shell (briefs, dashboard). */
+  campaignName?: string;
+  /** Raw search text, for topbar/discover searches. */
+  searchQuery?: string;
+  /** Typed brief form fields, persisted for UI display. */
+  briefSnapshot?: Record<string, unknown> | null;
+};
+
 export const createCampaign = async (
-  brief: CampaignBriefPayload
+  brief: CampaignBriefPayload,
+  options: CampaignCreateOptions = { entryPoint: "brief_form" }
 ): Promise<{ campaignId: string; status: string }> => {
   // Translate the UI brief into the backend CampaignCreate contract.
   const targetAudience = [
@@ -325,14 +517,19 @@ export const createCampaign = async (
     .filter(Boolean)
     .join("; ");
 
-  const body = {
+  const body: Record<string, unknown> = {
     product: brief.product,
     industry: brief.category,
     goals: [brief.goal, brief.notes].filter(Boolean).join("\n\n") || null,
     target_audience: targetAudience || null,
     preferred_platforms: brief.platforms.length ? brief.platforms : null,
     budget_range: brief.budget || null,
+    entry_point: options.entryPoint,
   };
+
+  if (options.campaignName) body.campaign_name = options.campaignName;
+  if (options.searchQuery) body.search_query = options.searchQuery;
+  if (options.briefSnapshot) body.brief_snapshot = options.briefSnapshot;
 
   const response = await requestJson<{ campaign_id: string; status: string }>(
     "/api/campaigns",
@@ -385,6 +582,25 @@ export const getCampaignInfluencer = async (
   const response = await getCampaignInfluencers(campaignId, params);
   return response.items.find(item => item.id === influencerId) ?? null;
 };
+
+export const listCampaigns = async (
+  params?: { status?: string; entryPoint?: string; limit?: number; offset?: number }
+): Promise<CampaignListResult> => {
+  const search = new URLSearchParams();
+  if (params?.status) search.set("status", params.status);
+  if (params?.entryPoint) search.set("entry_point", params.entryPoint);
+  if (params?.limit) search.set("limit", String(params.limit));
+  if (params?.offset) search.set("offset", String(params.offset));
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return requestJson<CampaignListResult>(`/api/campaigns${suffix}`);
+};
+
+export const getCampaignFacets = async (
+  campaignId: string
+): Promise<CampaignFacets> =>
+  requestJson<CampaignFacets>(
+    `/api/campaigns/${encodeURIComponent(campaignId)}/facets`
+  );
 
 export const getBackendReadiness = async (): Promise<{ status: string }> =>
   requestJson<{ status: string }>("/ready");
@@ -587,3 +803,97 @@ export const updateSubscription = async (plan: string): Promise<Subscription> =>
     method: "POST",
     body: JSON.stringify({ plan }),
   });
+
+// ---------------------------------------------------------------------------
+// Workspace (dashboard summary, activity feed)
+// ---------------------------------------------------------------------------
+
+export const getWorkspaceSummary = async (): Promise<WorkspaceSummary> =>
+  requestJson<WorkspaceSummary>("/api/workspace/summary");
+
+export type WorkspaceActivityItem = {
+  kind: "campaign" | "list";
+  id: string;
+  label: string;
+  status: string;
+  niche?: string;
+  entry_point?: string | null;
+  created_at: string;
+};
+
+export const getWorkspaceActivity = async (
+  limit = 20
+): Promise<WorkspaceActivityItem[]> =>
+  requestJson<WorkspaceActivityItem[]>(
+    `/api/workspace/activity?limit=${encodeURIComponent(String(limit))}`
+  );
+
+// ---------------------------------------------------------------------------
+// Saved lists
+// ---------------------------------------------------------------------------
+
+export const listSavedLists = async (): Promise<SavedListSummary[]> =>
+  requestJson<SavedListSummary[]>("/api/lists");
+
+export const createSavedList = async (payload: {
+  name: string;
+  status?: "active" | "draft";
+}): Promise<SavedListSummary> =>
+  requestJson<SavedListSummary>("/api/lists", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const getSavedList = async (id: string): Promise<SavedListDetail> =>
+  requestJson<SavedListDetail>(`/api/lists/${encodeURIComponent(id)}`);
+
+export const updateSavedList = async (
+  id: string,
+  payload: { name?: string; status?: "active" | "draft" }
+): Promise<SavedListSummary> =>
+  requestJson<SavedListSummary>(`/api/lists/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteSavedList = async (id: string): Promise<void> => {
+  await requestVoid(`/api/lists/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+};
+
+export const addListItem = async (
+  listId: string,
+  payload: {
+    influencer_id: string;
+    source_campaign_id?: string | null;
+    match_score_snapshot?: number | null;
+  }
+): Promise<{ list: SavedListSummary; added: SavedListItem[]; skipped: Array<Record<string, unknown>> }> =>
+  requestJson(`/api/lists/${encodeURIComponent(listId)}/items`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const addListItems = async (
+  listId: string,
+  items: Array<{
+    influencer_id: string;
+    source_campaign_id?: string | null;
+    match_score_snapshot?: number | null;
+  }>
+): Promise<{ list: SavedListSummary; added: SavedListItem[]; skipped: Array<Record<string, unknown>> }> =>
+  requestJson(`/api/lists/${encodeURIComponent(listId)}/items:batch`, {
+    method: "POST",
+    body: JSON.stringify({ items }),
+  });
+
+export const removeListItem = async (
+  listId: string,
+  itemId: string
+): Promise<void> => {
+  await requestVoid(
+    `/api/lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(itemId)}`,
+    { method: "DELETE" }
+  );
+};

@@ -3,34 +3,71 @@
 import { cloneElement, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactElement } from "react";
 
+import {
+  addListItem,
+  createSavedList,
+  listSavedLists,
+} from "@/lib/api";
 import { useToast } from "./ToastProvider";
 
-type ListItem = {
+type ListOption = {
+  id: string;
   name: string;
   isNew?: boolean;
 };
 
 type SaveToListPopoverProps = {
   children: ReactElement<{ onClick?: (event: ReactMouseEvent) => void }>;
+  influencerId?: string;
+  sourceCampaignId?: string | null;
+  matchScoreSnapshot?: number | null;
 };
 
-const defaultLists: ListItem[] = [
-  { name: "Ramadan Campaign 2026" },
-  { name: "SS26 Trail Capsule shortlist" },
-  { name: "Gen Z fintech - Q3 push" },
-];
-
-export default function SaveToListPopover({ children }: SaveToListPopoverProps) {
+export default function SaveToListPopover({
+  children,
+  influencerId,
+  sourceCampaignId,
+  matchScoreSnapshot,
+}: SaveToListPopoverProps) {
   const { toast } = useToast();
   const popoverId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const [lists, setLists] = useState<ListItem[]>(defaultLists);
+  const [lists, setLists] = useState<ListOption[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [showNewInput, setShowNewInput] = useState(false);
   const [newListName, setNewListName] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setLoading(true);
+    listSavedLists()
+      .then((summaries) => {
+        if (active) {
+          setLists(summaries.map((summary) => ({ id: summary.id, name: summary.name })));
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          toast(
+            error instanceof Error ? error.message : "Unable to load saved lists.",
+            { type: "error" }
+          );
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, toast]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -61,38 +98,77 @@ export default function SaveToListPopover({ children }: SaveToListPopoverProps) 
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
-  const toggleSelection = (name: string, checked: boolean) => {
+  const toggleSelection = (id: string, checked: boolean) => {
     setSelected((prev) => {
-      if (checked) return prev.includes(name) ? prev : [...prev, name];
-      return prev.filter((item) => item !== name);
+      if (checked) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((item) => item !== item);
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!influencerId) {
+      toast(
+        "This creator isn't linked to an influencer record yet — saving isn't available.",
+        { type: "info" }
+      );
+      return;
+    }
+    if (selected.length === 0) {
+      toast("Pick a list first", { type: "info" });
+      return;
+    }
     setOpen(false);
-    if (selected.length) {
+    let addedCount = 0;
+    let skippedCount = 0;
+    for (const listId of selected) {
+      try {
+        const result = await addListItem(listId, {
+          influencer_id: influencerId,
+          source_campaign_id: sourceCampaignId ?? null,
+          match_score_snapshot: matchScoreSnapshot ?? null,
+        });
+        addedCount += result.added.length;
+        skippedCount += result.skipped.length;
+      } catch (error) {
+        toast(
+          error instanceof Error ? error.message : "Unable to save creator to a list.",
+          { type: "error" }
+        );
+      }
+    }
+    if (addedCount > 0) {
       toast(
         <span>
           Saved to{" "}
           <span style={{ fontFamily: "Instrument Serif,serif", fontStyle: "italic" }}>
-            {selected[0]}
+            {lists.find((l) => l.id === selected[0])?.name ?? "list"}
           </span>{" "}
           ✓
         </span>,
         { type: "success" }
       );
-    } else {
-      toast("Pick a list first", { type: "info" });
+    } else if (skippedCount > 0) {
+      toast("This creator is already in the selected lists.", { type: "info" });
     }
+    setSelected([]);
   };
 
-  const handleAddList = () => {
+  const handleAddList = async () => {
     const name = newListName.trim();
     if (!name) return;
-    setLists((prev) => [...prev, { name, isNew: true }]);
-    setSelected((prev) => (prev.includes(name) ? prev : [...prev, name]));
-    setNewListName("");
-    setShowNewInput(false);
+    try {
+      const created = await createSavedList({ name });
+      const next: ListOption = { id: created.id, name, isNew: true };
+      setLists((prev) => [...prev, next]);
+      setSelected((prev) => (prev.includes(created.id) ? prev : [...prev, created.id]));
+      setNewListName("");
+      setShowNewInput(false);
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Unable to create list.",
+        { type: "error" }
+      );
+    }
   };
 
   const trigger = (() => {
@@ -152,45 +228,67 @@ export default function SaveToListPopover({ children }: SaveToListPopoverProps) 
           id="iiq-list-items"
           style={{ maxHeight: "200px", overflowY: "auto", padding: "6px 0" }}
         >
-          {lists.map((list, index) => (
-            <label
-              key={list.name}
+          {loading ? (
+            <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                padding: "8px 14px",
-                fontSize: "13px",
-                cursor: "pointer",
-                transition: "background .15s",
-                background: hoveredIndex === index ? "#f4f2ec" : "transparent",
+                padding: "14px",
+                fontSize: "12.5px",
+                color: "var(--muted, #6c6f7a)",
               }}
-              onMouseEnter={() => setHoveredIndex(index)}
-              onMouseLeave={() => setHoveredIndex(null)}
             >
-              <input
-                type="checkbox"
-                data-list={list.name}
-                style={{ accentColor: "oklch(0.58 0.22 285)" }}
-                checked={selectedSet.has(list.name)}
-                onChange={(event) =>
-                  toggleSelection(list.name, event.currentTarget.checked)
-                }
-              />
-              <span style={{ flex: 1 }}>{list.name}</span>
-              {list.isNew ? (
-                <span
-                  style={{
-                    fontSize: "10px",
-                    color: "oklch(0.32 0.18 285)",
-                    fontFamily: "JetBrains Mono,monospace",
-                  }}
-                >
-                  NEW
-                </span>
-              ) : null}
-            </label>
-          ))}
+              Loading your lists…
+            </div>
+          ) : lists.length === 0 ? (
+            <div
+              style={{
+                padding: "14px",
+                fontSize: "12.5px",
+                color: "var(--muted, #6c6f7a)",
+              }}
+            >
+              You don&apos;t have any lists yet — create one below.
+            </div>
+          ) : (
+            lists.map((list, index) => (
+              <label
+                key={list.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "8px 14px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  transition: "background .15s",
+                  background: hoveredIndex === index ? "#f4f2ec" : "transparent",
+                }}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseLeave={() => setHoveredIndex(null)}
+              >
+                <input
+                  type="checkbox"
+                  data-list={list.name}
+                  style={{ accentColor: "oklch(0.58 0.22 285)" }}
+                  checked={selectedSet.has(list.id)}
+                  onChange={(event) =>
+                    toggleSelection(list.id, event.currentTarget.checked)
+                  }
+                />
+                <span style={{ flex: 1 }}>{list.name}</span>
+                {list.isNew ? (
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      color: "oklch(0.32 0.18 285)",
+                      fontFamily: "JetBrains Mono,monospace",
+                    }}
+                  >
+                    NEW
+                  </span>
+                ) : null}
+              </label>
+            ))
+          )}
         </div>
         <div
           id="iiq-new-list-row"

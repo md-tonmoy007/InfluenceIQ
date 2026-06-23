@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createCampaign } from '@/lib/api';
+import { buildBriefSnapshot } from '@/lib/campaignPayload';
 import { useToast } from '@/components/ui/ToastProvider';
 
 export default function BriefForm() {
@@ -124,19 +125,26 @@ export default function BriefForm() {
 
     try {
       const [campaign] = await Promise.all([
-        createCampaign({
-          brand: brief.brand,
-          product: brief.product,
-          category: brief.category,
-          goal: brief.goal,
-          ages: brief.ages,
-          gender: brief.gender,
-          locations: brief.locs,
-          platforms: brief.platforms.map(platform => platform.toLowerCase()),
-          tier: brief.tier,
-          budget: getBudgetText(),
-          notes: brief.notes,
-        }),
+        createCampaign(
+          {
+            brand: brief.brand,
+            product: brief.product,
+            category: brief.category,
+            goal: brief.goal,
+            ages: brief.ages,
+            gender: brief.gender,
+            locations: brief.locs,
+            platforms: brief.platforms.map(platform => platform.toLowerCase()),
+            tier: brief.tier,
+            budget: getBudgetText(),
+            notes: brief.notes,
+          },
+          {
+            entryPoint: 'brief_form',
+            campaignName: brief.campaign || brief.product,
+            briefSnapshot: buildBriefSnapshot(brief),
+          }
+        ),
         new Promise(resolve => window.setTimeout(resolve, 1800)),
       ]);
 

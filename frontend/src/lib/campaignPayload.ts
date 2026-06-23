@@ -29,3 +29,43 @@ export const buildCampaignPayloadFromQuery = (query: string): CampaignBriefPaylo
     query: normalizedQuery,
   };
 };
+
+export type BriefFormPayload = {
+  brand: string;
+  product: string;
+  category: string;
+  goal: string;
+  ages: string[];
+  gender: string;
+  lang: string;
+  locs: string[];
+  interests: string[];
+  budgetMin: number;
+  budgetMax: number;
+  currency: string;
+  platforms: string[];
+  tier: string;
+  notes: string;
+  campaign: string;
+};
+
+export const buildBriefSnapshot = (brief: BriefFormPayload): Record<string, unknown> => {
+  const budgetText = `${brief.currency === "BDT" ? "৳" : "$"}${brief.budgetMin.toLocaleString()} – ${
+    brief.currency === "BDT" ? "৳" : "$"
+  }${brief.budgetMax.toLocaleString()} ${brief.currency}`;
+
+  return {
+    brand_name: brief.brand,
+    campaign_name: brief.campaign || brief.product,
+    goal: brief.goal,
+    ages: brief.ages,
+    gender: brief.gender,
+    language: brief.lang,
+    locations: brief.locs,
+    interests: brief.interests,
+    platforms: brief.platforms.map((platform) => platform.toLowerCase()),
+    tier: brief.tier,
+    budget_text: budgetText,
+    notes: brief.notes,
+  };
+};

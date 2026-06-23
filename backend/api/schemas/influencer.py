@@ -57,5 +57,15 @@ class InfluencerResponse(BaseModel):
 
     sources: list[CrawlSourceResponse] | None = Field(default_factory=list)
 
+    # Best-effort per-platform metrics. Populated by the pipeline when
+    # available; left as None when the extraction didn't capture them.
+    primary_platform: str | None = None
+    primary_handle: str | None = None
+    follower_count: int | None = None
+    engagement_rate: float | None = None
+    avg_views: int | None = None
+    primary_category: str | None = None
+    primary_location: str | None = None
+
     class Config:
         from_attributes = True

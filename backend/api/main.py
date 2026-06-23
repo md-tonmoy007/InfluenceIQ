@@ -9,7 +9,7 @@ from fastapi.openapi.utils import get_openapi
 from backend.api.middleware.cors import setup_cors
 from backend.api.middleware.error_handlers import register_error_handlers
 from backend.api.middleware.request_logging import setup_logging_middleware
-from backend.api.routers import auth, campaigns, demo, health, influencers, onboarding, websocket
+from backend.api.routers import auth, campaigns, demo, health, influencers, lists, onboarding, websocket, workspace
 from backend.api.routers import settings as settings_router
 from backend.api.schemas.errors import ErrorEnvelope
 from backend.core.config import settings
@@ -83,6 +83,8 @@ app.include_router(onboarding.router)
 app.include_router(settings_router.router)
 app.include_router(campaigns.router)
 app.include_router(influencers.router)
+app.include_router(lists.router)
+app.include_router(workspace.router)
 app.include_router(demo.router)
 app.include_router(websocket.router)
 
@@ -116,8 +118,10 @@ def _custom_openapi() -> dict:
             {"name": "auth", "description": "Signup, login, token refresh, current-user lookup."},
             {"name": "onboarding", "description": "Create/retrieve the current user's brand profile."},
             {"name": "settings", "description": "Notifications, integrations, API keys, subscription."},
-            {"name": "campaigns", "description": "Create, retrieve, and inspect campaigns."},
+            {"name": "campaigns", "description": "Create, list, retrieve, and inspect campaigns."},
             {"name": "influencers", "description": "Influencer profile, score history, brand-safety flags."},
+            {"name": "lists", "description": "User-curated saved lists of influencers."},
+            {"name": "workspace", "description": "Dashboard summary, activity feed, and counts."},
             {"name": "websocket", "description": "Real-time pipeline event stream with replay."},
             {"name": "demo", "description": "Idempotent demo seed path used by `make seed`."},
             {"name": "health", "description": "Liveness, readiness, queue depth, and worker gauges."},

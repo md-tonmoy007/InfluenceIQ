@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class CampaignWeights(BaseModel):
@@ -28,6 +29,28 @@ class CampaignWeights(BaseModel):
         return self
 
 
+class BriefSnapshot(BaseModel):
+    """Typed capture of the brief-form fields persisted on the campaign.
+
+    Lets the workspace shell render the original brief inputs
+    (audience tiers, locations, interests, etc.) on the shortlist /
+    briefs pages without re-deriving them from the ``goals`` /
+    ``target_audience`` prose blob.
+    """
+    brand_name: str | None = Field(default=None, max_length=255)
+    campaign_name: str | None = Field(default=None, max_length=255)
+    goal: str | None = Field(default=None, max_length=255)
+    ages: list[str] = Field(default_factory=list)
+    gender: str | None = Field(default=None, max_length=32)
+    language: str | None = Field(default=None, max_length=64)
+    locations: list[str] = Field(default_factory=list)
+    interests: list[str] = Field(default_factory=list)
+    platforms: list[str] = Field(default_factory=list)
+    tier: str | None = Field(default=None, max_length=64)
+    budget_text: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None)
+
+
 class CampaignCreate(BaseModel):
     """Payload for submitting new brand influencer search campaigns."""
     product: str = Field(..., min_length=1, max_length=255)
@@ -37,6 +60,33 @@ class CampaignCreate(BaseModel):
     preferred_platforms: list[str] | None = Field(default=None, description="e.g. ['instagram', 'youtube']")
     budget_range: str | None = Field(default=None, max_length=100)
     weights: CampaignWeights | None = Field(default=None)
+
+    entry_point: str | None = Field(
+        default="brief_form",
+        description="Where the campaign was created: 'brief_form', 'discover_search', 'topbar_search'.",
+    )
+    campaign_name: str | None = Field(
+        default=None, max_length=255, description="Display label for the workspace shell."
+    )
+    search_query: str | None = Field(
+        default=None, description="Raw text the user typed into a search bar (for topbar/discover searches)."
+    )
+    brief_snapshot: BriefSnapshot | None = Field(
+        default=None, description="Typed brief form fields, persisted for UI display."
+    )
+
+    @field_validator("entry_point")
+    @classmethod
+    def _validate_entry_point(cls, value: str | None) -> str | None:
+        """Restrict entry_point to the small enum the workspace shell knows about."""
+        if value is None:
+            return None
+        allowed = {"brief_form", "discover_search", "topbar_search"}
+        if value not in allowed:
+            raise ValueError(
+                f"entry_point must be one of {sorted(allowed)}; got {value!r}."
+            )
+        return value
 
 
 class CampaignResponse(BaseModel):
@@ -57,7 +107,25 @@ class CampaignResponse(BaseModel):
     completed_at: datetime | None = None
     failed_at: datetime | None = None
     failure_reason: str | None = None
+    campaign_name: str | None = None
+    entry_point: str | None = None
+    search_query: str | None = None
+    brief_snapshot: dict[str, Any] | None = None
     created_at: datetime
+    updated_at: datetime | None = None
+
+    influencer_count: int | None = Field(
+        default=None,
+        description="Best-effort count of influencers scored for this campaign; computed by the listing endpoint.",
+    )
+    top_match_score: float | None = Field(
+        default=None,
+        description="Highest final_score across the campaign's influencer scores; computed by the listing endpoint.",
+    )
+    last_activity_at: datetime | None = Field(
+        default=None,
+        description="Most recent activity timestamp (updated_at or pipeline event) for the campaign.",
+    )
 
     class Config:
         from_attributes = True

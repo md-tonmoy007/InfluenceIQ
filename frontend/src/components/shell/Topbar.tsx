@@ -50,7 +50,14 @@ export default function Topbar({
 
     event.currentTarget.blur();
     try {
-      const campaign = await createCampaign(buildCampaignPayloadFromQuery(value));
+      const campaign = await createCampaign(
+        buildCampaignPayloadFromQuery(value),
+        {
+          entryPoint: "topbar_search",
+          searchQuery: value,
+          campaignName: value.slice(0, 120),
+        }
+      );
       const next = `/discover?campaignId=${encodeURIComponent(campaign.campaignId)}`;
       router.push(
         `/matching?campaignId=${encodeURIComponent(campaign.campaignId)}&next=${encodeURIComponent(next)}`

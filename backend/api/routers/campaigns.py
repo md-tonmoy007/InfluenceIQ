@@ -8,10 +8,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.api.schemas.campaign import CampaignCreate, CampaignResponse
+from backend.api.schemas.campaign import (
+    BriefSnapshot,
+    CampaignCreate,
+    CampaignResponse,
+)
 from backend.api.schemas.influencer import CrawlSourceResponse, InfluencerResponse, SubScores
 from backend.core.auth import decode_token
 from backend.core.cache.idempotency import (
@@ -29,6 +34,8 @@ from backend.core.database.session import get_db
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
 _optional_oauth = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+VALID_ENTRY_POINTS = {"brief_form", "discover_search", "topbar_search"}
 
 
 def get_current_user_optional(
@@ -62,6 +69,28 @@ def get_current_user_optional(
     return db.query(models.User).filter(models.User.id == user_uuid).first()
 
 
+def _validate_entry_point(entry_point: str | None) -> str:
+    """Normalize the entry_point, defaulting to brief_form when not provided."""
+    if not entry_point:
+        return "brief_form"
+    if entry_point not in VALID_ENTRY_POINTS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"entry_point must be one of {sorted(VALID_ENTRY_POINTS)}; "
+                f"got {entry_point!r}."
+            ),
+        )
+    return entry_point
+
+
+def _serialize_brief_snapshot(snapshot: BriefSnapshot | None) -> dict[str, Any] | None:
+    """Dump a BriefSnapshot to a JSON-serializable dict (or None)."""
+    if snapshot is None:
+        return None
+    return snapshot.model_dump(exclude_none=True)
+
+
 @router.post("", response_model=dict[str, Any])
 def create_campaign(
     campaign_data: CampaignCreate,
@@ -93,6 +122,9 @@ def create_campaign(
             return cached["body"]
 
     # 2. Build + insert ------------------------------------------------------------
+    entry_point = _validate_entry_point(campaign_data.entry_point)
+    brief_snapshot = _serialize_brief_snapshot(campaign_data.brief_snapshot)
+
     db_campaign = models.Campaign(
         product=campaign_data.product,
         niche=campaign_data.industry,
@@ -104,6 +136,10 @@ def create_campaign(
         created_by=current_user.id if current_user is not None else None,
         status="running",
         started_at=datetime.now(UTC),
+        campaign_name=campaign_data.campaign_name,
+        entry_point=entry_point,
+        search_query=campaign_data.search_query,
+        brief_snapshot=brief_snapshot,
     )
     db.add(db_campaign)
     try:
@@ -157,6 +193,86 @@ def create_campaign(
     return response_body
 
 
+def _enrich_campaign(
+    db: Session, campaign: models.Campaign
+) -> dict[str, Any]:
+    """Annotate a Campaign with the aggregates the listing API needs.
+
+    The aggregates (influencer_count, top_match_score, last_activity_at)
+    are computed with one small query each. They are kept on the
+    response rather than the ORM model so the row's lifecycle
+    columns stay read-only from the API's perspective.
+    """
+    response = CampaignResponse.model_validate(campaign).model_dump(mode="json")
+
+    score_count = (
+        db.query(func.count(models.InfluencerScore.id))
+        .filter(models.InfluencerScore.campaign_id == campaign.id)
+        .scalar()
+    )
+    top_score = (
+        db.query(func.max(models.InfluencerScore.final_score))
+        .filter(models.InfluencerScore.campaign_id == campaign.id)
+        .scalar()
+    )
+    response["influencer_count"] = int(score_count or 0)
+    response["top_match_score"] = float(top_score) if top_score is not None else None
+
+    # Last activity: prefer the most recent score's computed_at, fall back to
+    # updated_at / created_at so freshly created campaigns without scores
+    # still have a meaningful timestamp.
+    last_score_at = (
+        db.query(func.max(models.InfluencerScore.computed_at))
+        .filter(models.InfluencerScore.campaign_id == campaign.id)
+        .scalar()
+    )
+    candidates: list[datetime] = []
+    if last_score_at is not None:
+        candidates.append(last_score_at)
+    if campaign.updated_at is not None:
+        candidates.append(campaign.updated_at)
+    if campaign.completed_at is not None:
+        candidates.append(campaign.completed_at)
+    if campaign.started_at is not None:
+        candidates.append(campaign.started_at)
+    candidates.append(campaign.created_at)
+    response["last_activity_at"] = max(candidates) if candidates else None
+
+    return response
+
+
+@router.get("", response_model=dict[str, Any])
+def list_campaigns(
+    status: str | None = Query(default=None, description="Filter by campaign status"),
+    entry_point: str | None = Query(default=None, description="Filter by entry_point"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """List campaigns ordered by created_at desc, with per-row aggregates.
+
+    The response shape mirrors the single-row CampaignResponse so the
+    briefs page can render a list without an extra round-trip per row.
+    Status filtering accepts the same ``running`` / ``completed`` /
+    ``failed`` / ``pending`` values the single campaign returns;
+    ``entry_point`` filters by submission channel.
+    """
+    query = db.query(models.Campaign).order_by(models.Campaign.created_at.desc())
+    if status:
+        query = query.filter(models.Campaign.status == status)
+    if entry_point:
+        query = query.filter(models.Campaign.entry_point == entry_point)
+    total = query.count()
+    rows = query.offset(offset).limit(limit).all()
+    items = [_enrich_campaign(db, row) for row in rows]
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 @router.get("/{id}", response_model=dict[str, Any])
 def get_campaign(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
     """Retrieve campaign metadata along with current transient pipeline state."""
@@ -165,10 +281,9 @@ def get_campaign(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     campaign_id_str = str(id)
-    return {
-        "campaign": CampaignResponse.model_validate(db_campaign),
-        "pipeline_state": get_campaign_state_payload(db_campaign, campaign_id_str),
-    }
+    response = _enrich_campaign(db, db_campaign)
+    response["pipeline_state"] = get_campaign_state_payload(db_campaign, campaign_id_str)
+    return response
 
 
 @router.get("/{id}/state", response_model=dict[str, Any])
@@ -186,6 +301,107 @@ def get_campaign_state(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any
     payload = get_campaign_state_payload(db_campaign, str(id))
     payload["last_event_id"] = _get_last_event_id(str(id))
     return payload
+
+
+@router.get("/{id}/facets", response_model=dict[str, Any])
+def get_campaign_facets(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Return facet counts for the Discover filter rail of a campaign.
+
+    Counts come from the influencers scored for this campaign grouped
+    by platform, trust grade (derived from final_score), primary
+    category, primary location, and follower tier (derived from
+    follower_count buckets). Missing values are reported under
+    ``"unknown"`` so the UI can show "no data" rather than dropping
+    the bucket.
+    """
+    db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
+    if not db_campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    rows = (
+        db.query(
+            models.InfluencerScore.final_score,
+            models.InfluencerScore.data_source_count,
+            models.Influencer.platforms,
+            models.Influencer.primary_platform,
+            models.Influencer.primary_category,
+            models.Influencer.primary_location,
+            models.Influencer.follower_count,
+        )
+        .join(models.Influencer, models.Influencer.id == models.InfluencerScore.influencer_id)
+        .filter(models.InfluencerScore.campaign_id == id)
+        .all()
+    )
+
+    def _bucket_grade(score: float | None) -> str:
+        if score is None:
+            return "unknown"
+        if score >= 90:
+            return "A+"
+        if score >= 80:
+            return "A"
+        if score >= 70:
+            return "B"
+        if score >= 60:
+            return "C"
+        return "D"
+
+    def _bucket_tier(followers: int | None) -> str:
+        if followers is None:
+            return "unknown"
+        if followers >= 1_000_000:
+            return "mega"
+        if followers >= 500_000:
+            return "premium"
+        if followers >= 100_000:
+            return "established"
+        if followers >= 25_000:
+            return "mid"
+        if followers >= 10_000:
+            return "rising"
+        return "nano"
+
+    def _bucket(value: str | None) -> str:
+        return value if value else "unknown"
+
+    platform_counts: dict[str, int] = {}
+    grade_counts: dict[str, int] = {}
+    category_counts: dict[str, int] = {}
+    location_counts: dict[str, int] = {}
+    tier_counts: dict[str, int] = {}
+
+    for final_score, _ds_count, platforms, primary_platform, category, location, followers in rows:
+        # Platform facet: prefer primary_platform when present, otherwise
+        # fall back to the keys in the platforms JSON dict (lowercased).
+        platform_key: str | None = None
+        if primary_platform:
+            platform_key = primary_platform.lower()
+        elif isinstance(platforms, dict) and platforms:
+            platform_key = next(iter(platforms.keys()), None)
+        platform_counts[_bucket(platform_key)] = platform_counts.get(_bucket(platform_key), 0) + 1
+
+        grade = _bucket_grade(final_score)
+        grade_counts[grade] = grade_counts.get(grade, 0) + 1
+
+        category_counts[_bucket(category)] = category_counts.get(_bucket(category), 0) + 1
+        location_counts[_bucket(location)] = location_counts.get(_bucket(location), 0) + 1
+        tier_counts[_bucket_tier(followers)] = tier_counts.get(_bucket_tier(followers), 0) + 1
+
+    def _to_facet(counts: dict[str, int]) -> list[dict[str, Any]]:
+        return [
+            {"value": value, "count": count}
+            for value, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        ]
+
+    return {
+        "campaign_id": str(id),
+        "platforms": _to_facet(platform_counts),
+        "trust_grades": _to_facet(grade_counts),
+        "categories": _to_facet(category_counts),
+        "locations": _to_facet(location_counts),
+        "follower_tiers": _to_facet(tier_counts),
+        "total": len(rows),
+    }
 
 
 def _get_last_event_id(campaign_id_str: str) -> int:
@@ -294,31 +510,7 @@ def get_campaign_influencers(
     for score, inf in page_rows:
         sources_response = _campaign_influencer_sources(db, id, inf.id)
         response_list.append(
-            InfluencerResponse(
-                influencer_id=inf.id,
-                canonical_name=inf.canonical_name,
-                platforms=inf.platforms or {},
-                credentials=inf.credentials or [],
-                mentions=inf.mentions or [],
-                final_score=score.final_score,
-                sub_scores=SubScores(
-                    relevance=score.relevance_score,
-                    credibility=score.credibility_score,
-                    engagement=score.engagement_score,
-                    sentiment=score.sentiment_score,
-                    brand_safety=score.brand_safety_score,
-                ),
-                confidence=score.confidence_level,
-                data_source_count=score.data_source_count,
-                score_version=score.score_version,
-                computed_at=score.computed_at,
-                signal_scores=score.signal_scores or {},
-                risk_category=score.risk_category,
-                detection_category=score.detection_category,
-                positive_reasons=score.positive_reasons or [],
-                negative_reasons=score.negative_reasons or [],
-                sources=sources_response,
-            )
+            _to_influencer_response(inf, score, sources_response)
         )
         last_score_row = (score.final_score, inf.id)
 
@@ -331,6 +523,51 @@ def get_campaign_influencers(
         "next_cursor": next_cursor,
         "limit": limit,
     }
+
+
+def _to_influencer_response(
+    inf: models.Influencer,
+    score: models.InfluencerScore,
+    sources: list[CrawlSourceResponse],
+) -> InfluencerResponse:
+    """Map (Influencer, InfluencerScore) to a frontend-ready InfluencerResponse.
+
+    Adds the best-effort follower / engagement / rate metrics that the
+    rest of the workspace shell needs. Missing values stay ``None``
+    (rendered as "—" on the frontend) instead of fabricated zeros.
+    """
+    return InfluencerResponse(
+        influencer_id=inf.id,
+        canonical_name=inf.canonical_name,
+        platforms=inf.platforms or {},
+        credentials=inf.credentials or [],
+        mentions=inf.mentions or [],
+        final_score=score.final_score,
+        sub_scores=SubScores(
+            relevance=score.relevance_score,
+            credibility=score.credibility_score,
+            engagement=score.engagement_score,
+            sentiment=score.sentiment_score,
+            brand_safety=score.brand_safety_score,
+        ),
+        confidence=score.confidence_level,
+        data_source_count=score.data_source_count,
+        score_version=score.score_version,
+        computed_at=score.computed_at,
+        signal_scores=score.signal_scores or {},
+        risk_category=score.risk_category,
+        detection_category=score.detection_category,
+        positive_reasons=score.positive_reasons or [],
+        negative_reasons=score.negative_reasons or [],
+        sources=sources,
+        primary_platform=inf.primary_platform,
+        primary_handle=inf.primary_handle,
+        follower_count=inf.follower_count,
+        engagement_rate=inf.engagement_rate,
+        avg_views=inf.avg_views,
+        primary_category=inf.primary_category,
+        primary_location=inf.primary_location,
+    )
 
 
 def _encode_cursor(final_score: float, influencer_id: str) -> str:

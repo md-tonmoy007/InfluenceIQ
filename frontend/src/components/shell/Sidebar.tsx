@@ -6,18 +6,34 @@ import { usePathname } from "next/navigation";
 import { routes } from "../../lib/routes";
 import BrandMark from "./BrandMark";
 
+type SidebarCounts = {
+  briefs: number;
+  savedLists: number;
+  plan: string;
+};
+
 type SidebarProps = {
   brandHref?: string;
   onNavigate?: () => void;
+  counts?: SidebarCounts | null;
+};
+
+const PLAN_LABEL: Record<string, string> = {
+  starter: "Starter",
+  pro: "Pro",
+  scale: "Scale",
 };
 
 export default function Sidebar({
   brandHref = routes.dashboard,
   onNavigate,
+  counts,
 }: SidebarProps) {
   const pathname = usePathname() ?? "";
-  const briefCount =
-    pathname === routes.newBrief || pathname === routes.shortlist ? 3 : 5;
+  const briefs = counts?.briefs ?? 0;
+  const savedLists = counts?.savedLists ?? 0;
+  const plan = counts?.plan ?? "starter";
+  const planLabel = PLAN_LABEL[plan] ?? "Starter";
 
   const navItems = [
     {
@@ -60,7 +76,7 @@ export default function Sidebar({
       label: "Saved Lists",
       href: routes.lists,
       activePaths: [routes.lists],
-      count: 3,
+      count: savedLists,
       icon: (
         <svg
           className="ico i"
@@ -77,7 +93,7 @@ export default function Sidebar({
       label: "Campaign Briefs",
       href: routes.briefs,
       activePaths: [routes.briefs, routes.newBrief, routes.shortlist],
-      count: briefCount,
+      count: briefs,
       icon: (
         <svg
           className="ico i"
@@ -151,15 +167,16 @@ export default function Sidebar({
 
       <div className="upgrade-card">
         <span className="sparkle">✦</span>
-        <div className="t">You&apos;re on Starter</div>
+        <div className="t">You&apos;re on {planLabel}</div>
         <div className="s">
-          3 of 5 active briefs used this month. Unlock unlimited briefs and CRM
-          exports.
+          {plan === "starter"
+            ? "Upgrade to Pro to unlock unlimited briefs and CRM exports."
+            : `Manage your ${planLabel} plan in Settings.`}
         </div>
-        <button className="btn btn-primary upbtn" type="button">
-          Upgrade to Pro
+        <Link className="btn btn-primary upbtn" href="/settings">
+          {plan === "starter" ? "Upgrade to Pro" : "Manage plan"}
           <span className="arrow">→</span>
-        </button>
+        </Link>
       </div>
     </aside>
   );

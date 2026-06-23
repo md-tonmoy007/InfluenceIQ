@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { tableCreators, type TableCreator } from "@/data/tableCreators";
 import type { InfluencerRecommendation } from "@/types/influencer";
 import { useToast } from "@/components/ui/ToastProvider";
+import {
+  addListItems,
+  createSavedList,
+  listSavedLists,
+  type SavedListSummary,
+} from "@/lib/api";
 import {
   avatarFromName,
   estimateRateNumber,
@@ -110,9 +116,28 @@ const fmtMoney = (n: number) => `$${n.toLocaleString()}`;
 export default function DiscoverTable({ items, campaignId }: DiscoverTableProps) {
   const { toast } = useToast();
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [savedLists, setSavedLists] = useState<SavedListSummary[]>([]);
+  const [pickingList, setPickingList] = useState(false);
+  const [creatingListName, setCreatingListName] = useState("");
   const [sortKey, setSortKey] = useState<string>("match");
   const [sortDir, setSortDir] = useState<number>(-1);
   const [filterQuery, setFilterQuery] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    listSavedLists()
+      .then((rows) => {
+        if (active) {
+          setSavedLists(rows);
+        }
+      })
+      .catch(() => {
+        // Soft-fail: the bulk save still works, but the picker stays empty.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const rows = useMemo<LiveRow[]>(
     () =>
@@ -171,10 +196,58 @@ export default function DiscoverTable({ items, campaignId }: DiscoverTableProps)
   };
 
   const handleSaveBulk = () => {
-    const count = selectedIndices.size;
-    toast(`Saving ${count} creator${count !== 1 ? "s" : ""} to a list...`, {
-      type: "success",
-    });
+    if (selectedIndices.size === 0) return;
+    if (savedLists.length === 0) {
+      // No list yet — surface the inline "create" path immediately.
+      setPickingList(true);
+      toast("Create a list to save the selected creators.", { type: "info" });
+      return;
+    }
+    setPickingList(true);
+  };
+
+  const performBulkSave = async (listId: string) => {
+    const selectedRows = filteredData.filter((_, index) => selectedIndices.has(index));
+    if (selectedRows.length === 0) return;
+    try {
+      const result = await addListItems(
+        listId,
+        selectedRows.map((row) => ({
+          influencer_id: row.id,
+          source_campaign_id: campaignId ?? null,
+          match_score_snapshot: row.m ?? null,
+        }))
+      );
+      toast(
+        result.added.length
+          ? `Saved ${result.added.length} creator${result.added.length === 1 ? "" : "s"} to the list.`
+          : "All selected creators are already in this list.",
+        { type: "success" }
+      );
+      setSelectedIndices(new Set());
+      setPickingList(false);
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Unable to save selected creators.",
+        { type: "error" }
+      );
+    }
+  };
+
+  const performCreateAndSave = async () => {
+    const name = creatingListName.trim();
+    if (!name) return;
+    try {
+      const created = await createSavedList({ name });
+      setSavedLists((current) => [created, ...current]);
+      setCreatingListName("");
+      await performBulkSave(created.id);
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Unable to create list.",
+        { type: "error" }
+      );
+    }
   };
 
   const isAllSelected = selectedIndices.size === filteredData.length && filteredData.length > 0;
@@ -234,6 +307,78 @@ export default function DiscoverTable({ items, campaignId }: DiscoverTableProps)
           Clear selection
         </button>
       </div>
+
+      {pickingList ? (
+        <div
+          className="bulk-bar"
+          style={{
+            background: "rgba(255,255,255,0.92)",
+            border: "1px solid var(--line, #efece4)",
+            boxShadow: "0 8px 24px -16px rgba(15,17,22,0.18)",
+            padding: "12px 16px",
+            marginTop: "8px",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+            alignItems: "center",
+          }}
+        >
+          <span className="nc">
+            <span className="pulse"></span>
+            Save {selectedIndices.size} creator
+            {selectedIndices.size === 1 ? "" : "s"} to:
+          </span>
+          {savedLists.length === 0 ? (
+            <span style={{ color: "var(--muted, #6c6f7a)", fontSize: "12.5px" }}>
+              You don&apos;t have any lists yet — create one to the right.
+            </span>
+          ) : (
+            savedLists.map((lst) => (
+              <button
+                key={lst.id}
+                type="button"
+                className="bulk-act"
+                onClick={() => void performBulkSave(lst.id)}
+              >
+                {lst.name} · {lst.item_count}
+              </button>
+            ))
+          )}
+          <span style={{ flex: 1 }} />
+          <input
+            type="text"
+            placeholder="…or create a new list"
+            value={creatingListName}
+            onChange={(event) => setCreatingListName(event.target.value)}
+            style={{
+              height: "32px",
+              padding: "0 10px",
+              border: "1px solid #e6e3da",
+              borderRadius: "8px",
+              fontSize: "13px",
+              minWidth: "180px",
+            }}
+          />
+          <button
+            type="button"
+            className="bulk-act primary"
+            disabled={!creatingListName.trim()}
+            onClick={() => void performCreateAndSave()}
+          >
+            Create &amp; save
+          </button>
+          <button
+            type="button"
+            className="clear"
+            onClick={() => {
+              setPickingList(false);
+              setCreatingListName("");
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
 
       <div className="term">
         <div className="term-head">

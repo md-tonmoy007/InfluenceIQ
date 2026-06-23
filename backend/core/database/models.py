@@ -65,6 +65,12 @@ class User(Base):
     subscription = relationship(
         "Subscription", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
+    saved_lists = relationship(
+        "SavedList",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        overlaps="user",
+    )
 
 
 class BrandProfile(Base):
@@ -113,12 +119,20 @@ class Campaign(Base):
     completed_at = Column(DateTime, nullable=True)
     failed_at = Column(DateTime, nullable=True)
     failure_reason = Column(Text, nullable=True)
+    campaign_name = Column(String(255), nullable=True)
+    entry_point = Column(String(32), nullable=True, default="brief_form")
+    search_query = Column(Text, nullable=True)
+    brief_snapshot = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
     brand = relationship("Brand", back_populates="campaigns")
     scores = relationship("InfluencerScore", back_populates="campaign", cascade="all, delete-orphan")
     crawl_sources = relationship("CrawlSource", back_populates="campaign", cascade="all, delete-orphan")
     brand_safety_flags = relationship("BrandSafetyFlag", back_populates="campaign", cascade="all, delete-orphan")
+    saved_list_items = relationship("SavedListItem", back_populates="campaign")
 
     __table_args__ = (
         UniqueConstraint(
@@ -139,6 +153,13 @@ class Influencer(Base):
     platforms = Column(JSONB, nullable=False)
     credentials = Column(JSONB, nullable=True)
     mentions = Column(JSONB, nullable=True)
+    primary_platform = Column(String(32), nullable=True)
+    primary_handle = Column(String(255), nullable=True)
+    follower_count = Column(Integer, nullable=True)
+    engagement_rate = Column(Float, nullable=True)
+    avg_views = Column(Integer, nullable=True)
+    primary_category = Column(String(128), nullable=True)
+    primary_location = Column(String(128), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -149,6 +170,7 @@ class Influencer(Base):
     )
     brand_safety_flags = relationship("BrandSafetyFlag", back_populates="influencer", cascade="all, delete-orphan")
     verifications = relationship("CredentialVerification", back_populates="influencer", cascade="all, delete-orphan")
+    saved_list_items = relationship("SavedListItem", back_populates="influencer", cascade="all, delete-orphan")
 
 
 class InfluencerScore(Base):
@@ -277,6 +299,71 @@ Index("idx_brand_safety_influencer", BrandSafetyFlag.influencer_id)
 Index("idx_brand_safety_campaign", BrandSafetyFlag.campaign_id)
 Index("idx_credential_verifications_influencer", CredentialVerification.influencer_id)
 Index("idx_campaigns_created_by", Campaign.created_by)
+Index("idx_campaigns_entry_point", Campaign.entry_point)
+
+
+class SavedList(Base):
+    """User-curated collection of influencers.
+
+    One row per user-named list (e.g. "Ramadan Campaign 2026").
+    Soft enum ``status`` keeps the same vocabulary as the legacy
+    frontend (``"active"`` / ``"draft"``) so existing UI components
+    render without translation work.
+    """
+    __tablename__ = "saved_lists"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name = Column(String(255), nullable=False)
+    status = Column(String(32), nullable=False, default="active", server_default="active")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    items = relationship(
+        "SavedListItem", back_populates="list", cascade="all, delete-orphan"
+    )
+    user = relationship("User", back_populates="saved_lists", overlaps="saved_lists")
+
+
+class SavedListItem(Base):
+    """Junction row connecting a :class:`SavedList` to an :class:`Influencer`.
+
+    The ``source_campaign_id`` preserves the campaign the creator was
+    added from so the same creator can appear in the same list under
+    different campaigns without violating the unique constraint.
+    ``match_score_snapshot`` freezes the score that justified the add.
+    """
+    __tablename__ = "saved_list_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    list_id = Column(
+        UUID(as_uuid=True), ForeignKey("saved_lists.id", ondelete="CASCADE"), nullable=False
+    )
+    influencer_id = Column(
+        UUID(as_uuid=True), ForeignKey("influencers.id", ondelete="CASCADE"), nullable=False
+    )
+    source_campaign_id = Column(
+        UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="SET NULL"), nullable=True
+    )
+    match_score_snapshot = Column(Float, nullable=True)
+    added_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    list = relationship("SavedList", back_populates="items")
+    influencer = relationship("Influencer", back_populates="saved_list_items")
+    campaign = relationship("Campaign", back_populates="saved_list_items")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "list_id",
+            "influencer_id",
+            "source_campaign_id",
+            name="uq_saved_list_items_list_influencer_source",
+        ),
+    )
 
 
 class NotificationPreference(Base):

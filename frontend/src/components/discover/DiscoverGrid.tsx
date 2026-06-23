@@ -204,7 +204,11 @@ export default function DiscoverGrid({ items, campaignId }: DiscoverGridProps) {
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
             </Link>
-            <SaveToListPopover>
+            <SaveToListPopover
+              influencerId={card.id}
+              sourceCampaignId={campaignId}
+              matchScoreSnapshot={card.match}
+            >
               <button
                 className="btn-card btn-save"
                 type="button"

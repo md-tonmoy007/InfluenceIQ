@@ -51,6 +51,13 @@ def get_influencer_profile(
         "platforms": inf.platforms or {},
         "credentials": inf.credentials or [],
         "mentions": inf.mentions or [],
+        "primary_platform": inf.primary_platform,
+        "primary_handle": inf.primary_handle,
+        "follower_count": inf.follower_count,
+        "engagement_rate": inf.engagement_rate,
+        "avg_views": inf.avg_views,
+        "primary_category": inf.primary_category,
+        "primary_location": inf.primary_location,
         "created_at": inf.created_at,
         "updated_at": inf.updated_at,
     }
