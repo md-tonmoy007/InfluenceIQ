@@ -68,6 +68,114 @@ def test_query_generation(req: QueryGenRequest) -> dict[str, Any]:
     }
 
 
+class SearchFilterRequest(BaseModel):
+    """Request body for the search + URL filter smoke test."""
+    query: str = Field(..., min_length=1, max_length=500, description="The search query to run")
+    product: str = Field(default="", max_length=255)
+    niche: str = Field(default="", max_length=255)
+    goals: str | None = Field(default=None, max_length=1000)
+    target_audience: str | None = Field(default=None, max_length=1000)
+    preferred_platforms: list[str] = Field(default_factory=list)
+
+
+@router.post("/search-filter", response_model=dict[str, Any])
+def test_search_filter(req: SearchFilterRequest) -> dict[str, Any]:
+    """Run a single SERP search and the LLM URL filter without persisting anything.
+
+    Returns the raw search results alongside the filtered subset so you can
+    confirm both SerpAPI and the LLM filter are wired correctly.
+    """
+    from backend.core.config import settings
+    from backend.pipeline.content.search_providers import search_web
+    from backend.pipeline.tasks.search import (
+        _flag,
+        _llm_filter_urls,
+        _query_model_override,
+    )
+
+    payload = req.model_dump(exclude={"query"})
+
+    try:
+        raw_results = search_web(req.query, limit=10)
+    except Exception as exc:  # noqa: BLE001 — diagnostics endpoint
+        raise HTTPException(status_code=502, detail=f"search_web failed: {exc}")
+
+    filtered_results = _llm_filter_urls(raw_results, payload)
+
+    providers_used = list({r.get("provider", "unknown") for r in raw_results})
+
+    return {
+        "query": req.query,
+        "serp_api_enabled": bool(settings.SERP_API_KEY),
+        "llm_filter_enabled": _flag("AI_AGENT_LLM_QUERY_PLANNING"),
+        "model_override": _query_model_override(),
+        "providers_used": providers_used,
+        "raw": {
+            "count": len(raw_results),
+            "results": raw_results,
+        },
+        "filtered": {
+            "count": len(filtered_results),
+            "kept": len(filtered_results),
+            "dropped": len(raw_results) - len(filtered_results),
+            "results": filtered_results,
+        },
+    }
+
+
+class ScrapeRequest(BaseModel):
+    url: str = Field(..., description="URL to fetch, extract content from, and identify influencer mentions")
+
+
+@router.post("/scrape", response_model=dict[str, Any])
+def test_scrape(req: ScrapeRequest) -> dict[str, Any]:
+    """Fetch a single URL and run the full extraction pipeline without persisting anything.
+
+    Exercises fetch_url → extract_role5_content → extract_influencer_mentions so you
+    can verify scrape.do is working and the extractor finds names/handles on list pages.
+    """
+    from backend.core.config import settings
+    from backend.pipeline.content.content_extractor import extract_role5_content
+    from backend.pipeline.content.fetcher import fetch_url
+    from backend.pipeline.tasks.extract import _llm_extract_handles, _normalize_llm_mentions
+
+    try:
+        page = fetch_url(req.url)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"fetch_url failed: {exc}")
+
+    try:
+        content = extract_role5_content(page)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"extract_role5_content failed: {exc}")
+
+    source_url = str(content.get("url") or req.url)
+    llm_items = _llm_extract_handles(content)
+    if llm_items is not None:
+        mentions = _normalize_llm_mentions(llm_items, source_url)
+        extraction_method = "llm"
+    else:
+        from backend.pipeline.extraction.entities import extract_influencer_mentions
+        mentions = extract_influencer_mentions(content)
+        extraction_method = "regex_fallback"
+
+    return {
+        "url": req.url,
+        "scrape_do_enabled": bool(settings.SCRAPE_DO_API),
+        "provider": page.get("provider"),
+        "status": page.get("status"),
+        "error": page.get("error"),
+        "cached": page.get("cached", False),
+        "title": content.get("title"),
+        "content_preview": (content.get("content") or "")[:500],
+        "extraction_method": extraction_method,
+        "influencer_mentions": {
+            "count": len(mentions),
+            "mentions": mentions,
+        },
+    }
+
+
 @router.post("/reset", response_model=dict[str, str])
 def reset_database(db: Session = Depends(get_db)) -> dict[str, str]:
     """Resets the development database by deleting all existing data in all tables."""

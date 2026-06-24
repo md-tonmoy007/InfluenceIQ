@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-from uuid import UUID, uuid4
+import re
+from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
 
 from celery import shared_task
 
@@ -28,15 +30,148 @@ log = logging.getLogger(__name__)
 
 AUTO_MERGE_THRESHOLD = 0.85
 
+_PLATFORM_BASE = {
+    "instagram": "https://instagram.com/",
+    "tiktok": "https://tiktok.com/@",
+    "youtube": "https://youtube.com/@",
+    "twitter": "https://x.com/",
+    "x": "https://x.com/",
+    "linkedin": "https://linkedin.com/in/",
+}
+
+
+def _build_handle_extract_prompt(text: str, url: str) -> str:
+    excerpt = text[:6000]
+    return (
+        "You are an influencer data extraction assistant. "
+        "Given the following web page content, identify every social media influencer, "
+        "creator, or public figure mentioned.\n\n"
+        "For each one found, extract:\n"
+        "  name     — their real name or display name (string)\n"
+        "  handle   — their @username including the @ symbol, or null if not stated\n"
+        "  platform — one of: instagram, tiktok, youtube, twitter, linkedin (string)\n"
+        "  followers — follower/subscriber count as an integer if mentioned, else null\n\n"
+        "Rules:\n"
+        "- Include ONLY real people or named creator accounts\n"
+        "- Do NOT include navigation text, UI elements, brand names, or generic terms\n"
+        "- Do NOT invent handles that are not explicitly present in the text\n"
+        "- Return ONLY a JSON array of objects. Return [] if nothing qualifies.\n\n"
+        f"Source URL: {url}\n\n"
+        f"Page content:\n{excerpt}"
+    )
+
+
+def _llm_extract_handles(content: dict) -> list[dict] | None:
+    """Call the LLM to extract influencer mentions from scraped page text.
+
+    Returns a list of raw dicts on success, None when the LLM is disabled
+    or unavailable (so the caller can fall back to regex extraction).
+    """
+    if os.environ.get("AI_AGENT_LLM_QUERY_PLANNING", "").strip().lower() in {"", "0", "false", "no", "off"}:
+        return None
+
+    text = str(content.get("content") or "").strip()
+    if not text:
+        return None
+
+    try:
+        from backend.ml.models.registry import registry
+        from backend.pipeline.tasks.search import _query_model_override, _run_predict, _strip_code_fence
+
+        reg = registry()
+        llm_backend = reg.get(reg.resolve_name("llm"))
+        if llm_backend is None or not hasattr(llm_backend, "predict_text"):
+            return None
+
+        prompt = _build_handle_extract_prompt(text, str(content.get("url") or ""))
+        raw = _run_predict(
+            llm_backend.predict_text(
+                prompt, max_tokens=2048, temperature=0.1, model=_query_model_override()
+            )
+        )
+        if not raw or str(raw).startswith("[stub:"):
+            return None
+
+        cleaned = _strip_code_fence(raw)
+        try:
+            items = json.loads(cleaned)
+        except json.JSONDecodeError:
+            # Output was truncated mid-JSON — salvage complete objects by
+            # closing the array and re-parsing up to the last full entry.
+            truncated = cleaned.rstrip().rstrip(",")
+            try:
+                items = json.loads(truncated + "]")
+            except json.JSONDecodeError:
+                log.warning("llm_extract_handles: could not recover truncated JSON for %s", content.get("url"))
+                return None
+
+        if not isinstance(items, list):
+            return None
+
+        valid = [
+            item for item in items
+            if isinstance(item, dict) and (item.get("handle") or item.get("name"))
+        ]
+        log.info("llm_extract_handles found=%d url=%s", len(valid), content.get("url"))
+        return valid
+    except Exception:
+        log.exception("_llm_extract_handles failed for %s", content.get("url"))
+        return None
+
+
+def _normalize_llm_mentions(items: list[dict], source_url: str) -> list[dict]:
+    """Convert raw LLM extraction output into the mention dict shape the pipeline expects."""
+    mentions = []
+    for item in items:
+        name = str(item.get("name") or "").strip()
+        raw_handle = str(item.get("handle") or "").strip()
+        handle = ("@" + raw_handle.lstrip("@")) if raw_handle else ""
+        platform = str(item.get("platform") or "instagram").lower().strip()
+        followers = item.get("followers")
+
+        username = handle.lstrip("@") if handle else re.sub(r"\s+", "", name.lower())
+        base = _PLATFORM_BASE.get(platform, "https://instagram.com/")
+        profile_url = f"{base}{username}" if username else ""
+
+        platforms = {platform: profile_url} if profile_url else {}
+        evidence = sum(bool(v) for v in (name, handle, platforms))
+        mentions.append({
+            "mention_id": str(uuid5(NAMESPACE_URL, f"{source_url}|{name}|{handle}")),
+            "name": name or handle,
+            "handle": handle or None,
+            "platform": platform,
+            "profile_url": profile_url or None,
+            "platforms": platforms,
+            "profile_urls": [profile_url] if profile_url else [],
+            "credentials": [],
+            "professional_titles": [],
+            "authority_mentions": [],
+            "emails": [],
+            "phones": [],
+            "websites": [],
+            "addresses": [],
+            "contact_info_enabled": False,
+            "source_url": source_url,
+            "context": "",
+            "followers": followers,
+            "extraction_confidence": round(min(0.95, 0.55 + 0.1 * evidence), 2),
+        })
+    return mentions
+
 
 @shared_task(name="backend.pipeline.tasks.extract.extract_influencers", bind=True, max_retries=2)
 def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: dict) -> dict:
     """Parse a content dict into influencer mentions and score each."""
     log.info("extract_influencers campaign_id=%s crawl_source_id=%s", campaign_id, crawl_source_id)
     try:
-        mentions = extract_influencer_mentions(content)
+        source_url = str(content.get("url") or "")
+        llm_items = _llm_extract_handles(content)
+        if llm_items is not None:
+            mentions = _normalize_llm_mentions(llm_items, source_url)
+        else:
+            mentions = extract_influencer_mentions(content)
     except Exception as exc:
-        log.exception("extract_influencer_mentions failed: %s", exc)
+        log.exception("influencer extraction failed: %s", exc)
         return {"crawl_source_id": crawl_source_id, "status": "failed", "error": str(exc)}
 
     if not mentions:

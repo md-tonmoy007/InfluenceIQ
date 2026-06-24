@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from backend.core.config import settings
 from backend.pipeline.content.cache import (
     get_cached_page,
     provider_is_available,
@@ -22,6 +23,21 @@ USER_AGENTS = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
     "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
 ]
+
+
+def _scrape_do_fetch(url: str, timeout: float = 30.0) -> tuple[str, int]:
+    """Fetch a page via scrape.do to bypass bot detection."""
+    if not settings.SCRAPE_DO_API:
+        return "", 0
+    try:
+        resp = httpx.get(
+            "https://api.scrape.do/",
+            params={"token": settings.SCRAPE_DO_API, "url": url},
+            timeout=timeout,
+        )
+        return resp.text, resp.status_code
+    except httpx.HTTPError:
+        return "", 0
 
 
 def _fallback_html(url: str) -> str:
@@ -69,29 +85,50 @@ def fetch_url(url: str, timeout: float = 15.0) -> dict:
         store_cached_page(normalized_url, platform_page)
         return platform_page
 
-    headers = {
-        "User-Agent": USER_AGENTS[abs(hash(normalized_url)) % len(USER_AGENTS)],
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
     fetched_at = datetime.now(UTC).isoformat()
-    try:
-        response = httpx.get(normalized_url, headers=headers, timeout=timeout, follow_redirects=True)
-        html = response.text
-        status = response.status_code
-        error = None
-    except httpx.HTTPError as exc:
-        error = classify_fetch_error(exc)
-        if platform not in ("web", "unknown"):
-            record_provider_failure(platform)
+    html = ""
+    status = 0
+    content_type = ""
+    error = None
+    provider = "fallback"
+
+    # scrape.do is the primary fetcher — handles bot detection, CAPTCHAs, and
+    # verification pages that return 200 with no real content (e.g. Reddit).
+    if settings.SCRAPE_DO_API:
+        scrape_html, scrape_status = _scrape_do_fetch(normalized_url, timeout=timeout + 15)
+        if scrape_html and scrape_status < 500:
+            html = scrape_html
+            status = scrape_status
+            provider = "scrape.do"
+
+    # Fall back to direct httpx when scrape.do is not configured or failed
+    if not html:
+        headers = {
+            "User-Agent": USER_AGENTS[abs(hash(normalized_url)) % len(USER_AGENTS)],
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        try:
+            response = httpx.get(normalized_url, headers=headers, timeout=timeout, follow_redirects=True)
+            html = response.text
+            status = response.status_code
+            content_type = response.headers.get("content-type", "")
+            provider = "httpx"
+        except httpx.HTTPError as exc:
+            error = classify_fetch_error(exc)
+            if platform not in ("web", "unknown"):
+                record_provider_failure(platform)
+            status = 599
+
+        if error is None and status in {403, 429}:
+            error = classify_fetch_error(Exception("blocked"), status_code=status)
+            if platform not in ("web", "unknown"):
+                record_provider_failure(platform)
+
+    if not html or (error is not None):
         html = _fallback_html(normalized_url)
         status = 599
-
-    if error is None and status in {403, 429}:
-        error = classify_fetch_error(Exception("blocked"), status_code=status)
-        if platform not in ("web", "unknown"):
-            record_provider_failure(platform)
-        html = _fallback_html(normalized_url)
+        provider = "fallback"
 
     if error is None and not html.strip():
         error = f"PARSE_ERROR: empty content at {normalized_url}"
@@ -102,11 +139,13 @@ def fetch_url(url: str, timeout: float = 15.0) -> dict:
         html=html,
         fetched_at=fetched_at,
         cached=False,
-        provider="httpx" if error is None else "fallback",
+        provider=provider,
         error=error,
-        headers={"content-type": response.headers.get("content-type", "")} if "response" in locals() else {},
+        headers={"content-type": content_type},
     ).to_dict()
-    store_cached_page(normalized_url, page)
+    # Only cache successful fetches so transient failures get retried
+    if provider != "fallback":
+        store_cached_page(normalized_url, page)
     return page
 
 

@@ -21,6 +21,29 @@ def _dedupe(results: list[SearchResult], limit: int) -> list[dict]:
     return out
 
 
+def _serp_api_search(query: str, limit: int) -> list[SearchResult]:
+    if not settings.SERP_API_KEY:
+        return []
+    response = httpx.get(
+        "https://serpapi.com/search.json",
+        params={"api_key": settings.SERP_API_KEY, "q": query, "num": min(limit, 10), "engine": "google"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    items = response.json().get("organic_results") or []
+    return [
+        SearchResult(
+            url=str(item.get("link", "")),
+            title=str(item.get("title", "")),
+            snippet=str(item.get("snippet", "")),
+            relevance_score=max(50.0, 100.0 - index * 5),
+            provider="serpapi",
+        )
+        for index, item in enumerate(items)
+        if item.get("link")
+    ]
+
+
 def _brave_search(query: str, limit: int) -> list[SearchResult]:
     if not settings.BRAVE_SEARCH_API_KEY:
         return []
@@ -111,7 +134,7 @@ def _fallback_search(query: str, limit: int) -> list[SearchResult]:
 
 def search_web(query: str, limit: int = 8) -> list[dict]:
     results: list[SearchResult] = []
-    for provider in (_brave_search, _openserp_search):
+    for provider in (_serp_api_search, _brave_search, _openserp_search):
         try:
             results.extend(provider(query, limit))
         except httpx.HTTPError:

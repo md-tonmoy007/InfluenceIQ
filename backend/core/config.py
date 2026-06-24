@@ -33,9 +33,11 @@ class Settings(BaseSettings):
     OPENAI_JUDGE_MODEL: str = "gpt-4o-mini"
     OPENAI_ESCALATION_MODEL: str = "gpt-5-mini"
 
+    SERP_API_KEY: str = ""
     BRAVE_SEARCH_API_KEY: str = ""
     OPENSERP_URL: str = ""
     OPENSERP_API_KEY: str = ""
+    SCRAPE_DO_API: str = ""
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIM: int = 1536

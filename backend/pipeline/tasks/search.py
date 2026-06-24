@@ -221,6 +221,84 @@ def _build_llm_query_prompt(payload: dict[str, Any]) -> str:
     )
 
 
+def _build_url_filter_prompt(results: list[dict], payload: dict[str, Any]) -> str:
+    product = payload.get("product", "").strip()
+    niche = payload.get("niche", "").strip()
+    goals = payload.get("goals", "").strip()
+    audience = payload.get("target_audience", "").strip()
+    platforms = payload.get("preferred_platforms") or []
+    platform_str = ", ".join(platforms) if platforms else "any"
+
+    lines = [
+        "You are a research assistant selecting web pages that are likely to contain "
+        "influencer or creator profile information relevant to the campaign below.\n",
+        f"Campaign brief:",
+        f"  Product/Service: {product or '(not specified)'}",
+        f"  Niche: {niche or '(not specified)'}",
+        f"  Goals: {goals or '(not specified)'}",
+        f"  Target audience: {audience or '(not specified)'}",
+        f"  Preferred platforms: {platform_str}\n",
+        "Search results (index | url | title | snippet):",
+    ]
+    for i, r in enumerate(results):
+        snippet = (r.get("snippet") or "")[:120].replace("\n", " ")
+        lines.append(f"  {i} | {r.get('url', '')} | {r.get('title', '')} | {snippet}")
+
+    lines += [
+        "",
+        "Select ONLY the URLs that are likely to contain information about specific "
+        "influencers, creators, or content creators relevant to this campaign.",
+        "INCLUDE: influencer/creator profiles, bio pages, interview articles, creator "
+        "directories, social media pages, industry expert listings.",
+        "EXCLUDE: e-commerce product pages, brand news, generic informational articles, "
+        "search-result index pages, ads, wikis unrelated to people.",
+        "Return ONLY a JSON array of the selected URL strings, no other text.",
+    ]
+    return "\n".join(lines)
+
+
+def _llm_filter_urls(results: list[dict], payload: dict[str, Any]) -> list[dict]:
+    """Use the LLM to keep only influencer-relevant URLs from search results.
+
+    Falls back to returning all results when the LLM is disabled, unavailable,
+    returns an empty selection, or any error occurs.
+    """
+    if not _flag("AI_AGENT_LLM_QUERY_PLANNING") or not results:
+        return results
+    try:
+        from backend.ml.contracts import TextInferenceRequest  # noqa: F401
+        from backend.ml.models.registry import registry
+
+        reg = registry()
+        llm_backend = reg.get(reg.resolve_name("llm"))
+        if llm_backend is None or not hasattr(llm_backend, "predict_text"):
+            return results
+
+        prompt = _build_url_filter_prompt(results, payload)
+        text = _run_predict(
+            llm_backend.predict_text(
+                prompt, max_tokens=512, temperature=0.1, model=_query_model_override()
+            )
+        )
+        if not text or text.startswith("[stub:"):
+            return results
+
+        import json
+        selected_urls: set[str] = set(json.loads(_strip_code_fence(text)))
+        if not selected_urls:
+            return results
+
+        filtered = [r for r in results if r.get("url") in selected_urls]
+        log.info(
+            "llm_filter_urls kept=%d of total=%d",
+            len(filtered),
+            len(results),
+        )
+        return filtered if filtered else results
+    except Exception:
+        return results
+
+
 @shared_task(name="backend.pipeline.tasks.search.generate_queries", bind=True, max_retries=2)
 def generate_queries(self, campaign_id: str) -> dict:
     """Generate search queries for a campaign and fan out to :func:`execute_search`."""
@@ -274,6 +352,10 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
     limit = 8
     try:
         results = search_web(query, limit=limit)
+        with db_session() as session:
+            campaign = get_campaign(session, campaign_id)
+            _payload = campaign_query_payload(campaign)
+        results = _llm_filter_urls(results, _payload)
     except Exception as exc:
         log.exception("search_web failed campaign_id=%s query=%r: %s", campaign_id, query, exc)
         publish_event(
