@@ -96,6 +96,7 @@ class CampaignCreateSchemaTest(unittest.TestCase):
         snapshot = BriefSnapshot(
             brand_name="Northwind",
             campaign_name="SS26",
+            goals=["Product Launch"],
             goal="Product Launch",
             ages=["25-34"],
             gender="All",
@@ -114,6 +115,7 @@ class CampaignCreateSchemaTest(unittest.TestCase):
         )
         dumped = payload.brief_snapshot.model_dump(exclude_none=True)
         self.assertEqual(dumped["brand_name"], "Northwind")
+        self.assertEqual(dumped["goals"], ["Product Launch"])
         self.assertEqual(dumped["ages"], ["25-34"])
         self.assertEqual(dumped["budget_text"], "$2,500-$12,000")
 
@@ -134,6 +136,8 @@ class CampaignResponseSchemaTest(unittest.TestCase):
             "influencer_count",
             "top_match_score",
             "last_activity_at",
+            "shortlisted_count",
+            "contracted_count",
         ):
             self.assertIn(field, props, f"CampaignResponse missing {field}")
 

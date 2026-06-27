@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AppShell from "@/components/shell/AppShell";
-import { listCampaigns, type CampaignListItem } from "@/lib/api";
+import { duplicateCampaign, listCampaigns, type CampaignListItem } from "@/lib/api";
 import { useToast } from "@/components/ui/ToastProvider";
 import "../briefs.css";
 
@@ -84,7 +85,7 @@ const matchesCampaignFilter = (campaign: CampaignListItem, filter: Filter): bool
     case "active":
       return campaign.status === "running" || campaign.status === "pending";
     case "drafts":
-      return campaign.status === "draft" || campaign.status === "failed";
+      return campaign.status === "draft";
     case "completed":
       return campaign.status === "completed";
     default:
@@ -106,39 +107,50 @@ export default function BriefsPage() {
 }
 
 function BriefsContent() {
+  const router = useRouter();
   const { toast } = useToast();
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
+  const loadCampaigns = useCallback(() => {
     setLoading(true);
-    listCampaigns({ limit: 100 })
+    return listCampaigns({ limit: 100 })
       .then((result) => {
-        if (active) {
-          setCampaigns(result.items);
-        }
+        setCampaigns(result.items);
       })
       .catch((error) => {
-        if (active) {
-          toast(
-            error instanceof Error
-              ? error.message
-              : "Unable to load your campaigns.",
-            { type: "error" }
-          );
-        }
+        toast(
+          error instanceof Error ? error.message : "Unable to load your campaigns.",
+          { type: "error" }
+        );
       })
       .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
+        setLoading(false);
       });
-    return () => {
-      active = false;
-    };
   }, [toast]);
+
+  useEffect(() => {
+    void loadCampaigns();
+  }, [loadCampaigns]);
+
+  const handleDuplicate = async (campaignId: string) => {
+    if (duplicatingId) return;
+    setDuplicatingId(campaignId);
+    try {
+      const duplicated = await duplicateCampaign(campaignId);
+      toast("Campaign duplicated as a new draft.", { type: "success" });
+      router.push(`/briefs/new?campaignId=${encodeURIComponent(duplicated.campaignId)}`);
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Unable to duplicate campaign.",
+        { type: "error" }
+      );
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
 
   const filtered = campaigns.filter((campaign) =>
     matchesCampaignFilter(campaign, filter)
@@ -207,8 +219,10 @@ function BriefsContent() {
       ) : (
         <div className="brief-list">
           {filtered.map((campaign) => {
-            const target =
-              campaign.status === "running" || campaign.status === "pending"
+            const isDraft = campaign.status === "draft";
+            const target = isDraft
+              ? `/briefs/new?campaignId=${encodeURIComponent(campaign.id)}`
+              : campaign.status === "running" || campaign.status === "pending"
                 ? `/discover?campaignId=${encodeURIComponent(campaign.id)}`
                 : `/shortlist?campaignId=${encodeURIComponent(campaign.id)}`;
             const goal = goalTag(campaign);
@@ -220,6 +234,14 @@ function BriefsContent() {
               campaign.status === "running" || campaign.status === "pending";
             const matches = campaign.influencer_count ?? 0;
             const topScore = campaign.top_match_score;
+            const shortlisted = campaign.shortlisted_count ?? 0;
+            const contracted = campaign.contracted_count ?? 0;
+            const thirdStatLabel =
+              campaign.status === "completed" || contracted > 0
+                ? "Contracted"
+                : "Shortlisted";
+            const thirdStatValue =
+              thirdStatLabel === "Contracted" ? contracted : shortlisted;
             const createdLabel = isLive
               ? `${formatTimeAgo(campaign.created_at)}`
               : campaign.status === "completed"
@@ -227,7 +249,8 @@ function BriefsContent() {
                 : `Created ${formatDate(campaign.created_at)}`;
 
             return (
-              <Link key={campaign.id} className="brief" href={target}>
+              <div key={campaign.id} className="brief" style={{ display: "flex", alignItems: "stretch" }}>
+                <Link className="brief" href={target} style={{ flex: 1, display: "flex", textDecoration: "none", color: "inherit" }}>
                 <span className={`b-glyph gl-${status.className === "complete" ? "g" : status.className === "draft" ? "d" : status.className === "active" ? "v" : "cy"}`}>
                   {initial}
                 </span>
@@ -272,11 +295,12 @@ function BriefsContent() {
                     </div>
                   </div>
                   <div className="b-stat">
-                    <div className="l">
-                      {campaign.status === "completed" ? "Contracted" : "Shortlisted"}
-                    </div>
-                    <div className="v">
-                      {isLive ? "—" : campaign.status === "completed" ? "—" : 0}
+                    <div className="l">{thirdStatLabel}</div>
+                    <div
+                      className="v"
+                      style={thirdStatValue === 0 ? { color: "var(--muted)" } : undefined}
+                    >
+                      {isLive && thirdStatValue === 0 ? "—" : thirdStatValue}
                     </div>
                   </div>
                 </div>
@@ -285,7 +309,28 @@ function BriefsContent() {
                     <path d="M5 12h14M13 6l6 6-6 6" />
                   </svg>
                 </span>
-              </Link>
+                </Link>
+                <div className="b-actions" style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "12px 12px 12px 0", justifyContent: "center" }}>
+                  {isDraft ? (
+                    <Link
+                      href={`/briefs/new?campaignId=${encodeURIComponent(campaign.id)}`}
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: "11px", padding: "4px 8px" }}
+                    >
+                      Edit
+                    </Link>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: "11px", padding: "4px 8px" }}
+                    disabled={duplicatingId === campaign.id}
+                    onClick={() => void handleDuplicate(campaign.id)}
+                  >
+                    {duplicatingId === campaign.id ? "…" : "Duplicate"}
+                  </button>
+                </div>
+              </div>
             );
           })}
           <Link className="new-brief" href="/briefs/new">

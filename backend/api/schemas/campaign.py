@@ -39,6 +39,7 @@ class BriefSnapshot(BaseModel):
     """
     brand_name: str | None = Field(default=None, max_length=255)
     campaign_name: str | None = Field(default=None, max_length=255)
+    goals: list[str] = Field(default_factory=list)
     goal: str | None = Field(default=None, max_length=255)
     ages: list[str] = Field(default_factory=list)
     gender: str | None = Field(default=None, max_length=32)
@@ -48,6 +49,9 @@ class BriefSnapshot(BaseModel):
     platforms: list[str] = Field(default_factory=list)
     tier: str | None = Field(default=None, max_length=64)
     budget_text: str | None = Field(default=None, max_length=255)
+    budget_min: int | None = Field(default=None, ge=0)
+    budget_max: int | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, max_length=8)
     notes: str | None = Field(default=None)
 
 
@@ -74,6 +78,10 @@ class CampaignCreate(BaseModel):
     brief_snapshot: BriefSnapshot | None = Field(
         default=None, description="Typed brief form fields, persisted for UI display."
     )
+    start_pipeline: bool = Field(
+        default=True,
+        description="When false, create a draft campaign without starting the matching pipeline.",
+    )
 
     @field_validator("entry_point")
     @classmethod
@@ -87,6 +95,25 @@ class CampaignCreate(BaseModel):
                 f"entry_point must be one of {sorted(allowed)}; got {value!r}."
             )
         return value
+
+
+class CampaignUpdate(BaseModel):
+    """Payload for updating a draft campaign before submission."""
+    product: str | None = Field(default=None, min_length=1, max_length=255)
+    industry: str | None = Field(default=None, min_length=1, max_length=255)
+    goals: str | None = Field(default=None, max_length=1000)
+    target_audience: str | None = Field(default=None, max_length=1000)
+    preferred_platforms: list[str] | None = Field(default=None)
+    budget_range: str | None = Field(default=None, max_length=100)
+    campaign_name: str | None = Field(default=None, max_length=255)
+    brief_snapshot: BriefSnapshot | None = Field(default=None)
+
+
+class CampaignContractCreate(BaseModel):
+    """Mark or update outreach status for a creator on a campaign."""
+    influencer_id: UUID
+    status: str = Field(default="contracted", pattern="^(contracted|pending|declined)$")
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class CampaignResponse(BaseModel):
@@ -125,6 +152,14 @@ class CampaignResponse(BaseModel):
     last_activity_at: datetime | None = Field(
         default=None,
         description="Most recent activity timestamp (updated_at or pipeline event) for the campaign.",
+    )
+    shortlisted_count: int | None = Field(
+        default=None,
+        description="Count of saved-list items sourced from this campaign for the current user.",
+    )
+    contracted_count: int | None = Field(
+        default=None,
+        description="Count of contracted creators on this campaign.",
     )
 
     class Config:

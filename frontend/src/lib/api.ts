@@ -33,11 +33,12 @@ type BackendCampaignResponse = {
   influencer_count: number | null;
   top_match_score: number | null;
   last_activity_at: string | null;
+  shortlisted_count: number | null;
+  contracted_count: number | null;
 };
 
-// GET /api/campaigns/{id} returns { campaign, pipeline_state }.
-type BackendCampaign = {
-  campaign: BackendCampaignResponse;
+// GET /api/campaigns/{id} returns flat CampaignResponse + pipeline_state.
+type BackendCampaign = BackendCampaignResponse & {
   pipeline_state: CampaignState;
 };
 
@@ -110,6 +111,14 @@ export type CampaignSummary = {
   goal: string;
   status: string;
   createdAt: string;
+  campaignName: string | null;
+  entryPoint: string | null;
+  searchQuery: string | null;
+  briefSnapshot: Record<string, unknown> | null;
+  preferredPlatforms: string[] | null;
+  budgetRange: string | null;
+  shortlistedCount: number;
+  contractedCount: number;
   payload: Record<string, unknown>;
   pipelineState: CampaignState;
   influencerCount: number;
@@ -243,6 +252,8 @@ export type CampaignListItem = {
   influencer_count: number | null;
   top_match_score: number | null;
   last_activity_at: string | null;
+  shortlisted_count: number | null;
+  contracted_count: number | null;
 };
 
 export type CampaignListResult = {
@@ -409,16 +420,29 @@ const requestVoid = async (path: string, init?: RequestInit): Promise<void> => {
 };
 
 const mapCampaign = (response: BackendCampaign): CampaignSummary => {
-  const { campaign, pipeline_state: state } = response;
+  const { pipeline_state: state, ...campaign } = response;
+  const snapshot = campaign.brief_snapshot ?? {};
+  const brandName =
+    typeof snapshot.brand_name === "string" && snapshot.brand_name
+      ? snapshot.brand_name
+      : campaign.product;
+
   return {
     campaignId: campaign.id,
-    // Backend has no separate brand field; surface product as the label.
-    brand: campaign.product,
+    brand: brandName,
     product: campaign.product,
     category: campaign.niche,
     goal: campaign.goals ?? "",
     status: campaign.status,
     createdAt: campaign.created_at,
+    campaignName: campaign.campaign_name,
+    entryPoint: campaign.entry_point,
+    searchQuery: campaign.search_query,
+    briefSnapshot: campaign.brief_snapshot,
+    preferredPlatforms: campaign.preferred_platforms,
+    budgetRange: campaign.budget_range,
+    shortlistedCount: campaign.shortlisted_count ?? 0,
+    contractedCount: campaign.contracted_count ?? 0,
     payload: {
       target_audience: campaign.target_audience,
       preferred_platforms: campaign.preferred_platforms,
@@ -428,11 +452,12 @@ const mapCampaign = (response: BackendCampaign): CampaignSummary => {
     },
     pipelineState: state ?? {},
     influencerCount:
+      campaign.influencer_count ??
       (state?.influencer_count as number | undefined) ??
       (state?.influencers_found as number | undefined) ??
       0,
     partialResultsAvailable: state?.partial_results_available ?? false,
-    error: campaign.failure_reason ?? state?.error,
+    error: campaign.failure_reason ?? (state?.error as string | undefined),
   };
 };
 
@@ -502,18 +527,31 @@ export type CampaignCreateOptions = {
   searchQuery?: string;
   /** Typed brief form fields, persisted for UI display. */
   briefSnapshot?: Record<string, unknown> | null;
+  /** When false, create a draft without starting the pipeline. */
+  startPipeline?: boolean;
 };
 
-export const createCampaign = async (
+export type CampaignDraftUpdateBody = {
+  product?: string;
+  industry?: string;
+  goals?: string | null;
+  target_audience?: string | null;
+  preferred_platforms?: string[] | null;
+  budget_range?: string | null;
+  campaign_name?: string | null;
+  brief_snapshot?: Record<string, unknown> | null;
+};
+
+const buildCampaignRequestBody = (
   brief: CampaignBriefPayload,
-  options: CampaignCreateOptions = { entryPoint: "brief_form" }
-): Promise<{ campaignId: string; status: string }> => {
-  // Translate the UI brief into the backend CampaignCreate contract.
+  options: CampaignCreateOptions
+): Record<string, unknown> => {
   const targetAudience = [
     brief.ages.length ? `Ages: ${brief.ages.join(", ")}` : "",
     brief.gender && brief.gender !== "All" ? `Gender: ${brief.gender}` : "",
     brief.locations.length ? `Locations: ${brief.locations.join(", ")}` : "",
     brief.tier && brief.tier !== "No Preference" ? `Tier: ${brief.tier}` : "",
+    brief.interests?.length ? `Interests: ${brief.interests.join(", ")}` : "",
   ]
     .filter(Boolean)
     .join("; ");
@@ -526,17 +564,25 @@ export const createCampaign = async (
     preferred_platforms: brief.platforms.length ? brief.platforms : null,
     budget_range: brief.budget || null,
     entry_point: options.entryPoint,
+    start_pipeline: options.startPipeline !== false,
   };
 
   if (options.campaignName) body.campaign_name = options.campaignName;
   if (options.searchQuery) body.search_query = options.searchQuery;
   if (options.briefSnapshot) body.brief_snapshot = options.briefSnapshot;
 
+  return body;
+};
+
+export const createCampaign = async (
+  brief: CampaignBriefPayload,
+  options: CampaignCreateOptions = { entryPoint: "brief_form" }
+): Promise<{ campaignId: string; status: string }> => {
   const response = await requestJson<{ campaign_id: string; status: string }>(
     "/api/campaigns",
     {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify(buildCampaignRequestBody(brief, options)),
     }
   );
   return {
@@ -544,6 +590,92 @@ export const createCampaign = async (
     status: response.status,
   };
 };
+
+export const createCampaignDraft = async (
+  brief: CampaignBriefPayload,
+  options: Omit<CampaignCreateOptions, "startPipeline"> = { entryPoint: "brief_form" }
+): Promise<{ campaignId: string; status: string }> =>
+  createCampaign(brief, { ...options, startPipeline: false });
+
+export const updateCampaignDraft = async (
+  campaignId: string,
+  body: CampaignDraftUpdateBody
+): Promise<CampaignListItem> =>
+  requestJson<CampaignListItem>(
+    `/api/campaigns/${encodeURIComponent(campaignId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }
+  );
+
+export const submitCampaign = async (
+  campaignId: string
+): Promise<{ campaignId: string; status: string }> => {
+  const response = await requestJson<{ campaign_id: string; status: string }>(
+    `/api/campaigns/${encodeURIComponent(campaignId)}/submit`,
+    { method: "POST" }
+  );
+  return {
+    campaignId: String(response.campaign_id),
+    status: response.status,
+  };
+};
+
+export const duplicateCampaign = async (
+  campaignId: string
+): Promise<{ campaignId: string; status: string }> => {
+  const response = await requestJson<{ id: string; campaign_id?: string; status: string }>(
+    `/api/campaigns/${encodeURIComponent(campaignId)}/duplicate`,
+    { method: "POST" }
+  );
+  return {
+    campaignId: String(response.campaign_id ?? response.id),
+    status: response.status,
+  };
+};
+
+export type CampaignContract = {
+  id: string;
+  campaign_id: string;
+  influencer_id: string;
+  status: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export const listCampaignContracts = async (
+  campaignId: string
+): Promise<{ items: CampaignContract[]; total: number }> =>
+  requestJson<{ items: CampaignContract[]; total: number }>(
+    `/api/campaigns/${encodeURIComponent(campaignId)}/contracts`
+  );
+
+export const addCampaignContract = async (
+  campaignId: string,
+  influencerId: string,
+  options?: { status?: string; notes?: string }
+): Promise<CampaignContract> =>
+  requestJson<CampaignContract>(
+    `/api/campaigns/${encodeURIComponent(campaignId)}/contracts`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        influencer_id: influencerId,
+        status: options?.status ?? "contracted",
+        notes: options?.notes ?? null,
+      }),
+    }
+  );
+
+export const removeCampaignContract = async (
+  campaignId: string,
+  influencerId: string
+): Promise<void> =>
+  requestVoid(
+    `/api/campaigns/${encodeURIComponent(campaignId)}/contracts/${encodeURIComponent(influencerId)}`,
+    { method: "DELETE" }
+  );
 
 export const getCampaign = async (campaignId: string): Promise<CampaignSummary> => {
   const response = await requestJson<BackendCampaign>(

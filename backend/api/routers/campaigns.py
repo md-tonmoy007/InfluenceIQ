@@ -6,19 +6,21 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Response, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import func, or_, select
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.api.schemas.campaign import (
     BriefSnapshot,
+    CampaignContractCreate,
     CampaignCreate,
     CampaignResponse,
+    CampaignUpdate,
 )
 from backend.api.schemas.influencer import CrawlSourceResponse, InfluencerResponse, SubScores
-from backend.core.auth import decode_token
+from backend.core.auth import decode_token, get_current_user
 from backend.core.cache.idempotency import (
     clear_response,
     get_stored_response,
@@ -91,6 +93,54 @@ def _serialize_brief_snapshot(snapshot: BriefSnapshot | None) -> dict[str, Any] 
     return snapshot.model_dump(exclude_none=True)
 
 
+def _get_owned_campaign(
+    db: Session, campaign_id: UUID, user: models.User
+) -> models.Campaign:
+    """Return a campaign the user may access, or raise 404."""
+    campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if campaign.created_by is not None and campaign.created_by != user.id:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return campaign
+
+
+def _dispatch_pipeline(
+    db: Session,
+    db_campaign: models.Campaign,
+    *,
+    idempotency_key: str | None,
+    owner_id: str,
+) -> dict[str, Any]:
+    """Initialize pipeline state and enqueue the root campaign task."""
+    campaign_id_str = str(db_campaign.id)
+    initialize_pipeline_state(campaign_id_str)
+
+    response_body: dict[str, Any] = {
+        "campaign_id": db_campaign.id,
+        "status": db_campaign.status,
+        "pipeline_state": get_campaign_state_payload(db_campaign, campaign_id_str),
+    }
+
+    try:
+        from backend.pipeline.tasks import start_campaign
+
+        start_campaign(campaign_id_str)
+    except Exception as exc:
+        db_campaign.status = "failed"
+        db_campaign.failed_at = datetime.now(UTC)
+        db_campaign.failure_reason = str(exc)
+        db.commit()
+        if idempotency_key:
+            clear_response(owner_id, idempotency_key)
+        raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {exc}") from exc
+
+    if idempotency_key:
+        store_response(owner_id, idempotency_key, 200, response_body)
+
+    return response_body
+
+
 @router.post("", response_model=dict[str, Any])
 def create_campaign(
     campaign_data: CampaignCreate,
@@ -124,6 +174,7 @@ def create_campaign(
     # 2. Build + insert ------------------------------------------------------------
     entry_point = _validate_entry_point(campaign_data.entry_point)
     brief_snapshot = _serialize_brief_snapshot(campaign_data.brief_snapshot)
+    is_draft = not campaign_data.start_pipeline
 
     db_campaign = models.Campaign(
         product=campaign_data.product,
@@ -134,8 +185,8 @@ def create_campaign(
         budget_range=campaign_data.budget_range,
         weights=campaign_data.weights.model_dump() if campaign_data.weights else None,
         created_by=current_user.id if current_user is not None else None,
-        status="running",
-        started_at=datetime.now(UTC),
+        status="draft" if is_draft else "running",
+        started_at=None if is_draft else datetime.now(UTC),
         campaign_name=campaign_data.campaign_name,
         entry_point=entry_point,
         search_query=campaign_data.search_query,
@@ -146,10 +197,6 @@ def create_campaign(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        # Natural-key collision: another campaign with the same
-        # (created_by, product, niche) already exists. Surface a
-        # structured 409 so the client can decide whether to fetch
-        # the existing row.
         raise HTTPException(
             status_code=409,
             detail=(
@@ -160,41 +207,28 @@ def create_campaign(
         ) from exc
     db.refresh(db_campaign)
 
-    campaign_id_str = str(db_campaign.id)
-    initialize_pipeline_state(campaign_id_str)
-
-    # 3. Dispatch pipeline (post-commit) ------------------------------------------
-    response_body: dict[str, Any] = {
-        "campaign_id": db_campaign.id,
-        "status": db_campaign.status,
-        "pipeline_state": get_campaign_state_payload(db_campaign, campaign_id_str),
-    }
-
-    try:
-        from backend.pipeline.tasks import start_campaign
-
-        start_campaign(campaign_id_str)
-    except Exception as exc:
-        db_campaign.status = "failed"
-        db_campaign.failed_at = datetime.now(UTC)
-        db_campaign.failure_reason = str(exc)
-        db.commit()
-        # The campaign row was created; do not cache this as a
-        # successful idempotent response because the pipeline never
-        # started. The client can retry with the same key.
+    if is_draft:
+        response_body = {
+            "campaign_id": db_campaign.id,
+            "status": db_campaign.status,
+        }
         if idempotency_key:
-            clear_response(owner_id, idempotency_key)
-        raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {exc}") from exc
+            store_response(owner_id, idempotency_key, 200, response_body)
+        return response_body
 
-    # 4. Cache successful response for Idempotency-Key retries --------------------
-    if idempotency_key:
-        store_response(owner_id, idempotency_key, 200, response_body)
-
-    return response_body
+    return _dispatch_pipeline(
+        db,
+        db_campaign,
+        idempotency_key=idempotency_key,
+        owner_id=owner_id,
+    )
 
 
 def _enrich_campaign(
-    db: Session, campaign: models.Campaign
+    db: Session,
+    campaign: models.Campaign,
+    *,
+    user: models.User | None = None,
 ) -> dict[str, Any]:
     """Annotate a Campaign with the aggregates the listing API needs.
 
@@ -238,6 +272,30 @@ def _enrich_campaign(
     candidates.append(campaign.created_at)
     response["last_activity_at"] = max(candidates) if candidates else None
 
+    if user is not None:
+        shortlisted_count = (
+            db.query(func.count(models.SavedListItem.id))
+            .join(models.SavedList, models.SavedList.id == models.SavedListItem.list_id)
+            .filter(
+                models.SavedListItem.source_campaign_id == campaign.id,
+                models.SavedList.user_id == user.id,
+            )
+            .scalar()
+        )
+        response["shortlisted_count"] = int(shortlisted_count or 0)
+    else:
+        response["shortlisted_count"] = 0
+
+    contracted_count = (
+        db.query(func.count(models.CampaignContract.id))
+        .filter(
+            models.CampaignContract.campaign_id == campaign.id,
+            models.CampaignContract.status == "contracted",
+        )
+        .scalar()
+    )
+    response["contracted_count"] = int(contracted_count or 0)
+
     return response
 
 
@@ -248,6 +306,7 @@ def list_campaigns(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """List campaigns ordered by created_at desc, with per-row aggregates.
 
@@ -257,14 +316,18 @@ def list_campaigns(
     ``failed`` / ``pending`` values the single campaign returns;
     ``entry_point`` filters by submission channel.
     """
-    query = db.query(models.Campaign).order_by(models.Campaign.created_at.desc())
+    query = (
+        db.query(models.Campaign)
+        .filter(models.Campaign.created_by == current_user.id)
+        .order_by(models.Campaign.created_at.desc())
+    )
     if status:
         query = query.filter(models.Campaign.status == status)
     if entry_point:
         query = query.filter(models.Campaign.entry_point == entry_point)
     total = query.count()
     rows = query.offset(offset).limit(limit).all()
-    items = [_enrich_campaign(db, row) for row in rows]
+    items = [_enrich_campaign(db, row, user=current_user) for row in rows]
     return {
         "items": items,
         "total": total,
@@ -274,20 +337,264 @@ def list_campaigns(
 
 
 @router.get("/{id}", response_model=dict[str, Any])
-def get_campaign(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_campaign(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
     """Retrieve campaign metadata along with current transient pipeline state."""
-    db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
-    if not db_campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
+    db_campaign = _get_owned_campaign(db, id, current_user)
 
     campaign_id_str = str(id)
-    response = _enrich_campaign(db, db_campaign)
+    response = _enrich_campaign(db, db_campaign, user=current_user)
     response["pipeline_state"] = get_campaign_state_payload(db_campaign, campaign_id_str)
     return response
 
 
+@router.patch("/{id}", response_model=dict[str, Any])
+def update_campaign(
+    id: UUID,
+    payload: CampaignUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Update a draft campaign's brief fields."""
+    db_campaign = _get_owned_campaign(db, id, current_user)
+    if db_campaign.status != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail="Only draft campaigns can be updated.",
+        )
+
+    if payload.product is not None:
+        db_campaign.product = payload.product
+    if payload.industry is not None:
+        db_campaign.niche = payload.industry
+    if payload.goals is not None:
+        db_campaign.goals = payload.goals
+    if payload.target_audience is not None:
+        db_campaign.target_audience = payload.target_audience
+    if payload.preferred_platforms is not None:
+        db_campaign.preferred_platforms = payload.preferred_platforms
+    if payload.budget_range is not None:
+        db_campaign.budget_range = payload.budget_range
+    if payload.campaign_name is not None:
+        db_campaign.campaign_name = payload.campaign_name
+    if payload.brief_snapshot is not None:
+        db_campaign.brief_snapshot = _serialize_brief_snapshot(payload.brief_snapshot)
+
+    db_campaign.updated_at = datetime.now(UTC)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A campaign with this product/niche already exists for this owner.",
+        ) from exc
+    db.refresh(db_campaign)
+    return _enrich_campaign(db, db_campaign, user=current_user)
+
+
+@router.post("/{id}/submit", response_model=dict[str, Any])
+def submit_campaign(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Transition a draft campaign to running and start the matching pipeline."""
+    db_campaign = _get_owned_campaign(db, id, current_user)
+
+    if db_campaign.status == "running":
+        campaign_id_str = str(id)
+        return {
+            "campaign_id": db_campaign.id,
+            "status": db_campaign.status,
+            "pipeline_state": get_campaign_state_payload(db_campaign, campaign_id_str),
+        }
+
+    if db_campaign.status != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot submit a campaign with status {db_campaign.status!r}.",
+        )
+
+    db_campaign.status = "running"
+    db_campaign.started_at = datetime.now(UTC)
+    db_campaign.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(db_campaign)
+
+    owner_id = str(current_user.id)
+    return _dispatch_pipeline(db, db_campaign, idempotency_key=None, owner_id=owner_id)
+
+
+@router.post("/{id}/duplicate", response_model=dict[str, Any], status_code=status.HTTP_201_CREATED)
+def duplicate_campaign(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Clone a campaign as a new draft (brief fields only, no scores or contracts)."""
+    source = _get_owned_campaign(db, id, current_user)
+
+    copy_suffix = " (copy)"
+    new_product = source.product
+    if len(new_product) + len(copy_suffix) <= 255:
+        new_product = f"{new_product}{copy_suffix}"
+
+    campaign_name = source.campaign_name
+    if campaign_name and len(campaign_name) + len(copy_suffix) <= 255:
+        campaign_name = f"{campaign_name}{copy_suffix}"
+
+    db_campaign = models.Campaign(
+        product=new_product,
+        niche=source.niche,
+        goals=source.goals,
+        target_audience=source.target_audience,
+        preferred_platforms=source.preferred_platforms,
+        budget_range=source.budget_range,
+        weights=source.weights,
+        created_by=current_user.id,
+        status="draft",
+        started_at=None,
+        campaign_name=campaign_name,
+        entry_point=source.entry_point,
+        search_query=source.search_query,
+        brief_snapshot=source.brief_snapshot,
+    )
+    db.add(db_campaign)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A campaign with this product/niche already exists for this owner.",
+        ) from exc
+    db.refresh(db_campaign)
+
+    response = _enrich_campaign(db, db_campaign, user=current_user)
+    response["campaign_id"] = db_campaign.id
+    return response
+
+
+@router.get("/{id}/contracts", response_model=dict[str, Any])
+def list_campaign_contracts(
+    id: UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """List outreach contract rows for a campaign."""
+    _get_owned_campaign(db, id, current_user)
+
+    query = (
+        db.query(models.CampaignContract)
+        .filter(models.CampaignContract.campaign_id == id)
+        .order_by(models.CampaignContract.created_at.desc())
+    )
+    total = query.count()
+    rows = query.offset(offset).limit(limit).all()
+    items = [
+        {
+            "id": str(row.id),
+            "campaign_id": str(row.campaign_id),
+            "influencer_id": str(row.influencer_id),
+            "status": row.status,
+            "notes": row.notes,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@router.post("/{id}/contracts", response_model=dict[str, Any])
+def upsert_campaign_contract(
+    id: UUID,
+    payload: CampaignContractCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Create or update a contract row for a creator on this campaign."""
+    _get_owned_campaign(db, id, current_user)
+
+    influencer = (
+        db.query(models.Influencer)
+        .filter(models.Influencer.id == payload.influencer_id)
+        .first()
+    )
+    if influencer is None:
+        raise HTTPException(status_code=404, detail="Influencer not found")
+
+    existing = (
+        db.query(models.CampaignContract)
+        .filter(
+            models.CampaignContract.campaign_id == id,
+            models.CampaignContract.influencer_id == payload.influencer_id,
+        )
+        .first()
+    )
+    if existing is not None:
+        existing.status = payload.status
+        existing.notes = payload.notes
+        row = existing
+    else:
+        row = models.CampaignContract(
+            campaign_id=id,
+            influencer_id=payload.influencer_id,
+            status=payload.status,
+            notes=payload.notes,
+            created_by=current_user.id,
+        )
+        db.add(row)
+
+    db.commit()
+    db.refresh(row)
+    return {
+        "id": str(row.id),
+        "campaign_id": str(row.campaign_id),
+        "influencer_id": str(row.influencer_id),
+        "status": row.status,
+        "notes": row.notes,
+        "created_at": row.created_at,
+    }
+
+
+@router.delete("/{id}/contracts/{influencer_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_campaign_contract(
+    id: UUID,
+    influencer_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> Response:
+    """Remove a contract row for a creator on this campaign."""
+    _get_owned_campaign(db, id, current_user)
+
+    row = (
+        db.query(models.CampaignContract)
+        .filter(
+            models.CampaignContract.campaign_id == id,
+            models.CampaignContract.influencer_id == influencer_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    db.delete(row)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/{id}/state", response_model=dict[str, Any])
-def get_campaign_state(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_campaign_state(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
     """Retrieve execution progress, falling back to the durable campaign lifecycle state.
 
     The response is augmented with ``last_event_id`` derived from the
@@ -295,16 +602,18 @@ def get_campaign_state(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any
     connection can pass ``?last_event_id=N`` and receive only the
     events it has not yet seen.
     """
-    db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
-    if not db_campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
+    db_campaign = _get_owned_campaign(db, id, current_user)
     payload = get_campaign_state_payload(db_campaign, str(id))
     payload["last_event_id"] = _get_last_event_id(str(id))
     return payload
 
 
 @router.get("/{id}/facets", response_model=dict[str, Any])
-def get_campaign_facets(id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_campaign_facets(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
     """Return facet counts for the Discover filter rail of a campaign.
 
     Counts come from the influencers scored for this campaign grouped
@@ -314,9 +623,7 @@ def get_campaign_facets(id: UUID, db: Session = Depends(get_db)) -> dict[str, An
     ``"unknown"`` so the UI can show "no data" rather than dropping
     the bucket.
     """
-    db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
-    if not db_campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
+    _get_owned_campaign(db, id, current_user)
 
     rows = (
         db.query(
@@ -439,6 +746,7 @@ def get_campaign_influencers(
     ),
     offset: int = Query(default=0, ge=0, description="Pagination offset (legacy; prefer cursor)"),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Retrieve ranked influencers for a campaign with durable provenance details.
 
@@ -447,9 +755,7 @@ def get_campaign_influencers(
     the cursor encodes the tie-breaker key so successive pages are stable
     even when new InfluencerScore rows land mid-pagination.
     """
-    db_campaign = db.query(models.Campaign).filter(models.Campaign.id == id).first()
-    if not db_campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
+    _get_owned_campaign(db, id, current_user)
 
     query = (
         db.query(models.InfluencerScore, models.Influencer)

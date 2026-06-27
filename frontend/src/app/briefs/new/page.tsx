@@ -1,4 +1,5 @@
 import '../../brief-new.css';
+import { Suspense } from 'react';
 import AppShell from '@/components/shell/AppShell';
 import BriefForm from '@/components/briefs/BriefForm';
 
@@ -27,7 +28,9 @@ export default function NewBriefPage() {
           </div>
         </div>
 
-        <BriefForm />
+        <Suspense fallback={<div className="form-card">Loading brief form…</div>}>
+          <BriefForm />
+        </Suspense>
       </main>
     </AppShell>
   );

@@ -57,7 +57,7 @@ def _derive_brand_name(user: models.User) -> str:
 
 
 def _is_terminal(status: str | None) -> bool:
-    return status in {"completed", "failed", "cancelled"}
+    return status in {"completed", "failed", "partial"}
 
 
 def _summarize_campaign_row(campaign: models.Campaign) -> dict[str, Any]:

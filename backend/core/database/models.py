@@ -133,6 +133,7 @@ class Campaign(Base):
     crawl_sources = relationship("CrawlSource", back_populates="campaign", cascade="all, delete-orphan")
     brand_safety_flags = relationship("BrandSafetyFlag", back_populates="campaign", cascade="all, delete-orphan")
     saved_list_items = relationship("SavedListItem", back_populates="campaign")
+    contracts = relationship("CampaignContract", back_populates="campaign", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint(
@@ -171,6 +172,9 @@ class Influencer(Base):
     brand_safety_flags = relationship("BrandSafetyFlag", back_populates="influencer", cascade="all, delete-orphan")
     verifications = relationship("CredentialVerification", back_populates="influencer", cascade="all, delete-orphan")
     saved_list_items = relationship("SavedListItem", back_populates="influencer", cascade="all, delete-orphan")
+    campaign_contracts = relationship(
+        "CampaignContract", back_populates="influencer", cascade="all, delete-orphan"
+    )
 
 
 class InfluencerScore(Base):
@@ -362,6 +366,36 @@ class SavedListItem(Base):
             "influencer_id",
             "source_campaign_id",
             name="uq_saved_list_items_list_influencer_source",
+        ),
+    )
+
+
+class CampaignContract(Base):
+    """Outreach contract status linking a campaign to an influencer."""
+    __tablename__ = "campaign_contracts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    campaign_id = Column(
+        UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False
+    )
+    influencer_id = Column(
+        UUID(as_uuid=True), ForeignKey("influencers.id", ondelete="CASCADE"), nullable=False
+    )
+    status = Column(String(32), nullable=False, default="contracted", server_default="contracted")
+    created_by = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    campaign = relationship("Campaign", back_populates="contracts")
+    influencer = relationship("Influencer", back_populates="campaign_contracts")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "campaign_id",
+            "influencer_id",
+            name="uq_campaign_contracts_campaign_influencer",
         ),
     )
 

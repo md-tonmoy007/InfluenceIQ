@@ -270,7 +270,9 @@ function DashboardContent() {
                 // em-dash so the table never fabricates a value.
                 const topScore: number | null = null;
                 const targetHref =
-                  row.status === "running" || row.status === "pending"
+                  row.status === "draft"
+                    ? `/briefs/new?campaignId=${encodeURIComponent(row.campaign_id)}`
+                    : row.status === "running" || row.status === "pending"
                     ? `/discover?campaignId=${encodeURIComponent(row.campaign_id)}`
                     : `/shortlist?campaignId=${encodeURIComponent(row.campaign_id)}`;
                 return (

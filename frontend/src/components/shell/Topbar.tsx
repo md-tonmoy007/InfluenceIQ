@@ -8,7 +8,7 @@ import type { KeyboardEvent } from "react";
 import AccountMenu from "../ui/AccountMenu";
 import NotificationMenu from "../ui/NotificationMenu";
 import { createCampaign, type CurrentUser } from "@/lib/api";
-import { buildCampaignPayloadFromQuery } from "@/lib/campaignPayload";
+import { buildCampaignPayloadFromQuery, buildDiscoverBriefSnapshot } from "@/lib/campaignPayload";
 import { useToast } from "@/components/ui/ToastProvider";
 
 export type Crumb = {
@@ -50,14 +50,14 @@ export default function Topbar({
 
     event.currentTarget.blur();
     try {
-      const campaign = await createCampaign(
-        buildCampaignPayloadFromQuery(value),
-        {
-          entryPoint: "topbar_search",
-          searchQuery: value,
-          campaignName: value.slice(0, 120),
-        }
-      );
+      const brief = buildCampaignPayloadFromQuery(value);
+      const campaignName = value.slice(0, 120);
+      const campaign = await createCampaign(brief, {
+        entryPoint: "topbar_search",
+        searchQuery: value,
+        campaignName,
+        briefSnapshot: buildDiscoverBriefSnapshot(brief, campaignName),
+      });
       const next = `/discover?campaignId=${encodeURIComponent(campaign.campaignId)}`;
       router.push(
         `/matching?campaignId=${encodeURIComponent(campaign.campaignId)}&next=${encodeURIComponent(next)}`

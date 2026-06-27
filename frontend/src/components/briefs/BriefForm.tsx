@@ -1,44 +1,101 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createCampaign, getOnboarding } from '@/lib/api';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  createCampaign,
+  createCampaignDraft,
+  getCampaign,
+  getOnboarding,
+  submitCampaign,
+  updateCampaignDraft,
+} from '@/lib/api';
 import {
   CAMPAIGN_GOAL_OPTIONS,
   CATEGORY_OPTIONS,
   briefDefaultsFromBrandProfile,
+  joinCampaignGoals,
 } from '@/lib/brandProfile';
-import { buildBriefSnapshot } from '@/lib/campaignPayload';
+import {
+  buildBriefSnapshot,
+  briefFormFromSnapshot,
+  type BriefFormPayload,
+} from '@/lib/campaignPayload';
 import { useToast } from '@/components/ui/ToastProvider';
+
+type FieldErrors = Partial<Record<'brand' | 'product' | 'goals' | 'platforms', string>>;
+
+const emptyBrief = (): BriefFormPayload => ({
+  brand: '',
+  product: '',
+  category: CATEGORY_OPTIONS[1] as string,
+  campaign: '',
+  goals: [],
+  ages: [],
+  gender: 'All',
+  lang: 'English',
+  locs: [],
+  interests: [],
+  budgetMin: 2500,
+  budgetMax: 12000,
+  currency: 'USD',
+  platforms: [],
+  tier: 'Established',
+  notes: '',
+});
 
 export default function BriefForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const draftCampaignId = searchParams.get('campaignId') || '';
+  const fromCampaignId = searchParams.get('from') || '';
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [hydrating, setHydrating] = useState(Boolean(draftCampaignId || fromCampaignId));
   const [loadingStep, setLoadingStep] = useState(-1);
   const [profileCount, setProfileCount] = useState(0);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [activeDraftId, setActiveDraftId] = useState(draftCampaignId);
 
-  const [brief, setBrief] = useState({
-    brand: '',
-    product: '',
-    category: CATEGORY_OPTIONS[1] as string,
-    campaign: '',
-    goals: [] as string[],
-    ages: [] as string[],
-    gender: 'All',
-    lang: 'English',
-    locs: [] as string[],
-    interests: [] as string[],
-    budgetMin: 2500,
-    budgetMax: 12000,
-    currency: 'USD',
-    platforms: [] as string[],
-    tier: 'Established',
-    notes: ''
-  });
+  const [brief, setBrief] = useState<BriefFormPayload>(emptyBrief);
 
   useEffect(() => {
     let cancelled = false;
+    const loadId = draftCampaignId || fromCampaignId;
+    if (loadId) {
+      setHydrating(true);
+      getCampaign(loadId)
+        .then((campaign) => {
+          if (cancelled) return;
+          const hydrated = briefFormFromSnapshot(campaign.briefSnapshot, {
+            product: campaign.product,
+            niche: campaign.category,
+            goals: campaign.goal,
+            budget_range: campaign.budgetRange,
+            campaign_name: campaign.campaignName,
+          });
+          setBrief(hydrated);
+          if (draftCampaignId) {
+            setActiveDraftId(draftCampaignId);
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            toast(
+              error instanceof Error ? error.message : 'Unable to load campaign brief.',
+              { type: 'error' }
+            );
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setHydrating(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     getOnboarding()
       .then((profile) => {
         if (cancelled) return;
@@ -60,7 +117,7 @@ export default function BriefForm() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [draftCampaignId, fromCampaignId, toast]);
 
   const [tagInput, setTagInput] = useState('');
 
@@ -134,9 +191,95 @@ export default function BriefForm() {
     }));
   };
 
+  const briefPayload = () => ({
+    brand: brief.brand,
+    product: brief.product,
+    category: brief.category,
+    goals: brief.goals,
+    ages: brief.ages,
+    gender: brief.gender,
+    locations: brief.locs,
+    interests: brief.interests,
+    platforms: brief.platforms.map((platform) => platform.toLowerCase()),
+    tier: brief.tier,
+    budget: getBudgetText(),
+    notes: brief.notes,
+  });
+
+  const draftUpdateBody = () => ({
+    product: brief.product,
+    industry: brief.category,
+    goals: joinCampaignGoals(brief.goals, brief.notes),
+    target_audience: [
+      brief.ages.length ? `Ages: ${brief.ages.join(', ')}` : '',
+      brief.gender && brief.gender !== 'All' ? `Gender: ${brief.gender}` : '',
+      brief.locs.length ? `Locations: ${brief.locs.join(', ')}` : '',
+      brief.tier && brief.tier !== 'No Preference' ? `Tier: ${brief.tier}` : '',
+      brief.interests.length ? `Interests: ${brief.interests.join(', ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('; ') || null,
+    preferred_platforms: brief.platforms.length
+      ? brief.platforms.map((platform) => platform.toLowerCase())
+      : null,
+    budget_range: getBudgetText(),
+    campaign_name: brief.campaign || brief.product,
+    brief_snapshot: buildBriefSnapshot(brief),
+  });
+
+  const validateBrief = (): boolean => {
+    const errors: FieldErrors = {};
+    if (!brief.brand.trim()) errors.brand = 'Brand name is required.';
+    if (!brief.product.trim()) errors.product = 'Product name is required.';
+    if (!brief.goals.length) errors.goals = 'Select at least one campaign goal.';
+    if (!brief.platforms.length) errors.platforms = 'Select at least one platform.';
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const friendlyError = (error: unknown) => {
+    if (error instanceof Error && error.message.includes('409')) {
+      return 'A campaign with this product and category already exists.';
+    }
+    return error instanceof Error ? error.message : 'Unable to save campaign right now.';
+  };
+
+  const handleSaveDraft = async () => {
+    if (savingDraft || loading) return;
+    if (!brief.brand.trim() || !brief.product.trim()) {
+      setFieldErrors({
+        brand: !brief.brand.trim() ? 'Brand name is required.' : undefined,
+        product: !brief.product.trim() ? 'Product name is required.' : undefined,
+      });
+      toast('Brand and product are required to save a draft.', { type: 'error' });
+      return;
+    }
+
+    setSavingDraft(true);
+    try {
+      if (activeDraftId) {
+        await updateCampaignDraft(activeDraftId, draftUpdateBody());
+        toast('Draft saved.', { type: 'success' });
+      } else {
+        const created = await createCampaignDraft(briefPayload(), {
+          entryPoint: 'brief_form',
+          campaignName: brief.campaign || brief.product,
+          briefSnapshot: buildBriefSnapshot(brief),
+        });
+        setActiveDraftId(created.campaignId);
+        router.replace(`/briefs/new?campaignId=${encodeURIComponent(created.campaignId)}`);
+        toast('Draft saved.', { type: 'success' });
+      }
+    } catch (error) {
+      toast(friendlyError(error), { type: 'error' });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   // Submit flow
   const handleFindMatches = async () => {
-    if (loading) {
+    if (loading || !validateBrief()) {
       return;
     }
 
@@ -163,28 +306,21 @@ export default function BriefForm() {
     }, 700);
 
     try {
+      const runSubmit = async () => {
+        if (activeDraftId) {
+          await updateCampaignDraft(activeDraftId, draftUpdateBody());
+          return submitCampaign(activeDraftId);
+        }
+        return createCampaign(briefPayload(), {
+          entryPoint: 'brief_form',
+          campaignName: brief.campaign || brief.product,
+          briefSnapshot: buildBriefSnapshot(brief),
+        });
+      };
+
       const [campaign] = await Promise.all([
-        createCampaign(
-          {
-            brand: brief.brand,
-            product: brief.product,
-            category: brief.category,
-            goals: brief.goals,
-            ages: brief.ages,
-            gender: brief.gender,
-            locations: brief.locs,
-            platforms: brief.platforms.map(platform => platform.toLowerCase()),
-            tier: brief.tier,
-            budget: getBudgetText(),
-            notes: brief.notes,
-          },
-          {
-            entryPoint: 'brief_form',
-            campaignName: brief.campaign || brief.product,
-            briefSnapshot: buildBriefSnapshot(brief),
-          }
-        ),
-        new Promise(resolve => window.setTimeout(resolve, 1800)),
+        runSubmit(),
+        new Promise((resolve) => window.setTimeout(resolve, 1800)),
       ]);
 
       clearInterval(counterInterval);
@@ -202,11 +338,21 @@ export default function BriefForm() {
       setLoadingStep(-1);
       setProfileCount(0);
       toast(
-        error instanceof Error ? error.message : 'Unable to submit campaign right now.',
+        friendlyError(error),
         { type: 'error' }
       );
     }
   };
+
+  if (hydrating) {
+    return (
+      <div className="form-wrap">
+        <div className="form-card" style={{ opacity: 0.7 }}>
+          Loading campaign brief…
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -220,10 +366,12 @@ export default function BriefForm() {
               <div className="field">
                 <label>Brand Name <span className="req">*</span></label>
                 <input className="input" placeholder="e.g. Northwind Outdoor" value={brief.brand} onChange={e => setBrief({...brief, brand: e.target.value})} />
+                {fieldErrors.brand ? <span className="hint" style={{ color: 'var(--coral)' }}>{fieldErrors.brand}</span> : null}
               </div>
               <div className="field">
                 <label>Product / Service Name <span className="req">*</span></label>
                 <input className="input" placeholder="e.g. SS26 Trail Capsule" value={brief.product} onChange={e => setBrief({...brief, product: e.target.value})} />
+                {fieldErrors.product ? <span className="hint" style={{ color: 'var(--coral)' }}>{fieldErrors.product}</span> : null}
               </div>
               <div className="field">
                 <label>Product Category <span className="req">*</span></label>
@@ -257,9 +405,8 @@ export default function BriefForm() {
                 </span>
               ))}
             </div>
+            {fieldErrors.goals ? <span className="hint" style={{ color: 'var(--coral)' }}>{fieldErrors.goals}</span> : null}
           </section>
-
-          {/* Audience */}
           <section className="section">
             <div className="section-head"><span className="num">3</span><h2>Target audience</h2><span className="desc">Who you want to reach.</span></div>
 
@@ -373,6 +520,7 @@ export default function BriefForm() {
                 </label>
               ))}
             </div>
+            {fieldErrors.platforms ? <span className="hint" style={{ color: 'var(--coral)' }}>{fieldErrors.platforms}</span> : null}
           </section>
 
           {/* Tier */}
@@ -406,9 +554,11 @@ export default function BriefForm() {
 
           {/* Footer */}
           <div className="form-foot">
-            <div className="meta"><span className="dot"></span>Brief auto-saves as you type</div>
+            <div className="meta"><span className="dot"></span>{activeDraftId ? 'Editing saved draft' : 'Save a draft to continue later'}</div>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="button" className="btn btn-ghost">Save draft</button>
+              <button type="button" className="btn btn-ghost" onClick={() => void handleSaveDraft()} disabled={savingDraft || loading}>
+                {savingDraft ? 'Saving…' : 'Save draft'}
+              </button>
               <button type="button" className="btn btn-primary btn-lg" onClick={handleFindMatches}>
                 <svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3l1.8 4.5L18 9.3l-4.2 1.8L12 15.6l-1.8-4.5L6 9.3l4.2-1.8L12 3z"/></svg>
                 Find My Matches

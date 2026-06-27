@@ -4,11 +4,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { parseBriefSearchParams } from '@/lib/briefQuery';
-import { parseCampaignGoals } from '@/lib/brandProfile';
+import { parseBriefSnapshot } from '@/lib/campaignPayload';
 import {
+  addCampaignContract,
   getCampaign,
   getCampaignInfluencers,
   getCampaignState,
+  listCampaignContracts,
   type CampaignState,
   type CampaignSummary,
   type InfluencerListResult,
@@ -237,6 +239,8 @@ export default function ShortlistPageClient() {
   const [influencerResult, setInfluencerResult] = useState<InfluencerListResult | null>(null);
   const [events, setEvents] = useState<CampaignPipelineEvent[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [contractedIds, setContractedIds] = useState<Set<string>>(new Set());
+  const [markingContractId, setMarkingContractId] = useState<string | null>(null);
   const [showPdf, setShowPdf] = useState(false);
   const [loadingCampaign, setLoadingCampaign] = useState(!missingCampaignId);
   const [loadingInfluencers, setLoadingInfluencers] = useState(false);
@@ -245,34 +249,56 @@ export default function ShortlistPageClient() {
   const lastEventIdRef = useRef(0);
 
   const liveBrief = useMemo(() => {
-    const payload = campaign?.payload ?? {};
-    const snapshot = (payload.brief_snapshot ?? {}) as Record<string, unknown>;
-    const snapshotGoals = Array.isArray(snapshot.goals)
-      ? (snapshot.goals as string[])
-      : null;
-    const goal =
-      (snapshotGoals?.length ? snapshotGoals.join(', ') : null) ??
-      (typeof snapshot.goal === 'string' && snapshot.goal ? snapshot.goal : null) ??
-      (campaign?.goal ? parseCampaignGoals(campaign.goal).join(', ') || campaign.goal : null) ??
-      (fallbackBrief.goals.length ? fallbackBrief.goals.join(', ') : '—');
+    if (campaignId && loadingCampaign) {
+      return {
+        brand: '…',
+        product: '…',
+        category: '…',
+        goal: '…',
+        ages: [] as string[],
+        gender: '…',
+        locs: [] as string[],
+        platforms: [] as string[],
+        tier: '…',
+        budget: '…',
+      };
+    }
+
+    if (campaign) {
+      const parsed = parseBriefSnapshot(campaign.briefSnapshot, {
+        product: campaign.product,
+        niche: campaign.category,
+        goals: campaign.goal,
+        budget_range: campaign.budgetRange,
+        preferred_platforms: campaign.preferredPlatforms,
+      });
+      return {
+        brand: parsed.brand,
+        product: parsed.product,
+        category: parsed.category,
+        goal: parsed.goals.join(', ') || '—',
+        ages: parsed.ages,
+        gender: parsed.gender,
+        locs: parsed.locs,
+        platforms: parsed.platforms,
+        tier: parsed.tier,
+        budget: parsed.budget,
+      };
+    }
 
     return {
-      brand: campaign?.brand ?? fallbackBrief.brand,
-      product: campaign?.product ?? fallbackBrief.product,
-      category: campaign?.category ?? fallbackBrief.category,
-      goal,
-      ages: Array.isArray(payload.ages) ? (payload.ages as string[]) : fallbackBrief.ages,
-      gender: typeof payload.gender === 'string' ? payload.gender : fallbackBrief.gender,
-      locs: Array.isArray(payload.locations)
-        ? (payload.locations as string[])
-        : fallbackBrief.locs,
-      platforms: Array.isArray(payload.platforms)
-        ? (payload.platforms as string[]).map(platform => titleize(String(platform)))
-        : fallbackBrief.platforms,
-      tier: typeof payload.tier === 'string' ? payload.tier : fallbackBrief.tier,
-      budget: typeof payload.budget === 'string' ? payload.budget : fallbackBrief.budget,
+      brand: fallbackBrief.brand,
+      product: fallbackBrief.product,
+      category: fallbackBrief.category,
+      goal: fallbackBrief.goals.join(', ') || '—',
+      ages: fallbackBrief.ages,
+      gender: fallbackBrief.gender,
+      locs: fallbackBrief.locs,
+      platforms: fallbackBrief.platforms,
+      tier: fallbackBrief.tier,
+      budget: fallbackBrief.budget,
     };
-  }, [campaign, fallbackBrief]);
+  }, [campaign, campaignId, fallbackBrief, loadingCampaign]);
 
   const matches = useMemo(
     () => toMatchRows(influencerResult?.items ?? []),
@@ -329,6 +355,45 @@ export default function ShortlistPageClient() {
       cancelled = true;
     };
   }, [campaignId, missingCampaignId]);
+
+  useEffect(() => {
+    if (!campaignId) return;
+    let cancelled = false;
+    listCampaignContracts(campaignId)
+      .then((result) => {
+        if (cancelled) return;
+        setContractedIds(
+          new Set(
+            result.items
+              .filter((item) => item.status === 'contracted')
+              .map((item) => item.influencer_id)
+          )
+        );
+      })
+      .catch(() => {
+        // Non-fatal; contract badges stay empty.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [campaignId]);
+
+  const handleMarkContracted = async (influencerId: string) => {
+    if (!campaignId || markingContractId) return;
+    setMarkingContractId(influencerId);
+    try {
+      await addCampaignContract(campaignId, influencerId);
+      setContractedIds((current) => new Set([...current, influencerId]));
+      toast('Creator marked as contracted.', { type: 'success' });
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : 'Unable to mark creator as contracted.',
+        { type: 'error' }
+      );
+    } finally {
+      setMarkingContractId(null);
+    }
+  };
 
   useEffect(() => {
     const state = pipelineState;
@@ -575,6 +640,7 @@ export default function ShortlistPageClient() {
               const dash = circ * (m.match / 100);
               const matchClass = m.match >= 92 ? 'high' : 'mid';
               const isChecked = selectedIds.includes(m.id);
+              const isContracted = contractedIds.has(m.id);
 
               return (
                 <article key={m.id} className={`row ${isChecked ? 'checked' : ''}`} style={{ animationDelay: `${0.06 * i}s` }}>
@@ -604,6 +670,7 @@ export default function ShortlistPageClient() {
                     </div>
                     <div className="tag-row">
                       <span className={`tag tag-tier ${tierClass[m.tier]}`}>{m.tier}</span>
+                      {isContracted ? <span className="tag" style={{ background: 'var(--violet-soft)', color: 'var(--violet-ink)' }}>Contracted</span> : null}
                       {m.tags.map(t => <span key={t} className="tag">{t}</span>)}
                     </div>
                   </div>
@@ -629,6 +696,17 @@ export default function ShortlistPageClient() {
                       <div className={`val ${matchClass}`}>{m.match}<span className="pct">% MATCH</span></div>
                     </div>
                     <Link href={`/profile/${encodeURIComponent(m.id)}?campaignId=${encodeURIComponent(campaignId)}`} className="row-cta">View profile <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M13 6l6 6-6 6" /></svg></Link>
+                    {!isContracted ? (
+                      <button
+                        type="button"
+                        className="row-cta"
+                        style={{ marginTop: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        disabled={markingContractId === m.id}
+                        onClick={() => void handleMarkContracted(m.id)}
+                      >
+                        {markingContractId === m.id ? 'Saving…' : 'Mark contracted'}
+                      </button>
+                    ) : null}
                   </div>
                 </article>
               );

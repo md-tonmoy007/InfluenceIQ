@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createCampaign } from "@/lib/api";
-import { buildCampaignPayloadFromQuery } from "@/lib/campaignPayload";
+import { buildCampaignPayloadFromQuery, buildDiscoverBriefSnapshot } from "@/lib/campaignPayload";
 import { useToast } from "@/components/ui/ToastProvider";
 
 export default function DiscoverSearch() {
@@ -21,25 +21,12 @@ export default function DiscoverSearch() {
     setSubmitting(true);
     try {
       const brief = buildCampaignPayloadFromQuery(trimmed);
+      const campaignName = trimmed.slice(0, 120);
       const campaign = await createCampaign(brief, {
         entryPoint: "discover_search",
         searchQuery: trimmed,
-        campaignName: trimmed.slice(0, 120),
-        briefSnapshot: {
-          brand_name: brief.brand,
-          campaign_name: trimmed.slice(0, 120),
-          goals: brief.goals,
-          goal: brief.goals.join(", "),
-          ages: brief.ages,
-          gender: brief.gender,
-          language: "English",
-          locations: brief.locations,
-          interests: [],
-          platforms: brief.platforms,
-          tier: brief.tier,
-          budget_text: brief.budget,
-          notes: brief.notes,
-        },
+        campaignName,
+        briefSnapshot: buildDiscoverBriefSnapshot(brief, campaignName),
       });
       const next = `/discover?campaignId=${encodeURIComponent(campaign.campaignId)}`;
       router.push(
