@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { parseBriefSearchParams } from '@/lib/briefQuery';
 import { parseBriefSnapshot } from '@/lib/campaignPayload';
@@ -21,6 +21,8 @@ import { isTerminalPipelineEvent } from '@/types/events';
 import { useToast } from '@/components/ui/ToastProvider';
 import DeepAnalysisTrigger from '@/components/profile/DeepAnalysisTrigger';
 import CampaignBriefActions from '@/components/campaigns/CampaignBriefActions';
+import { canRerunCampaign } from '@/lib/campaignLifecycle';
+import { performQuickRerunWithConfirm } from '@/lib/rerunActions';
 
 const platformGlyphs: Record<string, ReactNode> = {
   instagram: (
@@ -265,6 +267,7 @@ function ListEmptyState({
   progressPct,
   progressLabel,
   loading = false,
+  action,
 }: {
   title: string;
   description: string;
@@ -272,6 +275,7 @@ function ListEmptyState({
   progressPct?: number | null;
   progressLabel?: string;
   loading?: boolean;
+  action?: ReactNode;
 }) {
   return (
     <article className="list-empty">
@@ -303,6 +307,7 @@ function ListEmptyState({
             {progressLabel ? <div className="hint">{progressLabel}</div> : null}
           </div>
         ) : null}
+        {action ? <div className="list-empty-action">{action}</div> : null}
       </div>
     </article>
   );
@@ -310,6 +315,7 @@ function ListEmptyState({
 
 export default function ShortlistPageClient() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { toast } = useToast();
   const fallbackBrief = useMemo(
     () => parseBriefSearchParams(Object.fromEntries(searchParams.entries())),
@@ -330,7 +336,17 @@ export default function ShortlistPageClient() {
   const [loadingInfluencers, setLoadingInfluencers] = useState(false);
   const [errorMessage, setErrorMessage] = useState(missingCampaignId ? 'No campaignId found in the URL. Submit a brief first to start the live pipeline.' : '');
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connected' | 'polling'>(missingCampaignId ? 'idle' : 'polling');
+  const [bannerRerunning, setBannerRerunning] = useState(false);
   const lastEventIdRef = useRef(0);
+
+  const clearRerunState = useCallback(() => {
+    setInfluencerResult(null);
+    setPipelineState(null);
+    setEvents([]);
+    setSelectedIds([]);
+    setErrorMessage('');
+    lastEventIdRef.current = 0;
+  }, []);
 
   const liveBrief = useMemo(() => {
     if (campaignId && loadingCampaign) {
@@ -669,6 +685,97 @@ export default function ShortlistPageClient() {
     { label: 'URLs scraped', value: `${urlsScraped}/${urlsDiscovered}` },
     { label: 'Scores', value: String(scoresComputed) },
   ];
+  const failureMessage =
+    campaign?.error ??
+    (typeof pipelineState?.error === 'string' ? pipelineState.error : null) ??
+    null;
+
+  const handleBannerRerun = async () => {
+    if (bannerRerunning || !campaignId) return;
+    setBannerRerunning(true);
+    try {
+      await performQuickRerunWithConfirm({
+        campaignId,
+        router,
+        toast,
+        onStart: clearRerunState,
+      });
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : 'Unable to rerun campaign.',
+        { type: 'error' }
+      );
+    } finally {
+      setBannerRerunning(false);
+    }
+  };
+
+  const emptyListState = (() => {
+    if (loadingInfluencers) {
+      return {
+        title: 'Loading shortlist',
+        description: 'Pulling ranked creators as the pipeline surfaces matches.',
+        loading: true,
+        showProgress: true,
+      };
+    }
+    if (stateStatus === 'failed') {
+      return {
+        title: 'Matching failed',
+        description:
+          failureMessage ??
+          'The pipeline stopped before producing results. Try rerunning the search or editing your brief.',
+        loading: false,
+        showProgress: false,
+      };
+    }
+    if (stateStatus === 'cancelled') {
+      return {
+        title: 'Campaign cancelled',
+        description: 'This search was cancelled. Rerun it to discover creators again.',
+        loading: false,
+        showProgress: false,
+      };
+    }
+    if (stateStatus === 'completed' && matches.length === 0) {
+      return {
+        title: 'No creators matched',
+        description:
+          'The pipeline finished but no creators met your brief criteria. Try editing platforms, tier, or budget and rerun.',
+        loading: false,
+        showProgress: false,
+      };
+    }
+    if (stateStatus === 'partial' && matches.length === 0) {
+      return {
+        title: 'Partial results only',
+        description:
+          failureMessage ??
+          'Some pipeline steps failed before matches could be ranked. Rerun to try again.',
+        loading: false,
+        showProgress: false,
+      };
+    }
+    return {
+      title: 'Campaign is still processing',
+      description:
+        'InfluenceIQ is discovering creators, scraping profiles, and scoring fit against your brief. Matches will appear here automatically.',
+      loading: stateStatus === 'running',
+      showProgress: true,
+    };
+  })();
+
+  const rerunAction =
+    canRerunCampaign(stateStatus) ? (
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        disabled={bannerRerunning}
+        onClick={() => void handleBannerRerun()}
+      >
+        {bannerRerunning ? 'Rerunning…' : 'Rerun search'}
+      </button>
+    ) : null;
 
   if (!campaignId) {
     return (
@@ -725,6 +832,16 @@ export default function ShortlistPageClient() {
       {errorMessage ? (
         <div style={{ marginBottom: '18px', padding: '14px 16px', borderRadius: '16px', background: 'rgba(255,110,80,0.12)', color: 'var(--ink)' }}>
           {errorMessage}
+        </div>
+      ) : null}
+
+      {(stateStatus === 'failed' || stateStatus === 'partial') && failureMessage ? (
+        <div className="rerun-banner">
+          <div>
+            <strong>{stateStatus === 'failed' ? 'Matching failed' : 'Partial run'}</strong>
+            <p>{failureMessage}</p>
+          </div>
+          {rerunAction}
         </div>
       ) : null}
 
@@ -821,20 +938,17 @@ export default function ShortlistPageClient() {
             })
           ) : (
             <ListEmptyState
-              title={loadingInfluencers ? 'Loading shortlist' : 'Campaign is still processing'}
-              description={
-                loadingInfluencers
-                  ? 'Pulling ranked creators as the pipeline surfaces matches.'
-                  : 'InfluenceIQ is discovering creators, scraping profiles, and scoring fit against your brief. Matches will appear here automatically.'
-              }
+              title={emptyListState.title}
+              description={emptyListState.description}
               stats={pipelineStats}
-              progressPct={urlProgressPct}
+              progressPct={emptyListState.showProgress ? urlProgressPct : null}
               progressLabel={
-                urlProgressPct != null
+                emptyListState.showProgress && urlProgressPct != null
                   ? `${urlProgressPct}% of discovered URLs scraped`
                   : undefined
               }
-              loading={loadingInfluencers || stateStatus === 'running'}
+              loading={emptyListState.loading}
+              action={rerunAction}
             />
           )}
         </section>
@@ -899,6 +1013,7 @@ export default function ShortlistPageClient() {
                 campaignId={campaignId}
                 status={campaign?.status ?? stateStatus}
                 label={campaign?.campaignName || campaign?.product || liveBrief.product}
+                onRerunStart={clearRerunState}
               />
             </div>
           ) : null}

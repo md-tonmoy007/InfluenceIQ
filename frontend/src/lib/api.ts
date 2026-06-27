@@ -318,6 +318,15 @@ export type SavedListDetail = SavedListSummary & {
   items: SavedListItem[];
 };
 
+export class RerunOutreachError extends Error {
+  readonly code = "rerun_has_outreach" as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "RerunOutreachError";
+  }
+}
+
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/$/, "")}${path}`;
 
 const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
@@ -376,13 +385,28 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
       // then to { message }, then to the raw body.
       const envelope = body as {
         error?: { message?: string };
-        detail?: string;
+        detail?: string | { code?: string; message?: string };
         message?: string;
       };
+      const detail = envelope.detail;
+      if (
+        typeof detail === "object" &&
+        detail !== null &&
+        detail.code === "rerun_has_outreach"
+      ) {
+        throw new RerunOutreachError(
+          detail.message ??
+            "This will replace current match results. Saved list items and contracts are kept."
+        );
+      }
       message =
         envelope.error?.message ??
-        envelope.detail ??
+        (typeof detail === "string" ? detail : undefined) ??
+        (typeof detail === "object" && detail !== null && detail.message
+          ? detail.message
+          : undefined) ??
         envelope.message ??
+        (typeof detail === "object" ? JSON.stringify(detail) : undefined) ??
         JSON.stringify(body);
     } catch {
       message = await response.text().catch(() => "");
@@ -640,6 +664,33 @@ export const duplicateCampaign = async (
   return {
     campaignId: String(response.campaign_id ?? response.id),
     status: response.status,
+  };
+};
+
+export const rerunCampaign = async (
+  campaignId: string,
+  options?: { startPipeline?: boolean; confirmOutreach?: boolean }
+): Promise<{ campaignId: string; status: string; pipelineState?: CampaignState }> => {
+  const startPipeline = options?.startPipeline !== false;
+  const params = new URLSearchParams({ start_pipeline: String(startPipeline) });
+  const headers: Record<string, string> = {};
+  if (options?.confirmOutreach) {
+    headers["X-Confirm-Rerun"] = "true";
+  }
+
+  const response = await requestJson<{
+    campaign_id: string;
+    status: string;
+    pipeline_state?: CampaignState;
+  }>(`/api/campaigns/${encodeURIComponent(campaignId)}/rerun?${params.toString()}`, {
+    method: "POST",
+    headers,
+  });
+
+  return {
+    campaignId: String(response.campaign_id),
+    status: response.status,
+    pipelineState: response.pipeline_state,
   };
 };
 

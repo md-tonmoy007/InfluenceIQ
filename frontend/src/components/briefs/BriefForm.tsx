@@ -24,6 +24,7 @@ import {
 import { useToast } from '@/components/ui/ToastProvider';
 import { WeightSliders } from '@/components/briefs/WeightSliders';
 import CampaignBriefActions from '@/components/campaigns/CampaignBriefActions';
+import { canEditCampaignBrief } from '@/lib/campaignLifecycle';
 import { DEFAULT_CAMPAIGN_WEIGHTS, type CampaignWeights } from '@/types/campaign';
 
 type FieldErrors = Partial<Record<'brand' | 'product' | 'goals' | 'platforms', string>>;
@@ -65,6 +66,7 @@ export default function BriefForm() {
 
   const [brief, setBrief] = useState<BriefFormPayload>(emptyBrief);
   const [weights, setWeights] = useState<CampaignWeights>(DEFAULT_CAMPAIGN_WEIGHTS);
+  const canSubmitBrief = canEditCampaignBrief(activeCampaignStatus);
 
   useEffect(() => {
     let cancelled = false;
@@ -599,12 +601,19 @@ export default function BriefForm() {
 
           {/* Footer */}
           <div className="form-foot">
-            <div className="meta"><span className="dot"></span>{activeDraftId ? 'Editing saved draft' : 'Save a draft to continue later'}</div>
+            <div className="meta">
+              <span className="dot"></span>
+              {!canSubmitBrief && activeDraftId
+                ? 'This campaign has finished. Use Rerun search or Edit & rerun in the preview panel.'
+                : activeDraftId
+                  ? 'Editing saved draft'
+                  : 'Save a draft to continue later'}
+            </div>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="button" className="btn btn-ghost" onClick={() => void handleSaveDraft()} disabled={savingDraft || loading}>
+              <button type="button" className="btn btn-ghost" onClick={() => void handleSaveDraft()} disabled={savingDraft || loading || !canSubmitBrief}>
                 {savingDraft ? 'Saving…' : 'Save draft'}
               </button>
-              <button type="button" className="btn btn-primary btn-lg" onClick={handleFindMatches}>
+              <button type="button" className="btn btn-primary btn-lg" onClick={handleFindMatches} disabled={!canSubmitBrief || loading || savingDraft}>
                 <svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3l1.8 4.5L18 9.3l-4.2 1.8L12 15.6l-1.8-4.5L6 9.3l4.2-1.8L12 3z"/></svg>
                 Find My Matches
                 <span className="arrow">→</span>

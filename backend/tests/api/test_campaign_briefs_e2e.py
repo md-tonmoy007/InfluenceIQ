@@ -231,3 +231,80 @@ class CampaignBriefRouterTest(unittest.TestCase):
         self.campaign.created_by = self.other_user.id
         response = self.client.get(f"/api/campaigns/{self.campaign.id}")
         self.assertEqual(response.status_code, 404)
+
+    def test_rerun_completed_starts_pipeline(self) -> None:
+        self.campaign.status = "completed"
+        with (
+            patch("backend.pipeline.campaign_reset.clear_campaign_run_artifacts"),
+            patch.object(campaigns_router, "clear_campaign_pipeline_cache"),
+            patch.object(campaigns_router, "initialize_pipeline_state"),
+            patch.object(campaigns_router, "get_pipeline_state", return_value={"phase": "initializing"}),
+            patch("backend.pipeline.tasks.start_campaign", return_value={"started": True}),
+        ):
+            response = self.client.post(f"/api/campaigns/{self.campaign.id}/rerun")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "running")
+
+    def test_rerun_prepare_sets_draft(self) -> None:
+        self.campaign.status = "completed"
+        with (
+            patch("backend.pipeline.campaign_reset.clear_campaign_run_artifacts"),
+            patch.object(campaigns_router, "clear_campaign_pipeline_cache"),
+            patch("backend.pipeline.tasks.start_campaign") as start_campaign,
+        ):
+            response = self.client.post(
+                f"/api/campaigns/{self.campaign.id}/rerun?start_pipeline=false"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.campaign.status, "draft")
+        start_campaign.assert_not_called()
+
+    def test_rerun_rejects_running(self) -> None:
+        self.campaign.status = "running"
+        response = self.client.post(f"/api/campaigns/{self.campaign.id}/rerun")
+        self.assertEqual(response.status_code, 409)
+
+    def test_rerun_rejects_draft(self) -> None:
+        self.campaign.status = "draft"
+        response = self.client.post(f"/api/campaigns/{self.campaign.id}/rerun")
+        self.assertEqual(response.status_code, 400)
+
+    def test_rerun_requires_outreach_confirm(self) -> None:
+        self.campaign.status = "completed"
+        with patch.object(
+            campaigns_router,
+            "_enrich_campaign",
+            return_value={"contracted_count": 1, "shortlisted_count": 0},
+        ):
+            response = self.client.post(f"/api/campaigns/{self.campaign.id}/rerun")
+
+        self.assertEqual(response.status_code, 409)
+        body = response.json()
+        detail = body.get("detail", body)
+        if isinstance(detail, dict):
+            self.assertEqual(detail.get("code"), "rerun_has_outreach")
+
+    def test_rerun_outreach_confirm_header_allows_dispatch(self) -> None:
+        self.campaign.status = "completed"
+        with (
+            patch.object(
+                campaigns_router,
+                "_enrich_campaign",
+                return_value={"contracted_count": 1, "shortlisted_count": 0},
+            ),
+            patch("backend.pipeline.campaign_reset.clear_campaign_run_artifacts"),
+            patch.object(campaigns_router, "clear_campaign_pipeline_cache"),
+            patch.object(campaigns_router, "initialize_pipeline_state"),
+            patch.object(campaigns_router, "get_pipeline_state", return_value={"phase": "initializing"}),
+            patch("backend.pipeline.tasks.start_campaign", return_value={"started": True}),
+        ):
+            response = self.client.post(
+                f"/api/campaigns/{self.campaign.id}/rerun",
+                headers={"X-Confirm-Rerun": "true"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "running")
+

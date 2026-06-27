@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import redis.asyncio as aioredis
 
+from backend.core.cache.campaign_cache import (
+    STATE_KEY_PREFIX,
+    clear_campaign_pipeline_cache,
+)
 from backend.core.cache.redis_client import redis_client
 
-# Redis hash key pattern for pipeline state
-STATE_KEY_PREFIX = "pipeline_state:"
 STATE_TTL = 7200  # 2 hours
 
 
 def initialize_pipeline_state(campaign_id: str, total_urls: int = 0) -> None:
     """Initializes the campaign execution state hash in Redis with default values."""
+    clear_campaign_pipeline_cache(campaign_id)
     key = f"{STATE_KEY_PREFIX}{campaign_id}"
     initial_state = {
         "campaign_id": campaign_id,

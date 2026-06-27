@@ -10,6 +10,7 @@ export default function MatchingAnimation() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const campaignId = searchParams.get("campaignId");
+  const isRerun = searchParams.get("rerun") === "1";
   const { state, events, isTerminal } = useCampaignPipeline(campaignId);
 
   useEffect(() => {
@@ -26,7 +27,7 @@ export default function MatchingAnimation() {
 
   return (
     <div className="matching-shell">
-      <h1>Running your campaign</h1>
+      <h1>{isRerun ? "Rerunning your campaign" : "Running your campaign"}</h1>
       <p>Discovering creators, enriching platform data, and scoring matches.</p>
       <PipelineProgress state={state} events={events} />
     </div>

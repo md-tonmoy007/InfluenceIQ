@@ -30,6 +30,7 @@ from backend.core.cache.pipeline_state import (
     get_pipeline_state,
     initialize_pipeline_state,
 )
+from backend.core.cache.campaign_cache import clear_campaign_pipeline_cache
 from backend.core.database import models
 from backend.core.database.session import get_db
 
@@ -430,6 +431,86 @@ def submit_campaign(
     db_campaign.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(db_campaign)
+
+    owner_id = str(current_user.id)
+    return _dispatch_pipeline(db, db_campaign, idempotency_key=None, owner_id=owner_id)
+
+
+_RERUNNABLE_STATUSES = frozenset({"completed", "failed", "cancelled", "partial"})
+
+
+def _require_rerun_outreach_confirm(
+    db: Session,
+    db_campaign: models.Campaign,
+    user: models.User,
+    *,
+    confirm_rerun: bool,
+) -> None:
+    """Block quick reruns when outreach exists unless the client confirmed."""
+    enriched = _enrich_campaign(db, db_campaign, user=user)
+    has_outreach = enriched.get("contracted_count", 0) > 0 or enriched.get("shortlisted_count", 0) > 0
+    if has_outreach and not confirm_rerun:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "rerun_has_outreach",
+                "message": (
+                    "This will replace current match results. "
+                    "Saved list items and contracts are kept."
+                ),
+            },
+        )
+
+
+@router.post("/{id}/rerun", response_model=dict[str, Any])
+def rerun_campaign(
+    id: UUID,
+    start_pipeline: bool = Query(default=True, description="When false, reset to draft for editing"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+    confirm_rerun: str | None = Header(default=None, alias="X-Confirm-Rerun"),
+) -> dict[str, Any]:
+    """Reset pipeline artifacts and rerun matching on the same campaign."""
+    db_campaign = _get_owned_campaign(db, id, current_user)
+
+    if db_campaign.status == "running":
+        raise HTTPException(
+            status_code=409,
+            detail="Campaign is still running. Cancel it before rerunning.",
+        )
+
+    if db_campaign.status not in _RERUNNABLE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Cannot rerun a campaign with status {db_campaign.status!r}. "
+                "Use submit for drafts or duplicate to fork."
+            ),
+        )
+
+    if start_pipeline:
+        _require_rerun_outreach_confirm(
+            db,
+            db_campaign,
+            current_user,
+            confirm_rerun=confirm_rerun == "true",
+        )
+
+    from backend.pipeline.campaign_reset import (
+        clear_campaign_run_artifacts,
+        reset_campaign_lifecycle,
+    )
+
+    clear_campaign_run_artifacts(db, id)
+    reset_campaign_lifecycle(db_campaign, to_draft=not start_pipeline)
+    clear_campaign_pipeline_cache(str(id))
+    db.commit()
+    db.refresh(db_campaign)
+
+    if not start_pipeline:
+        response = _enrich_campaign(db, db_campaign, user=current_user)
+        response["campaign_id"] = db_campaign.id
+        return response
 
     owner_id = str(current_user.id)
     return _dispatch_pipeline(db, db_campaign, idempotency_key=None, owner_id=owner_id)

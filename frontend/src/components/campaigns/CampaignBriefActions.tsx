@@ -4,7 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { deleteCampaign, duplicateCampaign } from "@/lib/api";
-import { canDeleteCampaign, canEditCampaignBrief } from "@/lib/campaignLifecycle";
+import {
+  canDeleteCampaign,
+  canEditCampaignBrief,
+  canRerunCampaign,
+} from "@/lib/campaignLifecycle";
+import {
+  performEditAndRerun,
+  performQuickRerunWithConfirm,
+} from "@/lib/rerunActions";
 import { useToast } from "@/components/ui/ToastProvider";
 import "./campaign-brief-actions.css";
 
@@ -14,6 +22,7 @@ type CampaignBriefActionsProps = {
   label?: string;
   showEdit?: boolean;
   onDeleted?: () => void;
+  onRerunStart?: () => void;
 };
 
 export default function CampaignBriefActions({
@@ -22,11 +31,49 @@ export default function CampaignBriefActions({
   label = "this campaign",
   showEdit = true,
   onDeleted,
+  onRerunStart,
 }: CampaignBriefActionsProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [duplicating, setDuplicating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
+  const [preparingRerun, setPreparingRerun] = useState(false);
+
+  const handleRerunSearch = async () => {
+    if (rerunning) return;
+    setRerunning(true);
+    try {
+      await performQuickRerunWithConfirm({
+        campaignId,
+        router,
+        toast,
+        onStart: onRerunStart,
+      });
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Unable to rerun campaign.",
+        { type: "error" }
+      );
+    } finally {
+      setRerunning(false);
+    }
+  };
+
+  const handleEditAndRerun = async () => {
+    if (preparingRerun) return;
+    setPreparingRerun(true);
+    try {
+      await performEditAndRerun(campaignId, router, toast, onRerunStart);
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Unable to prepare campaign for editing.",
+        { type: "error" }
+      );
+    } finally {
+      setPreparingRerun(false);
+    }
+  };
 
   const handleDuplicate = async () => {
     if (duplicating) return;
@@ -68,8 +115,39 @@ export default function CampaignBriefActions({
     }
   };
 
+  const emphasizeRerun = status === "failed" || status === "partial";
+
   return (
     <div className="campaign-brief-actions">
+      {canRerunCampaign(status) ? (
+        <>
+          <button
+            type="button"
+            className={`campaign-brief-action${emphasizeRerun ? " primary" : ""}`}
+            disabled={rerunning}
+            onClick={() => void handleRerunSearch()}
+          >
+            <svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M4 4v6h6" />
+              <path d="M20 20v-6h-6" />
+              <path d="M5 19a9 9 0 0 0 14-2M19 5a9 9 0 0 0-14 2" />
+            </svg>
+            {rerunning ? "Rerunning…" : "Rerun search"}
+          </button>
+          <button
+            type="button"
+            className="campaign-brief-action"
+            disabled={preparingRerun}
+            onClick={() => void handleEditAndRerun()}
+          >
+            <svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
+            {preparingRerun ? "Preparing…" : "Edit & rerun"}
+          </button>
+        </>
+      ) : null}
       {showEdit && canEditCampaignBrief(status) ? (
         <Link
           className="campaign-brief-action"

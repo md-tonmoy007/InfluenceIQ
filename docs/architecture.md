@@ -121,7 +121,7 @@ The frontend is the brand-facing workflow surface. It should:
 - fetch canonical influencer profiles on demand
 - treat the API contract as the source of truth, avoiding duplicated business rules in the client
 
-The frontend should be resilient to partial data. While a campaign is running, it can show progress and any recommendations already computed. Once a terminal state arrives, it should stop expecting further pipeline events unless the campaign is explicitly rerun.
+The frontend should be resilient to partial data. While a campaign is running, it can show progress and any recommendations already computed. Once a terminal state arrives, it should stop expecting further pipeline events unless the user explicitly reruns the campaign via `POST /api/campaigns/{id}/rerun`.
 
 ## Public API Contracts
 
@@ -159,6 +159,17 @@ Returns fast pipeline state from Redis or a database fallback. This endpoint is 
   "last_event_id": 42
 }
 ```
+
+`POST /api/campaigns/{id}/rerun`
+
+Restarts matching on the same campaign id. Accepts terminal statuses (`completed`, `failed`, `cancelled`, `partial`). Query param `start_pipeline` defaults to `true`:
+
+- `start_pipeline=true` — clears run artifacts, resets Redis pipeline state, sets status to `running`, and dispatches the pipeline immediately (quick rerun).
+- `start_pipeline=false` — clears run artifacts and Redis state, sets status to `draft`, and returns without dispatching so the client can edit the brief and call `POST /api/campaigns/{id}/submit`.
+
+**Cleared on rerun:** crawl sources, influencer scores, brand-safety flags, candidate snapshots, and deep-analysis runs for the campaign. **Preserved:** campaign contracts, saved-list items referencing the campaign, and global influencer records.
+
+If the campaign has shortlisted or contracted creators, quick rerun requires the `X-Confirm-Rerun: true` header; otherwise the API returns `409` with code `rerun_has_outreach`.
 
 `GET /api/campaigns/{id}/influencers`
 
