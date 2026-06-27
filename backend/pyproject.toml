@@ -42,6 +42,8 @@ ml = [
   "networkx>=3,<4",
   "transformers>=4.46,<5",
   "torch>=2.5,<3",
+  "pymongo>=4.10,<5",
+  "minio>=7.2,<8",
 ]
 dev = [
   "pytest>=8.3,<9",
@@ -49,6 +51,9 @@ dev = [
   "ruff>=0.8,<1",
   "mypy>=1.14,<2",
   "httpx>=0.27,<1",
+  "networkx>=3,<4",
+  "numpy>=2,<3",
+  "prometheus-client>=0.21,<1",
 ]
 
 [tool.pytest.ini_options]

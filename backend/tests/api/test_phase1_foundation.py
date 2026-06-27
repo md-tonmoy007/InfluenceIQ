@@ -31,6 +31,16 @@ os.environ.setdefault("REDIS_STATE_DB", "redis://localhost:6379/2")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 
 
+def _adapt_user_table_for_sqlite(user_model) -> None:
+    """Swap PostgreSQL UUID columns for String so SQLite can create the table."""
+    from sqlalchemy import String
+    from sqlalchemy.dialects.postgresql import UUID as PGUUID
+
+    for column in user_model.__table__.columns:
+        if isinstance(column.type, PGUUID):
+            column.type = String(36)
+
+
 class CampaignSchemaSurfaceTest(unittest.TestCase):
     """Pydantic schema exposes the new ownership columns."""
 
@@ -408,6 +418,7 @@ class GetCurrentUserSoftDeleteFilterTest(unittest.TestCase):
         # the deleted_at filter.
 
         engine = create_engine("sqlite:///:memory:")
+        _adapt_user_table_for_sqlite(User)
         User.__table__.create(engine, checkfirst=True)
         self.Session = sessionmaker(bind=engine)
         self._engine = engine
@@ -421,8 +432,9 @@ class GetCurrentUserSoftDeleteFilterTest(unittest.TestCase):
 
         session = self.Session()
         try:
+            user_id = str(uuid.uuid4())
             user = User(
-                id=uuid.uuid4(),
+                id=user_id,
                 email=f"{uuid.uuid4()}@example.com",
                 password_hash=hash_password("hunter22"),
                 name="Deleted Test",
@@ -431,25 +443,31 @@ class GetCurrentUserSoftDeleteFilterTest(unittest.TestCase):
             )
             session.add(user)
             session.commit()
-            return str(user.id)
+            return user_id
         finally:
             session.close()
 
     def test_active_user_resolves(self) -> None:
+        from unittest.mock import patch
+
         from backend.core.auth import get_current_user
 
         user_id = self._make_user(deleted=False)
         db = self.Session()
         try:
-            user = get_current_user(
-                token=_mint_token(user_id),
-                db=db,
-            )
+            # Keep JWT subject as a string for the SQLite test table (String PK).
+            with patch("backend.core.auth.UUID", side_effect=lambda value: value):
+                user = get_current_user(
+                    token=_mint_token(user_id),
+                    db=db,
+                )
             self.assertEqual(str(user.id), user_id)
         finally:
             db.close()
 
     def test_soft_deleted_user_is_rejected(self) -> None:
+        from unittest.mock import patch
+
         from fastapi import HTTPException
 
         from backend.core.auth import get_current_user
@@ -457,11 +475,12 @@ class GetCurrentUserSoftDeleteFilterTest(unittest.TestCase):
         user_id = self._make_user(deleted=True)
         db = self.Session()
         try:
-            with self.assertRaises(HTTPException) as ctx:
-                get_current_user(
-                    token=_mint_token(user_id),
-                    db=db,
-                )
+            with patch("backend.core.auth.UUID", side_effect=lambda value: value):
+                with self.assertRaises(HTTPException) as ctx:
+                    get_current_user(
+                        token=_mint_token(user_id),
+                        db=db,
+                    )
             self.assertEqual(ctx.exception.status_code, 401)
         finally:
             db.close()

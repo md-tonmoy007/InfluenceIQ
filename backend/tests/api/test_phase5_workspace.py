@@ -38,6 +38,11 @@ os.environ.setdefault("REDIS_STATE_DB", "redis://localhost:6379/2")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 
 
+def _openapi_paths(app) -> dict[str, dict]:
+    """Return the OpenAPI path map (FastAPI >= 0.110 hides inner router routes)."""
+    return app.openapi().get("paths", {})
+
+
 class CampaignCreateSchemaTest(unittest.TestCase):
     """Pydantic schema accepts the new workspace metadata fields."""
 
@@ -210,14 +215,12 @@ class WorkspaceRouterTest(unittest.TestCase):
     def test_summary_route_registered(self) -> None:
         from backend.api.main import app
 
-        paths = {route.path for route in app.routes}
-        self.assertIn("/api/workspace/summary", paths)
+        self.assertIn("/api/workspace/summary", _openapi_paths(app))
 
     def test_activity_route_registered(self) -> None:
         from backend.api.main import app
 
-        paths = {route.path for route in app.routes}
-        self.assertIn("/api/workspace/activity", paths)
+        self.assertIn("/api/workspace/activity", _openapi_paths(app))
 
 
 class ListsRouterTest(unittest.TestCase):
@@ -232,8 +235,7 @@ class ListsRouterTest(unittest.TestCase):
     def test_list_routes_registered(self) -> None:
         from backend.api.main import app
 
-        paths = {route.path for route in app.routes}
-        # Top-level + nested paths; we just verify the prefix exists.
+        paths = _openapi_paths(app)
         self.assertTrue(any(p.startswith("/api/lists") for p in paths))
 
 
@@ -249,21 +251,10 @@ class CampaignListingTest(unittest.TestCase):
     def test_listing_route_registered(self) -> None:
         from backend.api.main import app
 
-        methods_by_path: dict[str, set[str]] = {}
-        for route in app.routes:
-            if hasattr(route, "methods") and route.path.startswith("/api/campaigns"):
-                methods_by_path.setdefault(route.path, set()).update(route.methods)
-        # The listing route is GET /api/campaigns (no path param).
-        self.assertIn("GET", methods_by_path.get("/api/campaigns", set()))
+        self.assertIn("get", _openapi_paths(app).get("/api/campaigns", {}))
 
     def test_facets_route_registered(self) -> None:
         from backend.api.main import app
 
-        methods_by_path: dict[str, set[str]] = {}
-        for route in app.routes:
-            if hasattr(route, "methods") and route.path.startswith("/api/campaigns"):
-                methods_by_path.setdefault(route.path, set()).update(route.methods)
-        # The facets path must accept GET.
-        self.assertTrue(
-            any(p.endswith("/facets") and "GET" in methods_by_path.get(p, set()) for p in methods_by_path)
-        )
+        paths = _openapi_paths(app)
+        self.assertTrue(any(p.endswith("/facets") and "get" in paths[p] for p in paths))

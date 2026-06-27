@@ -171,7 +171,7 @@ class BackendContractsTest(unittest.TestCase):
         with (
             patch.object(campaigns_router, "initialize_pipeline_state") as init_state,
             patch.object(campaigns_router, "get_pipeline_state", return_value={"phase": "initializing"}),
-            patch("backend.pipeline.tasks.start_pipeline", return_value={"started": True}) as start_pipeline,
+            patch("backend.pipeline.tasks.start_campaign", return_value={"started": True}) as start_campaign,
         ):
             response = self.client.post("/api/campaigns", json=payload)
 
@@ -183,7 +183,7 @@ class BackendContractsTest(unittest.TestCase):
         self.assertEqual(self.session.campaign.status, "running")
         self.assertIsNotNone(self.session.campaign.started_at)
         init_state.assert_called_once()
-        start_pipeline.assert_called_once()
+        start_campaign.assert_called_once()
 
     def test_campaign_state_falls_back_to_durable_status(self):
         campaign_id = uuid.uuid4()

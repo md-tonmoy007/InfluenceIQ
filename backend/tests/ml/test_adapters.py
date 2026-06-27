@@ -9,6 +9,8 @@ from datetime import datetime
 from io import BytesIO
 from uuid import uuid4
 
+import pytest
+
 from backend.ml.stores.document import MongoProfileStore, Profile, ProfileStore
 from backend.ml.stores.object import EvidenceRef, MinioObjectStore, ObjectStore
 from backend.ml.stores.vector import QdrantVectorStore, VectorHit, VectorStore
@@ -20,12 +22,14 @@ def test_qdrant_store_satisfies_protocol() -> None:
 
 
 def test_minio_store_satisfies_protocol() -> None:
+    pytest.importorskip("minio")
     store = MinioObjectStore(endpoint="localhost:9000", access_key="x", secret_key="y")
     assert isinstance(store, ObjectStore)
     assert isinstance(EvidenceRef("b", "k", "h", 1), EvidenceRef)
 
 
 def test_mongo_store_satisfies_protocol() -> None:
+    pytest.importorskip("pymongo")
     store = MongoProfileStore(uri="mongodb://localhost:27017")
     assert isinstance(store, ProfileStore)
 
@@ -51,6 +55,7 @@ def test_profile_dataclass_is_typed() -> None:
 
 
 def test_minio_put_object_hashes_payload(monkeypatch) -> None:
+    pytest.importorskip("minio")
     class _FakeClient:
         def bucket_exists(self, _bucket: str) -> bool:
             return True

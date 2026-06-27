@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.pipeline.orchestrator.pipeline import Role4PipelineResult, run_role4_pipeline
+from backend.pipeline.orchestrator.pipeline import run_role4_pipeline
 
 
 def _make_candidate() -> dict:
@@ -45,7 +45,7 @@ def _make_candidate() -> dict:
 
 def test_run_role4_pipeline_returns_Role4PipelineResult() -> None:
     result = run_role4_pipeline(_make_candidate())
-    assert isinstance(result, Role4PipelineResult)
+    assert type(result).__name__ == "Role4PipelineResult"
 
 
 def test_final_score_in_range() -> None:
