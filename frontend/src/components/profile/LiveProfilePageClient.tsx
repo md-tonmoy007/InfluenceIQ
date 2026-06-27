@@ -47,6 +47,59 @@ const platformLinks = (platforms: Record<string, unknown>) =>
     .filter((value): value is string => typeof value === "string" && value.length > 0)
     .slice(0, 3);
 
+const formatHandle = (handle: string): string => {
+  const trimmed = handle.trim();
+  if (!trimmed) return "@unknown";
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const segment = url.pathname.replace(/^\/+/, "").split("/")[0];
+      if (segment) return `@${segment}`;
+      return url.hostname.replace(/^www\./, "");
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+};
+
+const resolveHandle = (
+  primaryHandle: string | null | undefined,
+  platforms: Record<string, unknown>
+): string => {
+  const normalized = formatHandle(String(primaryHandle ?? ""));
+  if (normalized !== "@unknown") return normalized;
+
+  const firstUrl = Object.values(platforms).find(
+    (value): value is string => typeof value === "string" && /^https?:\/\//i.test(value)
+  );
+  return firstUrl ? formatHandle(firstUrl) : "@unknown";
+};
+
+const platformLinkMeta = (url: string): { className: string; label: string } => {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+    if (hostname.includes("youtube") || hostname.includes("youtu.be")) {
+      return { className: "pf-yt", label: "YouTube" };
+    }
+    if (hostname.includes("tiktok")) {
+      return { className: "pf-tt", label: "TikTok" };
+    }
+    if (hostname === "x.com" || hostname.includes("twitter")) {
+      return { className: "pf-x", label: "X" };
+    }
+    if (hostname.includes("instagram")) {
+      return { className: "pf-ig", label: "Instagram" };
+    }
+    if (hostname.includes("facebook")) {
+      return { className: "pf-fb", label: "Facebook" };
+    }
+    return { className: "pf-web", label: hostname };
+  } catch {
+    return { className: "pf-web", label: "Link" };
+  }
+};
+
 const citationHost = (url: string): string => {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -122,9 +175,12 @@ export default function LiveProfilePageClient({
     if (!profile) return null;
 
     const name = String(profile.canonical_name ?? "Unknown creator");
-    const handle = String(profile.primary_handle ?? "@unknown");
-    const platform = titleize(String(profile.primary_platform ?? "instagram"));
     const platforms = (profile.platforms as Record<string, unknown> | undefined) ?? {};
+    const handle = resolveHandle(
+      profile.primary_handle as string | null | undefined,
+      platforms
+    );
+    const platform = titleize(String(profile.primary_platform ?? "instagram"));
     const finalScore = Number(campaignScore?.final_score ?? 0);
     const subScores = {
       relevance: Number(campaignScore?.relevance_score ?? 0),
@@ -189,25 +245,29 @@ export default function LiveProfilePageClient({
 
   if (loading) {
     return (
-      <div className="panel">
-        Loading creator profile...
+      <div className="profile-page">
+        <div className="panel">
+          Loading creator profile...
+        </div>
       </div>
     );
   }
 
   if (error || !viewModel) {
     return (
-      <div className="panel">
-        <p>{error || "Creator profile unavailable."}</p>
-        <Link className="back-link" href={campaignId ? shortlistHref(campaignId) : "/discover"}>
-          Back to shortlist
-        </Link>
+      <div className="profile-page">
+        <div className="panel">
+          <p>{error || "Creator profile unavailable."}</p>
+          <Link className="back-link" href={campaignId ? shortlistHref(campaignId) : "/discover"}>
+            Back to shortlist
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <>
+    <div className="profile-page">
       <Link
         className="back-link"
         href={campaignId ? shortlistHref(campaignId) : "/discover"}
@@ -237,17 +297,21 @@ export default function LiveProfilePageClient({
                 <h1>{viewModel.name}</h1>
                 <div className="handle">{viewModel.handle}</div>
                 <div className="platforms">
-                  {viewModel.links.map((link) => (
-                    <a key={link} className="pf pf-yt" href={link} target="_blank" rel="noreferrer">
-                      {(() => {
-                        try {
-                          return new URL(link).hostname.replace(/^www\./, "");
-                        } catch {
-                          return link;
-                        }
-                      })()}
-                    </a>
-                  ))}
+                  {viewModel.links.map((link) => {
+                    const meta = platformLinkMeta(link);
+                    return (
+                      <a
+                        key={link}
+                        className={`platform-link ${meta.className}`}
+                        href={link}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={link}
+                      >
+                        {meta.label}
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -438,6 +502,6 @@ export default function LiveProfilePageClient({
           />
         </div>
       </div>
-    </>
+    </div>
   );
 }

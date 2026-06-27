@@ -671,20 +671,22 @@ export default function ShortlistPageClient() {
 
   if (!campaignId) {
     return (
-      <div className="page-head">
-        <div>
-          <h1>Live shortlist unavailable</h1>
-          <p className="page-sub">{errorMessage}</p>
+      <div className="shortlist-page">
+        <div className="page-head">
+          <div>
+            <h1>Live shortlist unavailable</h1>
+            <p className="page-sub">{errorMessage}</p>
+          </div>
+          <Link className="btn btn-primary" href="/briefs/new">
+            Submit a brief
+          </Link>
         </div>
-        <Link className="btn btn-primary" href="/briefs/new">
-          Submit a brief
-        </Link>
       </div>
     );
   }
 
   return (
-    <>
+    <div className="shortlist-page">
       <div className="page-head">
         <div>
           <h1>Top matches for <span className="accent">{liveBrief.brand}&apos;s</span> campaign</h1>
@@ -955,6 +957,6 @@ export default function ShortlistPageClient() {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
