@@ -7,8 +7,12 @@ Connection contract
 1. Server accepts and replays every event for ``campaign_id`` with
    ``event_id > N`` (in order), then subscribes to the live pub/sub
    channel ``campaign:{campaign_id}``.
-2. Heartbeat: server sends ``{"type": "ping", "timestamp": ...}``
-   every ``HEARTBEAT_INTERVAL_SECONDS`` (20s by default).
+2. Heartbeat: server sends ``{"type": "heartbeat", "event_id": 0,
+   "campaign_id": ..., "timestamp": ..., "payload": {"state": {...}}}``
+   every ``HEARTBEAT_INTERVAL_SECONDS`` (20s by default). ``event_id``
+   is 0 on heartbeats so the client can detect "not a replay-eligible
+   event" without a special-case schema; the ``payload.state`` field
+   carries the latest pipeline state hash for the campaign.
 3. The server also accepts client ``pong`` replies (and any other
    text frames) without taking action.
 4. Slow-consumer policy: events are pushed into a bounded
@@ -33,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import defaultdict
+from datetime import UTC, datetime
 from uuid import UUID
 
 import redis.asyncio as aioredis
@@ -40,6 +45,7 @@ import structlog
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from backend.core.cache.event_log import aget_event_replay
+from backend.core.cache.pipeline_state import aget_pipeline_state
 from backend.core.config import settings
 
 logger = structlog.get_logger()
@@ -89,6 +95,16 @@ class _SubscriberRegistry:
 
 
 SUBSCRIBERS = _SubscriberRegistry()
+
+
+def _utcnow_iso() -> str:
+    """Timezone-aware UTC ``isoformat()`` ending in ``Z``.
+
+    Mirrors the timestamp format :func:`backend.core.cache.event_log.emit_event`
+    uses so heartbeats are indistinguishable from replay-eligible events
+    in shape, only in ``event_id`` (``0`` means "not a replay event").
+    """
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @router.websocket("/ws/campaign/{campaign_id}")
@@ -201,9 +217,30 @@ async def websocket_campaign_stream(
                 while not sender_stop.is_set():
                     try:
                         await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                        # Pull the current pipeline state hash out of Redis
+                        # so the heartbeat doubles as a low-cost state sync.
+                        # Falls back to {"campaign_id": ...} if the hash
+                        # hasn't been initialized yet (e.g. just after
+                        # create_campaign before the first task runs).
+                        try:
+                            pipeline_state = await aget_pipeline_state(
+                                pubsub_redis, campaign_id_str
+                            )
+                        except Exception as state_exc:
+                            log.warning(
+                                "Heartbeat state read failed",
+                                error=str(state_exc),
+                            )
+                            pipeline_state = None
                         heartbeat = {
-                            "type": "ping",
-                            "timestamp": asyncio.get_event_loop().time(),
+                            "type": "heartbeat",
+                            "event_id": 0,
+                            "campaign_id": campaign_id_str,
+                            "timestamp": _utcnow_iso(),
+                            "payload": {
+                                "state": pipeline_state
+                                or {"campaign_id": campaign_id_str}
+                            },
                         }
                         await websocket.send_json(heartbeat)
                     except (WebSocketDisconnect, asyncio.CancelledError):

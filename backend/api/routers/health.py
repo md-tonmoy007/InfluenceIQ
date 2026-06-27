@@ -9,10 +9,10 @@ from backend.core.celery.app import celery_app
 from backend.core.celery.roles import WORKER_QUEUES
 from backend.core.database.session import get_db
 
-router = APIRouter(prefix="/health", tags=["health"])
+router = APIRouter(tags=["health"])
 
 
-@router.get("")
+@router.get("/health")
 def get_health(db: Session = Depends(get_db)) -> dict:
     """Returns application integration health, Celery worker counts, and queue depths."""
     queues = WORKER_QUEUES
@@ -56,4 +56,26 @@ def get_health(db: Session = Depends(get_db)) -> dict:
         "workers": workers,
         "db": db_status,
         "redis": redis_status,
+    }
+
+
+@router.get("/ready")
+def get_ready(db: Session = Depends(get_db)) -> dict:
+    """Lighter readiness probe used by the frontend's ``getBackendReadiness`` helper.
+
+    The frontend pings this on mount to confirm the API surface is
+    reachable before it commits to loading heavy data. It only checks
+    the database round-trip — the full dependency check lives on
+    ``/health`` and is what the docker healthcheck uses.
+    """
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        db_status = "down"
+
+    is_ready = db_status == "connected"
+    return {
+        "status": "ready" if is_ready else "degraded",
+        "db": db_status,
     }
