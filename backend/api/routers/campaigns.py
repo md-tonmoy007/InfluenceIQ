@@ -511,6 +511,31 @@ def duplicate_campaign(
     return response
 
 
+_DELETABLE_CAMPAIGN_STATUSES = frozenset({"draft", "completed", "failed", "cancelled"})
+
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_campaign(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> Response:
+    """Permanently remove a campaign that is not actively running."""
+    db_campaign = _get_owned_campaign(db, id, current_user)
+    if db_campaign.status not in _DELETABLE_CAMPAIGN_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Cannot delete a campaign with status {db_campaign.status!r}. "
+                "Cancel active campaigns before deleting them."
+            ),
+        )
+
+    db.delete(db_campaign)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/{id}/contracts", response_model=dict[str, Any])
 def list_campaign_contracts(
     id: UUID,

@@ -9,7 +9,7 @@
   .seg-tabs .count{margin-left:6px;font-family:'JetBrains Mono',monospace;font-size:10px;opacity:0.7}
 
   .brief-list{display:flex;flex-direction:column;gap:12px}
-  .brief{display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center;padding:20px 22px;background:#fff;border:1px solid var(--line);border-radius:14px;transition:transform .2s,box-shadow .2s,border-color .2s;cursor:pointer;opacity:0;transform:translateY(8px);animation:bIn .4s cubic-bezier(.2,.8,.2,1) forwards}
+  .brief{display:grid;grid-template-columns:auto 1fr auto auto;gap:24px;align-items:center;padding:20px 22px;background:#fff;border:1px solid var(--line);border-radius:14px;transition:transform .2s,box-shadow .2s,border-color .2s;cursor:pointer;text-decoration:none;color:inherit;opacity:0;transform:translateY(8px);animation:bIn .4s cubic-bezier(.2,.8,.2,1) forwards}
   .brief:nth-child(1){animation-delay:.05s}.brief:nth-child(2){animation-delay:.12s}.brief:nth-child(3){animation-delay:.19s}.brief:nth-child(4){animation-delay:.26s}.brief:nth-child(5){animation-delay:.33s}
   @keyframes bIn{to{opacity:1;transform:none}}
   .brief:hover{transform:translateY(-2px);border-color:color-mix(in oklab,var(--violet),white 80%);box-shadow:0 18px 40px -22px rgba(60,50,120,0.25)}

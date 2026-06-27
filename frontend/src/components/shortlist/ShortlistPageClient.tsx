@@ -20,6 +20,7 @@ import type { CampaignPipelineEvent } from '@/types/events';
 import { isTerminalPipelineEvent } from '@/types/events';
 import { useToast } from '@/components/ui/ToastProvider';
 import DeepAnalysisTrigger from '@/components/profile/DeepAnalysisTrigger';
+import CampaignBriefActions from '@/components/campaigns/CampaignBriefActions';
 
 const platformGlyphs: Record<string, ReactNode> = {
   instagram: (
@@ -892,10 +893,15 @@ export default function ShortlistPageClient() {
               )}
             </div>
           </div>
-          <div className="foot">
-            <Link className="b" href="/briefs/new"><svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>Edit brief</Link>
-            <Link className="b" href="/briefs/new"><svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6" /></svg>Re-run matching</Link>
-          </div>
+          {!loadingCampaign ? (
+            <div className="foot">
+              <CampaignBriefActions
+                campaignId={campaignId}
+                status={campaign?.status ?? stateStatus}
+                label={campaign?.campaignName || campaign?.product || liveBrief.product}
+              />
+            </div>
+          ) : null}
         </aside>
       </div>
 

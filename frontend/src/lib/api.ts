@@ -643,6 +643,12 @@ export const duplicateCampaign = async (
   };
 };
 
+export const deleteCampaign = async (campaignId: string): Promise<void> => {
+  await requestVoid(`/api/campaigns/${encodeURIComponent(campaignId)}`, {
+    method: "DELETE",
+  });
+};
+
 export type CampaignContract = {
   id: string;
   campaign_id: string;

@@ -130,6 +130,7 @@
   .preview .row .v.empty{color:var(--muted-soft);font-style:italic;font-weight:400}
   .preview .stack{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
   .preview .stack .pill{font-size:10.5px;padding:2px 7px;background:var(--paper-2);border-radius:999px;color:var(--ink-soft)}
+  .preview-actions{margin-top:18px;padding-top:16px;border-top:1px solid var(--line-soft)}
 
   /* ===== Loading overlay ===== */
   .loading{position:fixed;inset:0;z-index:200;background:rgba(10,11,16,0.78);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;animation:fadeIn .3s ease}

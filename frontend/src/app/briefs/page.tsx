@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import AppShell from "@/components/shell/AppShell";
-import { duplicateCampaign, listCampaigns, type CampaignListItem } from "@/lib/api";
+import { listCampaigns, type CampaignListItem } from "@/lib/api";
 import { campaignHref } from "@/lib/routes";
 import { useToast } from "@/components/ui/ToastProvider";
 import "../briefs.css";
@@ -108,12 +107,10 @@ export default function BriefsPage() {
 }
 
 function BriefsContent() {
-  const router = useRouter();
   const { toast } = useToast();
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
-  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   const loadCampaigns = useCallback(() => {
     setLoading(true);
@@ -136,23 +133,6 @@ function BriefsContent() {
     void loadCampaigns();
   }, [loadCampaigns]);
 
-  const handleDuplicate = async (campaignId: string) => {
-    if (duplicatingId) return;
-    setDuplicatingId(campaignId);
-    try {
-      const duplicated = await duplicateCampaign(campaignId);
-      toast("Campaign duplicated as a new draft.", { type: "success" });
-      router.push(`/briefs/new?campaignId=${encodeURIComponent(duplicated.campaignId)}`);
-    } catch (error) {
-      toast(
-        error instanceof Error ? error.message : "Unable to duplicate campaign.",
-        { type: "error" }
-      );
-    } finally {
-      setDuplicatingId(null);
-    }
-  };
-
   const filtered = campaigns.filter((campaign) =>
     matchesCampaignFilter(campaign, filter)
   );
@@ -172,7 +152,7 @@ function BriefsContent() {
             Campaign <span className="ac">briefs.</span>
           </h1>
           <p className="sub">
-            A timeline of every brief you&apos;ve submitted to the matching engine. Open one to see its shortlist or duplicate it for a new push.
+            A timeline of every brief you&apos;ve submitted to the matching engine. Open one to review matches, edit drafts, or manage it from the detail view.
           </p>
         </div>
         <Link href="/briefs/new" className="btn btn-primary btn-sm">
@@ -220,7 +200,6 @@ function BriefsContent() {
       ) : (
         <div className="brief-list">
           {filtered.map((campaign) => {
-            const isDraft = campaign.status === "draft";
             const target = campaignHref(campaign.id, campaign.status);
             const goal = goalTag(campaign);
             const status = statusLabel(campaign.status);
@@ -246,8 +225,7 @@ function BriefsContent() {
                 : `Created ${formatDate(campaign.created_at)}`;
 
             return (
-              <div key={campaign.id} className="brief" style={{ display: "flex", alignItems: "stretch" }}>
-                <Link className="brief" href={target} style={{ flex: 1, display: "flex", textDecoration: "none", color: "inherit" }}>
+              <Link key={campaign.id} className="brief" href={target}>
                 <span className={`b-glyph gl-${status.className === "complete" ? "g" : status.className === "draft" ? "d" : status.className === "active" ? "v" : "cy"}`}>
                   {initial}
                 </span>
@@ -306,28 +284,7 @@ function BriefsContent() {
                     <path d="M5 12h14M13 6l6 6-6 6" />
                   </svg>
                 </span>
-                </Link>
-                <div className="b-actions" style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "12px 12px 12px 0", justifyContent: "center" }}>
-                  {isDraft ? (
-                    <Link
-                      href={`/briefs/new?campaignId=${encodeURIComponent(campaign.id)}`}
-                      className="btn btn-ghost btn-sm"
-                      style={{ fontSize: "11px", padding: "4px 8px" }}
-                    >
-                      Edit
-                    </Link>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    style={{ fontSize: "11px", padding: "4px 8px" }}
-                    disabled={duplicatingId === campaign.id}
-                    onClick={() => void handleDuplicate(campaign.id)}
-                  >
-                    {duplicatingId === campaign.id ? "…" : "Duplicate"}
-                  </button>
-                </div>
-              </div>
+              </Link>
             );
           })}
           <Link className="new-brief" href="/briefs/new">

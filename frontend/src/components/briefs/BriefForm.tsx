@@ -23,6 +23,7 @@ import {
 } from '@/lib/campaignPayload';
 import { useToast } from '@/components/ui/ToastProvider';
 import { WeightSliders } from '@/components/briefs/WeightSliders';
+import CampaignBriefActions from '@/components/campaigns/CampaignBriefActions';
 import { DEFAULT_CAMPAIGN_WEIGHTS, type CampaignWeights } from '@/types/campaign';
 
 type FieldErrors = Partial<Record<'brand' | 'product' | 'goals' | 'platforms', string>>;
@@ -59,6 +60,8 @@ export default function BriefForm() {
   const [profileCount, setProfileCount] = useState(0);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [activeDraftId, setActiveDraftId] = useState(draftCampaignId);
+  const [activeCampaignStatus, setActiveCampaignStatus] = useState('draft');
+  const [activeCampaignLabel, setActiveCampaignLabel] = useState('');
 
   const [brief, setBrief] = useState<BriefFormPayload>(emptyBrief);
   const [weights, setWeights] = useState<CampaignWeights>(DEFAULT_CAMPAIGN_WEIGHTS);
@@ -79,6 +82,8 @@ export default function BriefForm() {
             campaign_name: campaign.campaignName,
           });
           setBrief(hydrated);
+          setActiveCampaignStatus(campaign.status);
+          setActiveCampaignLabel(campaign.campaignName || campaign.product || 'Untitled campaign');
           if (draftCampaignId) {
             setActiveDraftId(draftCampaignId);
           }
@@ -646,6 +651,16 @@ export default function BriefForm() {
               ) : getBudgetText()}
             </span>
           </div>
+          {activeDraftId ? (
+            <div className="preview-actions">
+              <CampaignBriefActions
+                campaignId={activeDraftId}
+                status={activeCampaignStatus}
+                label={activeCampaignLabel || brief.product || 'this campaign'}
+                showEdit={false}
+              />
+            </div>
+          ) : null}
         </aside>
       </div>
 

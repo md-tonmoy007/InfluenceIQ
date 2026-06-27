@@ -1,0 +1,6 @@
+.campaign-brief-actions{display:flex;flex-direction:column;gap:8px}
+.campaign-brief-action{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;border-radius:9px;font-size:13px;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink-soft);font-weight:500;transition:all .2s;font-family:inherit;text-decoration:none}
+.campaign-brief-action:hover:not(:disabled){border-color:color-mix(in oklab,var(--violet),white 70%);color:var(--violet-ink);background:var(--violet-soft)}
+.campaign-brief-action:disabled{opacity:0.6;cursor:default}
+.campaign-brief-action.danger:hover:not(:disabled){border-color:color-mix(in oklab,var(--bad,#ef4444),white 70%);color:var(--bad-ink,#b42318);background:var(--bad-soft,#fef3f2)}
+.campaign-brief-action .i{width:14px;height:14px;flex-shrink:0}
