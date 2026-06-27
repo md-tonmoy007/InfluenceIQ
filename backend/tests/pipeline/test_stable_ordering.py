@@ -80,7 +80,7 @@ def test_score_version_deterministic() -> None:
     """Model version is identical across two runs."""
     r1 = run_role4_pipeline(_CANDIDATE)
     r2 = run_role4_pipeline(_CANDIDATE)
-    assert r1.risk_score.get("role4_model_version") == r2.risk_score.get("role4_model_version")
+    assert r1.risk_score.get("model_version") == r2.risk_score.get("model_version")
     assert r1.risk_score.get("model_version") == r2.risk_score.get("model_version")
 
 

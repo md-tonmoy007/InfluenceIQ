@@ -83,7 +83,7 @@ def _metrics(text: str) -> dict[str, Any]:
     }
 
 
-def _role5_candidate(content: dict[str, Any]) -> dict[str, Any]:
+def _role4_candidate(content: dict[str, Any]) -> dict[str, Any]:
     text = str(content.get("content", ""))
     metrics = content["metrics"]
     return {
@@ -110,7 +110,7 @@ def _role5_candidate(content: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def extract_role5_content(page: dict) -> dict:
+def extract_role4_content(page: dict) -> dict:
     url = str(page.get("url", ""))
     raw_html = str(page.get("html") or page.get("text") or "")
     text = _strip_html(raw_html)
@@ -140,6 +140,5 @@ def extract_role5_content(page: dict) -> dict:
             "status": page.get("status"),
         },
     }
-    content["role5_candidate"] = _role5_candidate(content)
-    content["role4_candidate"] = content["role5_candidate"]
+    content["role4_candidate"] = _role4_candidate(content)
     return content

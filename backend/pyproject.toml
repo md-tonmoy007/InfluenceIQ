@@ -36,6 +36,13 @@ include = ["backend*"]
 exclude = ["backend.ml*", "tests*"]
 
 [project.optional-dependencies]
+ml = [
+  "prometheus-client>=0.21,<1",
+  "numpy>=2,<3",
+  "networkx>=3,<4",
+  "transformers>=4.46,<5",
+  "torch>=2.5,<3",
+]
 dev = [
   "pytest>=8.3,<9",
   "pytest-asyncio>=0.24,<1",
@@ -58,6 +65,15 @@ filterwarnings = [
   "ignore::DeprecationWarning:sqlalchemy.*",
   "ignore::DeprecationWarning:pydantic.*",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 # Ruff is configured in `backend/ruff.toml`. We intentionally
 # do NOT add a `[tool.ruff]` section here so that file remains the
 # single source of truth (otherwise the per-file-ignores get masked

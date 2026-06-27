@@ -9,7 +9,7 @@ from celery import shared_task
 from sqlalchemy.exc import OperationalError
 
 from backend.core.database import models
-from backend.pipeline.content.content_extractor import extract_role5_content
+from backend.pipeline.content.content_extractor import extract_role4_content
 from backend.pipeline.content.fetcher import fetch_url
 from backend.pipeline.events import (
     ContentExtracted,
@@ -94,9 +94,9 @@ def extract_content(self, campaign_id: str, crawl_source_id: str, page: dict) ->
     """Extract structured content from a fetched page and persist it."""
     log.info("extract_content campaign_id=%s crawl_source_id=%s", campaign_id, crawl_source_id)
     try:
-        content = extract_role5_content(page)
+        content = extract_role4_content(page)
     except Exception as exc:
-        log.exception("extract_role5_content failed for %s: %s", crawl_source_id, exc)
+        log.exception("extract_role4_content failed for %s: %s", crawl_source_id, exc)
         _mark_failed(campaign_id, crawl_source_id, f"extract_content: {exc}")
         return {"crawl_source_id": crawl_source_id, "status": "failed", "error": str(exc)}
 

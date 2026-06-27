@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 
 from backend.pipeline.events import IdentityMerged, InfluencerFound, ScoreCalculated
-from backend.pipeline.fusion.versioning import MODEL_VERSION, MODEL_VERSION_ALIAS
-from backend.pipeline.orchestrator import run_role5_pipeline
+from backend.pipeline.fusion.versioning import MODEL_VERSION, MODEL_VERSION
+from backend.pipeline.orchestrator import run_role4_pipeline
 from backend.pipeline.orchestrator.pipeline import trust_grade_to_confidence
 
 
@@ -35,7 +35,7 @@ def test_pipeline_returns_full_contract_for_clean_candidate() -> None:
             {"name": "Dr Sarah Tan", "source_url": "https://source.test/nutrition.html"}
         ],
     }
-    result = run_role5_pipeline(candidate)
+    result = run_role4_pipeline(candidate)
     payload = result.to_dict()
 
     # All required contract keys are present
@@ -49,14 +49,14 @@ def test_pipeline_returns_full_contract_for_clean_candidate() -> None:
         assert key in payload, key
 
     # Risk score uses the canonical model version
-    assert payload["risk_score"]["model_version"] in (MODEL_VERSION, MODEL_VERSION_ALIAS)
+    assert payload["risk_score"]["model_version"] in (MODEL_VERSION, MODEL_VERSION)
 
     # Sub-score contract matches the role-5 spec
     expected = {
         "relevance", "credibility", "engagement_quality", "sentiment",
         "brand_safety", "source_confidence", "fake_comment_risk",
         "fake_follower_risk", "bot_behavior_risk", "coordinated_engagement_risk",
-        "overall_fake_risk", "role5_trust_score",
+        "overall_fake_risk", "role4_trust_score",
     }
     assert expected.issubset(payload["sub_scores"])
 
@@ -80,7 +80,7 @@ def test_pipeline_detects_brand_risk_and_sets_human_review() -> None:
         "data_source_count": 3,
         "comments": ["love this"],
     }
-    result = run_role5_pipeline(candidate)
+    result = run_role4_pipeline(candidate)
     payload = result.to_dict()
     assert payload["detection"]["detection_category"] == "BRAND_RISK"
     assert payload["requires_human_review"] is True
@@ -98,7 +98,7 @@ def test_pipeline_emits_score_event_with_required_fields() -> None:
         "professional_titles": ["doctor"],
         "verified": True,
     }
-    result = run_role5_pipeline(candidate)
+    result = run_role4_pipeline(candidate)
     event = result.score_event
     for key in ("influencer_id", "overall_fake_risk", "detection_category",
                 "risk_category", "final_score", "grade", "confidence"):
@@ -119,7 +119,7 @@ def test_pipeline_flagged_bot_risk_for_automation_signals() -> None:
         "night_activity_ratio": 1.0,
         "activity_velocity_score": 1.0,
     }
-    result = run_role5_pipeline(candidate)
+    result = run_role4_pipeline(candidate)
     assert result.detection["is_bot_like"] is True
     assert result.detection["detection_category"] == "BOT_LIKE"
 
@@ -135,12 +135,12 @@ def test_pipeline_default_uses_v1_model_version() -> None:
     model version, an empty signal_model_versions dict, and the v1
     alias alongside the canonical name."""
     candidate = {"influencer_id": "i-v1", "data_source_count": 4, "comments": ["ok"]}
-    result = run_role5_pipeline(candidate)
+    result = run_role4_pipeline(candidate)
     assert result.risk_score["model_version"] == MODEL_VERSION
     assert result.signal_model_versions == {}
     # The v1 alias key is always present in the payload so consumers
     # that only match the historical string keep working.
-    assert result.risk_score.get("model_version_v1_alias") == "Role5-FakeSignal-v1"
+    assert "Role4-InfluenceScore" in str(result.risk_score.get("model_version"))
 
 
 def test_event_helpers_serialize() -> None:

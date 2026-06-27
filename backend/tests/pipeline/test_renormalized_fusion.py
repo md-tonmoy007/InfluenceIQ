@@ -9,7 +9,7 @@ from backend.pipeline.fusion.trust import (
     DEFAULT_POSITIVE_WEIGHTS,
     FAKE_PENALTY_WEIGHT,
     GRADE_BANDS,
-    calculate_role5_trust,
+    calculate_role4_trust,
     grade_for_trust,
 )
 
@@ -49,77 +49,77 @@ def test_renormalized_fusion_clamps_out_of_range() -> None:
 
 
 def test_trust_formula_perfect_score() -> None:
-    trust = calculate_role5_trust({
+    trust = calculate_role4_trust({
         "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
         "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
         "overall_fake_risk_score": 0,
     }, data_source_count=6)
-    assert trust.role5_trust_score == 100
+    assert trust.role4_trust_score == 100
     assert trust.grade == "A+"
     assert trust.caps == []
 
 
 def test_trust_formula_high_fake_risk_cap() -> None:
-    trust = calculate_role5_trust({
+    trust = calculate_role4_trust({
         "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
         "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
         "overall_fake_risk_score": 90,
     }, data_source_count=6)
-    assert trust.role5_trust_score <= 45
+    assert trust.role4_trust_score <= 45
     assert any("High fake-risk" in c for c in trust.caps)
 
 
 def test_trust_formula_sparse_data_cap() -> None:
-    trust = calculate_role5_trust({
+    trust = calculate_role4_trust({
         "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
         "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
         "overall_fake_risk_score": 0,
     }, data_source_count=1)
     # Sparse-data cap (max 70) + confidence multiplier (x0.33) → 23.33
-    assert trust.role5_trust_score == pytest.approx(23.33, abs=0.01)
+    assert trust.role4_trust_score == pytest.approx(23.33, abs=0.01)
     assert any("Sparse-data" in c for c in trust.caps)
     assert any("confidence multiplier" in c for c in trust.caps)
 
 
 def test_trust_formula_sparse_data_multiplier_two_sources() -> None:
     """With 2 sources the multiplier is 2/3 ≈ 0.67."""
-    trust = calculate_role5_trust({
+    trust = calculate_role4_trust({
         "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
         "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
         "overall_fake_risk_score": 0,
     }, data_source_count=2)
     # Sparse-data cap (max 70) + confidence multiplier (x0.67) → 46.67
-    assert trust.role5_trust_score == pytest.approx(46.67, abs=0.01)
+    assert trust.role4_trust_score == pytest.approx(46.67, abs=0.01)
 
 
 def test_trust_formula_no_multiplier_with_three_sources() -> None:
     """With 3+ sources no multiplier is applied."""
-    trust = calculate_role5_trust({
+    trust = calculate_role4_trust({
         "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
         "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
         "overall_fake_risk_score": 0,
     }, data_source_count=3)
-    assert trust.role5_trust_score == 100.0  # no caps, no multiplier
+    assert trust.role4_trust_score == 100.0  # no caps, no multiplier
 
 
 def test_trust_formula_severe_brand_safety_cap() -> None:
-    trust = calculate_role5_trust({
+    trust = calculate_role4_trust({
         "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
         "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
         "overall_fake_risk_score": 0,
     }, data_source_count=6, severe_brand_safety=True)
-    assert trust.role5_trust_score == 40
+    assert trust.role4_trust_score == 40
     assert any("Severe brand-safety" in c for c in trust.caps)
 
 
 def test_trust_formula_combined_caps() -> None:
     # All three caps fire + confidence multiplier → 40 * 0.33 = 13.33
-    trust = calculate_role5_trust({
+    trust = calculate_role4_trust({
         "relevance_score": 100, "credibility_score": 100, "engagement_quality_score": 100,
         "sentiment_score": 100, "brand_safety_score": 100, "source_confidence_score": 100,
         "overall_fake_risk_score": 90,
     }, data_source_count=1, severe_brand_safety=True)
-    assert trust.role5_trust_score == pytest.approx(13.33, abs=0.01)
+    assert trust.role4_trust_score == pytest.approx(13.33, abs=0.01)
     assert len(trust.caps) == 4  # 3 caps + multiplier
 
 

@@ -148,7 +148,7 @@ The deterministic pipeline can be enriched by optional ML adapters controlled by
 | `AI_AGENT_LLM_QUERY_PLANNING` | `_llm_generate_queries` | Uses the model registry's LLM backend to generate campaign-specific search queries | N/A (search phase) |
 | `AI_AGENT_LLM_IDENTITY` | `resolve_identity_llm` | Routes ambiguous identity-resolution pairs through the LLM explainer | N/A (identity phase) |
 
-When any scoring adapter fires (semantic, behavioral, graph, or bot-rings v2), the model version in the risk score payload bumps to `Role4-InfluenceScore-v2`. The all-heuristics path emits `Role4-InfluenceScore-v1`. The legacy `Role5-FakeSignal-v1` alias is preserved in `model_version_v1_alias` for backward compatibility.
+When any scoring adapter fires (semantic, behavioral, graph, or bot-rings v2), the model version in the risk score payload bumps to `Role4-InfluenceScore-v2`. The all-heuristics path emits `Role4-InfluenceScore-v1` in the `model_version` field.
 
 ## Quickstart
 
@@ -178,7 +178,7 @@ pytest backend/tests/pipeline/test_score_e2e.py -v
 | Contract | Test File | What It Asserts |
 | --- | --- | --- |
 | Final score in [0, 100] | `test_score_e2e.py` | `final_score` is in range |
-| Model version present | `test_score_e2e.py` | `role4_model_version` contains `Role4-InfluenceScore` |
+| Model version present | `test_score_e2e.py` | `model_version` contains `Role4-InfluenceScore` |
 | Sub-scores present | `test_score_e2e.py` | All 12 sub-score keys exist |
 | Signal scores present | `test_score_e2e.py` | All expected signal-score keys exist |
 | Source URLs non-empty | `test_score_e2e.py` | `source_urls` is a non-empty list |

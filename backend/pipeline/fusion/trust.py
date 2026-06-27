@@ -1,4 +1,4 @@
-"""Pipeline 16 - Role 5 Final Trust Score.
+"""Pipeline 16 - Role 4 Final Trust Score.
 
 The trust score is a 0-100 number that combines the positive sub-scores
 (``relevance``, ``credibility``, ``engagement_quality``, ``sentiment``,
@@ -55,9 +55,9 @@ def grade_for_trust(value: float) -> str:
 
 @dataclass(frozen=True)
 class TrustResult:
-    """The output of :func:`calculate_role5_trust`."""
+    """The output of :func:`calculate_role4_trust`."""
 
-    role5_trust_score: float
+    role4_trust_score: float
     grade: str
     positive_trust_score: float
     fake_risk_penalty: float
@@ -66,7 +66,7 @@ class TrustResult:
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "role5_trust_score": self.role5_trust_score,
+            "role4_trust_score": self.role4_trust_score,
             "grade": self.grade,
             "positive_trust_score": self.positive_trust_score,
             "fake_risk_penalty": self.fake_risk_penalty,
@@ -97,7 +97,7 @@ def _positive_trust(sub_scores: dict[str, Any], weights: dict[str, float]) -> fl
     return clamp_score(total)
 
 
-def calculate_role5_trust(
+def calculate_role4_trust(
     sub_scores: dict[str, Any],
     *,
     data_source_count: int = 0,
@@ -105,12 +105,13 @@ def calculate_role5_trust(
     positive_weights: dict[str, float] | None = None,
     fake_penalty_weight: float = FAKE_PENALTY_WEIGHT,
 ) -> TrustResult:
-    """Compute the final role-5 trust score with all documented caps."""
+    """Compute the final role-4 trust score with all documented caps."""
     weights = dict(positive_weights or DEFAULT_POSITIVE_WEIGHTS)
     positive = _positive_trust(sub_scores, weights)
-    fake_risk = _safe(sub_scores.get("overall_fake_risk_score",
-                                     sub_scores.get("overall_fake_risk", 0)),
-                      default=0.0)
+    fake_risk = _safe(
+        sub_scores.get("overall_fake_risk_score", sub_scores.get("overall_fake_risk", 0)),
+        default=0.0,
+    )
     penalty = fake_penalty_weight * fake_risk
     trust = clamp(positive - penalty, 0.0, 100.0)
 
@@ -125,16 +126,13 @@ def calculate_role5_trust(
         trust = min(trust, 70.0)
         caps.append("Sparse-data cap applied (max 70)")
 
-    # Sparse-data confidence multiplier: scale the final score by
-    # min(1.0, data_source_count / 3) when fewer than 3 sources.
-    # This degrades trust for candidates with very thin evidence.
     if data_source_count < 3:
         multiplier = min(1.0, data_source_count / 3.0)
         trust = trust * multiplier
         caps.append(f"Sparse-data confidence multiplier (x{multiplier:.2f})")
 
     return TrustResult(
-        role5_trust_score=round(trust, 2),
+        role4_trust_score=round(trust, 2),
         grade=grade_for_trust(trust),
         positive_trust_score=round(positive, 2),
         fake_risk_penalty=round(penalty, 2),
@@ -148,6 +146,6 @@ __all__ = [
     "FAKE_PENALTY_WEIGHT",
     "GRADE_BANDS",
     "TrustResult",
-    "calculate_role5_trust",
+    "calculate_role4_trust",
     "grade_for_trust",
 ]

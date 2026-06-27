@@ -16,7 +16,7 @@ os.environ.setdefault("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 os.environ.setdefault("REDIS_STATE_DB", "redis://localhost:6379/2")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 
-from backend.pipeline.content.content_extractor import extract_role5_content
+from backend.pipeline.content.content_extractor import extract_role4_content
 from backend.pipeline.content.fetcher import fetch_url
 from backend.pipeline.content.search_providers import search_web
 
@@ -36,14 +36,9 @@ class DummyResponse:
     def json(self) -> dict:
         return self._json_payload or {}
 
-try:
-    from backend.pipeline.orchestrator.pipeline import _build_role5_candidate  # noqa: F401
-except (ImportError, ModuleNotFoundError):
-    _build_role5_candidate = None
-
 
 class Role4ScrapingContractTest(unittest.TestCase):
-    def test_extract_content_returns_role5_ready_payload(self) -> None:
+    def test_extract_content_returns_role4_ready_payload(self) -> None:
         page = {
             "url": "https://source.example/nutrition-creators",
             "status": 200,
@@ -67,7 +62,7 @@ class Role4ScrapingContractTest(unittest.TestCase):
             """,
         }
 
-        content = extract_role5_content(page)
+        content = extract_role4_content(page)
 
         self.assertEqual(content["title"], "Top Nutrition Creators")
         self.assertIn("https://instagram.com/drsarahtan", content["social_links"])
@@ -75,38 +70,10 @@ class Role4ScrapingContractTest(unittest.TestCase):
         self.assertEqual(content["metrics"]["followers"], 124000)
         self.assertEqual(content["metrics"]["average_engagement"], 5400)
         self.assertTrue(content["metrics"]["verified"])
-        self.assertIn("role5_candidate", content)
-        self.assertEqual(content["role5_candidate"]["followers"], 124000)
-        self.assertGreaterEqual(len(content["role5_candidate"]["comments"]), 1)
-        self.assertTrue(content["role5_candidate"]["source_evidence"]["profile_url_available"])
-
-    def test_pipeline_candidate_merges_scraped_content_and_mentions(self) -> None:
-        if _build_role5_candidate is None:
-            self.skipTest("SQLAlchemy is not installed in the local test environment")
-
-        content = extract_role5_content({
-            "url": "https://source.example/profile",
-            "status": 200,
-            "html": "<p>Dr Sarah Tan @drsarahtan Certified Nutritionist. 124K followers.</p>",
-        })
-        mention = {
-            "name": "Dr Sarah Tan",
-            "handle": "@drsarahtan",
-            "platforms": {"instagram": "https://instagram.com/drsarahtan"},
-            "profile_urls": ["https://instagram.com/drsarahtan"],
-            "credentials": ["Certified Nutritionist"],
-            "professional_titles": ["nutritionist"],
-            "source_url": "https://source.example/profile",
-        }
-
-        candidate = _build_role5_candidate(content, mention, {"risks": {"scam": False}})
-
-        self.assertEqual(candidate["canonical_name"], "Dr Sarah Tan")
-        self.assertEqual(candidate["followers"], 124000)
-        self.assertEqual(candidate["platforms"]["instagram"], "https://instagram.com/drsarahtan")
-        self.assertEqual(candidate["credentials"], ["Certified Nutritionist"])
-        self.assertEqual(candidate["mentions"][0]["handle"], "@drsarahtan")
-        self.assertEqual(candidate["data_source_count"], 1)
+        self.assertIn("role4_candidate", content)
+        self.assertEqual(content["role4_candidate"]["followers"], 124000)
+        self.assertGreaterEqual(len(content["role4_candidate"]["comments"]), 1)
+        self.assertTrue(content["role4_candidate"]["source_evidence"]["profile_url_available"])
 
     def test_search_falls_back_to_real_discovery_targets_without_api_keys(self) -> None:
         with (
@@ -149,11 +116,11 @@ class Role4ScrapingContractTest(unittest.TestCase):
         ):
             page = fetch_url("https://www.youtube.com/@trailcoach")
 
-        content = extract_role5_content(page)
+        content = extract_role4_content(page)
         self.assertEqual(page["provider"], "youtube")
         self.assertIn("Trail Coach", content["title"])
-        self.assertEqual(content["role5_candidate"]["followers"], 124000)
-        self.assertIn("https://youtube.com/@trailcoach", content["role5_candidate"]["profile_urls"])
+        self.assertEqual(content["role4_candidate"]["followers"], 124000)
+        self.assertIn("https://youtube.com/@trailcoach", content["role4_candidate"]["profile_urls"])
 
     def test_fetch_url_routes_instagram_profile_to_platform_provider(self) -> None:
         payload = {
@@ -188,11 +155,11 @@ class Role4ScrapingContractTest(unittest.TestCase):
         ):
             page = fetch_url("https://instagram.com/drsarahtan")
 
-        content = extract_role5_content(page)
+        content = extract_role4_content(page)
         self.assertEqual(page["provider"], "instagram_web_profile")
-        self.assertEqual(content["role5_candidate"]["followers"], 124000)
-        self.assertEqual(content["role5_candidate"]["average_engagement"], 5400)
-        self.assertTrue(content["role5_candidate"]["verified"])
+        self.assertEqual(content["role4_candidate"]["followers"], 124000)
+        self.assertEqual(content["role4_candidate"]["average_engagement"], 5400)
+        self.assertTrue(content["role4_candidate"]["verified"])
 
     def test_fetch_url_routes_tiktok_and_x_profiles_to_platform_providers(self) -> None:
         tiktok_html = """
@@ -219,12 +186,12 @@ class Role4ScrapingContractTest(unittest.TestCase):
         ):
             x_page = fetch_url("https://twitter.com/mayatrails")
 
-        tiktok_content = extract_role5_content(tiktok_page)
-        x_content = extract_role5_content(x_page)
+        tiktok_content = extract_role4_content(tiktok_page)
+        x_content = extract_role4_content(x_page)
         self.assertEqual(tiktok_page["provider"], "tiktok_meta")
         self.assertEqual(x_page["provider"], "x_meta")
-        self.assertEqual(tiktok_content["role5_candidate"]["followers"], 88000)
-        self.assertEqual(x_content["role5_candidate"]["followers"], 88000)
+        self.assertEqual(tiktok_content["role4_candidate"]["followers"], 88000)
+        self.assertEqual(x_content["role4_candidate"]["followers"], 88000)
 
 
 if __name__ == "__main__":

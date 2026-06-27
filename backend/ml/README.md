@@ -20,9 +20,20 @@ back to a deterministic implementation when the adapter is disabled or when
 
 ## Install
 
-`backend/ml` is kept in-tree. The default backend uv environment does not install the
-heavy ML-only dependencies automatically; add them separately when you enable these
-adapters.
+Install the optional `[ml]` dependency group when enabling model-backed adapters:
+
+```bash
+cd backend
+uv sync --extra ml
+```
+
+Or start the Docker ML service (see repo root `docker-compose.yml`):
+
+```bash
+docker compose --profile ml up -d ml-service
+```
+
+The service listens on port **8082** locally (`8080` inside the container).
 
 ## Run the FastAPI service
 

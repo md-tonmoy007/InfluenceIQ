@@ -80,7 +80,7 @@ def subject_id_for(influencer_id: str | int) -> uuid.UUID:
     Two calls with the same ``influencer_id`` always return the same
     UUID, even across processes and Python versions.
     """
-    return uuid.uuid5(SUBJECT_NS, f"role5:{influencer_id}")
+    return uuid.uuid5(SUBJECT_NS, f"role4:{influencer_id}")
 
 
 def tenant_id_for(candidate: dict[str, Any]) -> uuid.UUID:

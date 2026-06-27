@@ -265,8 +265,8 @@ def test_pipeline_event_redacts_contact_info_by_default() -> None:
             "addresses": ["123 Market Street, San Francisco, CA 94103"],
         }],
     }
-    from backend.pipeline.orchestrator import run_role5_pipeline
-    result = run_role5_pipeline(candidate).to_dict()
+    from backend.pipeline.orchestrator import run_role4_pipeline
+    result = run_role4_pipeline(candidate).to_dict()
 
     # Backend contact_info is plain-text
     assert result["contact_info"]["emails"] == ["sarahtan@gmail.com"]
@@ -303,8 +303,8 @@ def test_pipeline_event_omits_contact_info_when_disabled(monkeypatch) -> None:
                 "emails": ["sarahtan@gmail.com"],
             }],
         }
-        from backend.pipeline.orchestrator import run_role5_pipeline
-        result = run_role5_pipeline(candidate).to_dict()
+        from backend.pipeline.orchestrator import run_role4_pipeline
+        result = run_role4_pipeline(candidate).to_dict()
         assert result["contact_info"]["enabled"] is False
         # When extraction is disabled the event payload has no contact_info
         assert "contact_info" not in result["score_event"]

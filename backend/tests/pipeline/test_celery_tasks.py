@@ -325,7 +325,7 @@ class PipelineE2ETest(unittest.TestCase):
 
     def test_score_influencer_returns_score_in_range(self) -> None:
         """The orchestrator emits a 0-100 trust score with a grade band."""
-        from backend.pipeline.orchestrator.pipeline import run_role5_pipeline
+        from backend.pipeline.orchestrator.pipeline import run_role4_pipeline
 
         # Build a candidate by hand and run the orchestrator
         # directly. This is the contract the task body enforces.
@@ -358,9 +358,9 @@ class PipelineE2ETest(unittest.TestCase):
             "average_engagement": 5400,
             "verified": True,
         }
-        result = run_role5_pipeline(candidate)
-        self.assertGreaterEqual(result.sub_scores["role5_trust_score"], 0.0)
-        self.assertLessEqual(result.sub_scores["role5_trust_score"], 100.0)
+        result = run_role4_pipeline(candidate)
+        self.assertGreaterEqual(result.sub_scores["role4_trust_score"], 0.0)
+        self.assertLessEqual(result.sub_scores["role4_trust_score"], 100.0)
         self.assertIn(result.grade, {"A+", "A", "B", "C", "D", "F"})
         self.assertIn(result.confidence, {"Low", "Medium", "High"})
 

@@ -75,7 +75,7 @@ def classify_with_model(task: str, payload: dict[str, Any]) -> ModelClassificati
         "text": {
             "format": {
                 "type": "json_schema",
-                "name": "role5_signal_classification",
+                "name": "role4_signal_classification",
                 "strict": True,
                 "schema": _response_schema(),
             }

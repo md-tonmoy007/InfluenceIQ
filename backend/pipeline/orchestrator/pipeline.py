@@ -8,13 +8,9 @@ This module is the single public entry point for role-4
 * :mod:`backend.pipeline.fusion`          - 5-layer fusion + trust formula
 
 The orchestrator is intentionally synchronous, deterministic, and
-free of I/O. It returns a fully-formed :class:`Role5PipelineResult`
-(or its :class:`Role4PipelineResult` alias) that matches the
-backend/frontend contract documented in
+free of I/O. It returns a fully-formed :class:`Role4PipelineResult`
+that matches the backend/frontend contract documented in
 :doc:`/docs/Role-4-Pipeline-Intelligence.md`.
-
-Role-5 legacy names are kept as aliases for backward compatibility
-and will be removed after one release cycle.
 """
 
 from __future__ import annotations
@@ -58,13 +54,8 @@ from backend.pipeline.fusion.components import (
 from backend.pipeline.fusion.fusion import fuse as fuse_layers
 from backend.pipeline.fusion.legacy import canonical_risk_category
 from backend.pipeline.fusion.sub_scores import relevance_score
-from backend.pipeline.fusion.trust import calculate_role5_trust
-from backend.pipeline.fusion.versioning import (
-    MODEL_VERSION_ALIAS,
-    computed_at,
-    model_version_for,
-    role4_version_for,
-)
+from backend.pipeline.fusion.trust import calculate_role4_trust
+from backend.pipeline.fusion.versioning import computed_at, model_version_for
 
 
 def _source_count(candidate: dict[str, Any]) -> int:
@@ -126,10 +117,10 @@ def _collect_contact_info(candidate: dict[str, Any]) -> ContactInfo:
 
 
 @dataclass
-class Role5PipelineResult:
-    """Result of :func:`run_role5_pipeline`.
+class Role4PipelineResult:
+    """Result of :func:`run_role4_pipeline`.
 
-    The dataclass exposes the full role-5 output contract:
+    The dataclass exposes the full role-4 output contract:
 
     * ``detection``         - DetectionCategory + per-detector booleans
     * ``sub_scores``        - Compact 0-100 sub-scores for the dashboard
@@ -173,9 +164,9 @@ class Role5PipelineResult:
         return asdict(self)
 
 
-def run_role5_pipeline(candidate: dict[str, Any],
-                       campaign: dict[str, Any] | None = None) -> Role5PipelineResult:
-    """Run the full role-5 pipeline on a single candidate."""
+def run_role4_pipeline(candidate: dict[str, Any],
+                       campaign: dict[str, Any] | None = None) -> Role4PipelineResult:
+    """Run the full role-4 pipeline on a single candidate."""
     comments = candidate.get("comments", []) or []
 
     # ---- Pipeline 4-7: per-detector fake-risk scorers ----
@@ -290,7 +281,7 @@ def run_role5_pipeline(candidate: dict[str, Any],
         "bot_behavior_risk": round(bot_score, 2),
         "coordinated_engagement_risk": round(coordinated_score, 2),
         "overall_fake_risk": round(overall_fake, 2),
-        "role5_trust_score": 0.0,  # filled below
+        "role4_trust_score": 0.0,  # filled below
     }
 
     severe_brand_safety = any(flag.get("severity") == "severe" for flag in safety_scan.get("flags", []))
@@ -303,9 +294,9 @@ def run_role5_pipeline(candidate: dict[str, Any],
         "source_confidence_score": sub_scores["source_confidence"],
         "overall_fake_risk_score": overall_fake,
     }
-    trust = calculate_role5_trust(trust_input, data_source_count=source_count,
+    trust = calculate_role4_trust(trust_input, data_source_count=source_count,
                                   severe_brand_safety=severe_brand_safety)
-    sub_scores["role5_trust_score"] = trust.role5_trust_score
+    sub_scores["role4_trust_score"] = trust.role4_trust_score
 
     # ---- Signal scores (Pipeline 6 - signal_scores table contract) ----
     signal_scores: dict[str, float | None] = {
@@ -344,13 +335,6 @@ def run_role5_pipeline(candidate: dict[str, Any],
             graph_v2=False,    # inert in v1
             bot_rings_v2=False,  # inert in v1
         ),
-        "role4_model_version": role4_version_for(
-            semantic_v2=semantic_v2_used,
-            behavioral_v2=behavioral_v2_used,
-            graph_v2=False,
-            bot_rings_v2=False,
-        ),
-        "model_version_v1_alias": MODEL_VERSION_ALIAS,
         "computed_at": computed_at(),
     }
 
@@ -383,7 +367,7 @@ def run_role5_pipeline(candidate: dict[str, Any],
         overall_fake_risk=overall_fake,
         detection_category=decision.category.value,
         risk_category=canonical_risk_category(fusion.score),
-        final_score=trust.role5_trust_score,
+        final_score=trust.role4_trust_score,
         grade=trust.grade,
         confidence=trust_grade_to_confidence(source_count, trust.grade, sub_scores),
         contact_info=contact_info.to_dict() if contact_info.enabled else None,
@@ -412,10 +396,10 @@ def run_role5_pipeline(candidate: dict[str, Any],
         "brand_safety_score": {"value": sub_scores["brand_safety"], "flags": safety_scan.get("flags", []), "requires_llm_review": safety_scan.get("requires_llm_review")},
         "credibility_score": {"value": sub_scores["credibility"], "raw_score": credibility["raw_score"], "confidence_capped": credibility["confidence_capped"]},
         "source_confidence_score": {"value": sub_scores["source_confidence"], "components": source_conf["components"]},
-        "role5_trust_score": {"value": trust.role5_trust_score, "grade": trust.grade, "positive": trust.positive_trust_score, "penalty": trust.fake_risk_penalty, "caps": trust.caps},
+        "role4_trust_score": {"value": trust.role4_trust_score, "grade": trust.grade, "positive": trust.positive_trust_score, "penalty": trust.fake_risk_penalty, "caps": trust.caps},
     }
 
-    return Role5PipelineResult(
+    return Role4PipelineResult(
         influencer_id=str(candidate.get("influencer_id", "")),
         canonical_name=str(candidate.get("canonical_name") or candidate.get("name", "")),
         platforms=candidate.get("platforms", {}) or {},
@@ -453,28 +437,8 @@ def trust_grade_to_confidence(source_count: int, grade: str, sub_scores: dict[st
     return "High"
 
 
-# ---------------------------------------------------------------------------
-# Role-4 public aliases (backward-compatible with Role 5 internals)
-#
-# The v1 code path is identical — only the public symbol names change.
-# These aliases match the contract in docs/Role-4-Pipeline-Intelligence.md.
-# The Role-5 legacy names will be removed after one release cycle.
-# ---------------------------------------------------------------------------
-
-Role4PipelineResult = Role5PipelineResult
-"""Alias for :class:`Role5PipelineResult`. Role-4 charter name."""
-
-run_role4_pipeline = run_role5_pipeline
-"""Alias for :func:`run_role5_pipeline`. Role-4 charter entry point."""
-
-trust_grade_to_confidence_role4 = trust_grade_to_confidence
-"""Alias for role-4 contexts. Identical logic."""
-
 __all__ = [
     "Role4PipelineResult",
-    "Role5PipelineResult",
     "run_role4_pipeline",
-    "run_role5_pipeline",
     "trust_grade_to_confidence",
-    "trust_grade_to_confidence_role4",
 ]

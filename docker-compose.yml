@@ -156,6 +156,32 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  ml-service:
+    profiles: ["ml"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.ml
+    command: uvicorn backend.ml.api:app --host 0.0.0.0 --port 8080
+    env_file: backend/.env
+    environment:
+      PYTHONPATH: /workspace
+      QDRANT_URL: http://qdrant:6333
+    ports:
+      - "8082:8080"
+    volumes:
+      - .:/workspace
+      - ml_venv:/workspace/backend/.venv
+    depends_on:
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/docs', timeout=2).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
   frontend:
     build:
       context: .
@@ -180,4 +206,5 @@ volumes:
   redis_data:
   qdrant_data:
   backend_venv:
+  ml_venv:
   frontend_node_modules:

@@ -1,26 +1,13 @@
-"""Legacy Role 5 fusion helpers kept for back-compat.
+"""Legacy fusion helpers kept for back-compat.
 
-The v1 implementation of Role 5 exposed two top-level helpers here:
-
-* :func:`fuse_risk_components` - a dict-returning renormalized fusion
-* :func:`calculate_role5_trust` - a dict-returning trust score
-
-Both have been superseded by the dataclass-based
-:func:`backend.pipeline.fusion.fusion.fuse` and
-:func:`backend.pipeline.fusion.trust.calculate_role5_trust`
-implementations. The new modules emit ``RenormalizedFusion`` and
-``TrustResult`` dataclasses which are cleaner to consume and easier to
-test. The consolidation happened as part of the backend.ml adapter upgrade.
-
-This module now exposes only the small, still-useful helpers that the
-orchestrator and the Celery adapter continue to import:
+This module exposes small helpers that the orchestrator and Celery
+adapter continue to import:
 
 * :func:`canonical_risk_category` - maps a 0-1 fused score to a
   lowercase category string (``safe / suspicious / high / bot_like /
   spam_ring``).
-* :data:`DEFAULT_RISK_WEIGHTS` - the previous default layer weights
-  (kept as a constant for any consumer that still imports it; the
-  authoritative copy lives in :mod:`backend.pipeline.fusion.fusion`).
+* :data:`DEFAULT_RISK_WEIGHTS` - default layer weights (the authoritative
+  copy lives in :mod:`backend.pipeline.fusion.fusion`).
 """
 
 from __future__ import annotations

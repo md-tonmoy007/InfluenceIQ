@@ -11,7 +11,7 @@ from celery import shared_task
 from backend.core.database import models
 from backend.pipeline.analysis.brand_safety_blocklist import scan_brand_safety
 from backend.pipeline.fusion.backends.ml_adapters import explain_via_llm
-from backend.pipeline.orchestrator.pipeline import run_role5_pipeline
+from backend.pipeline.orchestrator.pipeline import run_role4_pipeline
 from backend.pipeline.tasks._common import (
     db_session,
     mark_campaign_failed,
@@ -44,9 +44,9 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
         sources_for_event = _sources_summary(session, influencer_uuid, campaign_uuid)
 
     try:
-        result = run_role5_pipeline(candidate, campaign=_campaign_context(campaign))
+        result = run_role4_pipeline(candidate, campaign=_campaign_context(campaign))
     except Exception as exc:
-        log.exception("run_role5_pipeline failed for %s: %s", influencer_id, exc)
+        log.exception("run_role4_pipeline failed for %s: %s", influencer_id, exc)
         with db_session() as session:
             mark_campaign_failed(session, campaign_id, str(exc))
         return {"influencer_id": influencer_id, "status": "failed", "error": str(exc)}
@@ -79,7 +79,7 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
             influencer_id=influencer_uuid,
             campaign_id=campaign_uuid,
         )
-        score_row.final_score = float(sub_scores.get("role5_trust_score", 0.0))
+        score_row.final_score = float(sub_scores.get("role4_trust_score", 0.0))
         score_row.relevance_score = float(sub_scores.get("relevance", 0.0))
         score_row.credibility_score = float(sub_scores.get("credibility", 0.0))
         score_row.engagement_score = float(sub_scores.get("engagement_quality", 0.0))
@@ -88,8 +88,7 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
         score_row.confidence_level = result.confidence
         score_row.data_source_count = result.data_source_count
         score_row.score_version = (
-            risk_score.get("role4_model_version")
-            or risk_score.get("model_version")
+            risk_score.get("model_version")
             or "Role4-InfluenceScore-v1"
         )
         score_row.signal_scores = signal_scores
