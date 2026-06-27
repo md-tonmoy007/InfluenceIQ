@@ -1,7 +1,8 @@
 import React from "react";
-import { redirect } from "next/navigation";
+import Link from "next/link";
 import AppShell from "@/components/shell/AppShell";
 import LiveCampaignDiscover from "@/components/discover/LiveCampaignDiscover";
+import CampaignDiscoverPageClient from "@/components/discover/CampaignDiscoverPageClient";
 import { shortlistHref } from "@/lib/routes";
 import "../../discover-table.css";
 
@@ -12,14 +13,34 @@ export default async function DiscoverTablePage({
 }) {
   const params = await searchParams;
   const campaignId = params.campaignId;
-  if (campaignId) {
-    redirect(shortlistHref(campaignId));
-  }
   const crumbs = [
     { label: "Workspace" },
     { label: "Discover", href: "/discover" },
     { label: "Table view", current: true },
   ];
+
+  if (campaignId) {
+    return (
+      <AppShell crumbs={crumbs} showSearch={false}>
+        <main className="content">
+          <div className="page-head">
+            <div>
+              <h1>
+                Discover <span className="accent">creators.</span>
+              </h1>
+              <p className="sub">
+                Data-dense campaign view with live filters and pagination.
+              </p>
+            </div>
+            <Link className="btn btn-ghost" href={shortlistHref(campaignId)}>
+              Back to shortlist
+            </Link>
+          </div>
+          <CampaignDiscoverPageClient campaignId={campaignId} variant="table" />
+        </main>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell crumbs={crumbs} showSearch={false}>

@@ -19,7 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.core.cache.event_log import emit_event
-from backend.core.cache.pipeline_state import update_pipeline_state
+from backend.core.cache.pipeline_state import get_pipeline_state, update_pipeline_state
 from backend.core.database import models
 from backend.core.database.session import _get_session_local
 
@@ -69,6 +69,32 @@ def publish_event(campaign_id: str, event_type: str, **payload: Any) -> dict:
         return {}
 
 
+def emit_campaign_lifecycle_event(
+    campaign_id: str,
+    event_type: str,
+    *,
+    status: str | None = None,
+    reason: str | None = None,
+) -> None:
+    """Emit a terminal or lifecycle campaign event and sync Redis status."""
+    payload: dict[str, Any] = {}
+    if status:
+        payload["status"] = status
+    if reason:
+        payload["reason"] = reason
+    state = get_pipeline_state(campaign_id) or {}
+    payload.update(
+        {
+            "scores_computed": int(state.get("scores_computed") or 0),
+            "influencers_found": int(state.get("influencers_found") or 0),
+            "urls_scraped": int(state.get("urls_scraped") or 0),
+        }
+    )
+    publish_event(campaign_id, event_type, **payload)
+    if status:
+        set_phase(campaign_id, status=status)
+
+
 def set_phase(campaign_id: str, **fields: Any) -> None:
     """Update the pipeline-state hash."""
     try:
@@ -91,6 +117,12 @@ def mark_campaign_failed(session: Session, campaign_id: str, reason: str) -> Non
     campaign.failed_at = datetime.utcnow()
     campaign.failure_reason = reason[:4000]
     campaign.completed_at = None
+    emit_campaign_lifecycle_event(
+        campaign_id,
+        "campaign.failed",
+        status="failed",
+        reason=reason[:4000],
+    )
 
 
 def refresh_campaign_status(session: Session, campaign_id: str) -> None:
@@ -164,6 +196,12 @@ def refresh_campaign_status(session: Session, campaign_id: str) -> None:
             campaign.status = "failed"
             campaign.failed_at = campaign.failed_at or datetime.utcnow()
             campaign.completed_at = None
+            emit_campaign_lifecycle_event(
+                campaign_id,
+                "campaign.failed",
+                status="failed",
+                reason=campaign.failure_reason or "All sources failed",
+            )
             return
 
         if failed_sources > 0:
@@ -172,6 +210,19 @@ def refresh_campaign_status(session: Session, campaign_id: str) -> None:
             campaign.status = "completed"
         campaign.completed_at = campaign.completed_at or datetime.utcnow()
         campaign.failed_at = None if campaign.status == "completed" else campaign.failed_at
+
+        if campaign.status == "completed":
+            emit_campaign_lifecycle_event(
+                campaign_id,
+                "campaign.completed",
+                status="completed",
+            )
+        elif campaign.status == "partial":
+            emit_campaign_lifecycle_event(
+                campaign_id,
+                "campaign.partial",
+                status="partial",
+            )
     except AttributeError:
         return
 
@@ -185,12 +236,14 @@ def campaign_query_payload(campaign: models.Campaign) -> dict:
         "goals": campaign.goals,
         "target_audience": campaign.target_audience,
         "preferred_platforms": list(campaign.preferred_platforms or []),
+        "locations": list((campaign.brief_snapshot or {}).get("locations") or []),
     }
 
 
 __all__ = [
     "campaign_query_payload",
     "db_session",
+    "emit_campaign_lifecycle_event",
     "get_campaign",
     "mark_campaign_failed",
     "mark_campaign_running",

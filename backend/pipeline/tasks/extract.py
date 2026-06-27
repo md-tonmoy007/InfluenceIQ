@@ -222,6 +222,13 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
                     influencer.credentials = list(
                         dict.fromkeys([*(influencer.credentials or []), *(canonical.get("credentials") or [])])
                     )
+                _persist_credentials(
+                    session,
+                    influencer_uuid,
+                    list(influencer.credentials or []),
+                    source_url=str(content.get("url") or crawl_source.url),
+                    crawl_source_id=crawl_source.id,
+                )
 
             mention_id = mention.get("mention_id")
             existing_link = (
@@ -268,9 +275,9 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
     resolve_identity_cluster.delay(campaign_id)
 
     for influencer_id in dict.fromkeys(all_influencer_ids):
-        from backend.pipeline.tasks.score import score_influencer
+        from backend.pipeline.tasks.enrich import enrich_influencer_platforms_task
 
-        score_influencer.delay(campaign_id, influencer_id)
+        enrich_influencer_platforms_task.delay(campaign_id, influencer_id)
 
     return {
         "crawl_source_id": crawl_source_id,
@@ -342,7 +349,26 @@ def resolve_identity_cluster(self, campaign_id: str) -> dict:
         event_emitter=_emit,
     )
 
-    merge_count = len(result.get("merge_events", []))
+    merge_count = 0
+    from backend.pipeline.identity.persistence import apply_merge
+
+    for merge_event in result.get("merge_events", []):
+        try:
+            canonical_id = UUID(str(merge_event.get("canonical_id")))
+            merged_id = UUID(str(merge_event.get("merged_influencer_id")))
+        except (TypeError, ValueError):
+            continue
+        apply_merge(
+            session,
+            campaign_id=campaign_uuid,
+            canonical_id=canonical_id,
+            merged_id=merged_id,
+            confidence=float(merge_event.get("confidence", 0.85)),
+            merge_strategy=str(merge_event.get("strategy", "cluster")),
+            reason=str(merge_event.get("reason", "auto_merge")),
+        )
+        merge_count += 1
+
     ambiguous_pairs = result.get("ambiguous_pairs", [])
 
     # Emit identity.ambiguous events for pairs below auto-merge threshold
@@ -426,11 +452,56 @@ def _candidate_preview(candidate: dict) -> dict:
     }
 
 
-def _bump_counter(campaign_id: str, field: str, delta: int = 1) -> int:
-    from backend.core.cache.pipeline_state import get_pipeline_state
+def _persist_credentials(
+    session,
+    influencer_uuid: UUID,
+    credentials: list,
+    *,
+    source_url: str,
+    crawl_source_id: UUID,
+) -> None:
+    for credential in credentials:
+        if isinstance(credential, dict):
+            cred_type = str(credential.get("type") or "credential")
+            cred_value = str(credential.get("value") or credential.get("credential_value") or "")
+            claim = str(credential.get("claim") or cred_value)
+        else:
+            cred_type = "credential"
+            cred_value = str(credential)
+            claim = cred_value
+        if not cred_value:
+            continue
+        existing = (
+            session.query(models.CredentialVerification)
+            .filter(
+                models.CredentialVerification.influencer_id == influencer_uuid,
+                models.CredentialVerification.credential_type == cred_type,
+                models.CredentialVerification.credential_value == cred_value,
+                models.CredentialVerification.source_url == source_url,
+            )
+            .first()
+        )
+        if existing is None:
+            session.add(
+                models.CredentialVerification(
+                    id=uuid4(),
+                    influencer_id=influencer_uuid,
+                    credential_type=cred_type,
+                    credential_value=cred_value,
+                    source_url=source_url,
+                    crawl_source_id=crawl_source_id,
+                    extracted_claim=claim,
+                    verifier="pipeline",
+                    confidence=0.5,
+                    review_state="extracted",
+                )
+            )
 
-    state = get_pipeline_state(campaign_id) or {}
-    return int(state.get(field, 0)) + delta
+
+def _bump_counter(campaign_id: str, field: str, delta: int = 1) -> int:
+    from backend.core.cache.pipeline_state import increment_pipeline_counter
+
+    return increment_pipeline_counter(campaign_id, field, delta)
 
 
 __all__ = [

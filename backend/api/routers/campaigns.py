@@ -241,12 +241,18 @@ def _enrich_campaign(
 
     score_count = (
         db.query(func.count(models.InfluencerScore.id))
-        .filter(models.InfluencerScore.campaign_id == campaign.id)
+        .filter(
+            models.InfluencerScore.campaign_id == campaign.id,
+            models.InfluencerScore.is_current.is_(True),
+        )
         .scalar()
     )
     top_score = (
         db.query(func.max(models.InfluencerScore.final_score))
-        .filter(models.InfluencerScore.campaign_id == campaign.id)
+        .filter(
+            models.InfluencerScore.campaign_id == campaign.id,
+            models.InfluencerScore.is_current.is_(True),
+        )
         .scalar()
     )
     response["influencer_count"] = int(score_count or 0)
@@ -427,6 +433,32 @@ def submit_campaign(
 
     owner_id = str(current_user.id)
     return _dispatch_pipeline(db, db_campaign, idempotency_key=None, owner_id=owner_id)
+
+
+@router.post("/{id}/cancel", response_model=dict[str, Any])
+def cancel_campaign_endpoint(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Cancel a running campaign and emit a terminal cancelled event."""
+    db_campaign = _get_owned_campaign(db, id, current_user)
+    if db_campaign.status in {"completed", "failed", "cancelled", "draft"}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel a campaign with status {db_campaign.status!r}.",
+        )
+
+    from backend.pipeline.tasks.orchestrator import cancel_campaign
+
+    result = cancel_campaign(str(id))
+    db.refresh(db_campaign)
+    campaign_id_str = str(id)
+    return {
+        **result,
+        "status": db_campaign.status,
+        "pipeline_state": get_campaign_state_payload(db_campaign, campaign_id_str),
+    }
 
 
 @router.post("/{id}/duplicate", response_model=dict[str, Any], status_code=status.HTTP_201_CREATED)
@@ -735,6 +767,7 @@ def get_campaign_influencers(
     platform: str | None = Query(default=None, description="Filter by platform handle availability"),
     grade: str | None = Query(default=None, description="Filter by trust grade, e.g. 'A+', 'A'"),
     niche: str | None = Query(default=None, description="Filter by core niche"),
+    location: str | None = Query(default=None, description="Filter by primary location"),
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = Query(
         default=None,
@@ -760,13 +793,18 @@ def get_campaign_influencers(
     query = (
         db.query(models.InfluencerScore, models.Influencer)
         .join(models.Influencer, models.InfluencerScore.influencer_id == models.Influencer.id)
-        .filter(models.InfluencerScore.campaign_id == id)
+        .filter(
+            models.InfluencerScore.campaign_id == id,
+            models.InfluencerScore.is_current.is_(True),
+        )
     )
 
     if platform:
         query = query.filter(models.Influencer.platforms.has_key(platform.lower()))
     if niche:
         query = query.filter(models.Influencer.canonical_name.ilike(f"%{niche}%"))
+    if location:
+        query = query.filter(models.Influencer.primary_location.ilike(f"%{location}%"))
     if grade:
         grade_bounds = {
             "A+": (90.0, 100.0),

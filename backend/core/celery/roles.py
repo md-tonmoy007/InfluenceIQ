@@ -13,10 +13,12 @@ TASK_QUEUE_BY_NAME: dict[str, str] = {
     "backend.pipeline.tasks.search.execute_search": "scraping_queue",
     "backend.pipeline.tasks.crawl.fetch_page": "scraping_queue",
     "backend.pipeline.tasks.crawl.extract_content": "scraping_queue",
+    "backend.pipeline.tasks.enrich.enrich_influencer_platforms": "scraping_queue",
     # scoring — compute-heavy tasks (extraction + scoring)
     "backend.pipeline.tasks.extract.extract_influencers": "scoring_queue",
     "backend.pipeline.tasks.extract.resolve_identity_cluster": "scoring_queue",
     "backend.pipeline.tasks.score.score_influencer": "scoring_queue",
+    "backend.pipeline.tasks.deep.deep_analyze": "ai_agent_queue",
 }
 
 TASK_NAMES_BY_SERVICE: dict[str, list[str]] = {
@@ -24,11 +26,13 @@ TASK_NAMES_BY_SERVICE: dict[str, list[str]] = {
         "backend.pipeline.tasks.search.generate_queries",
         "backend.pipeline.tasks.extract.resolve_identity_llm",
         "backend.pipeline.tasks.score.classify_brand_safety",
+        "backend.pipeline.tasks.deep.deep_analyze",
     ],
     SCRAPING: [
         "backend.pipeline.tasks.search.execute_search",
         "backend.pipeline.tasks.crawl.fetch_page",
         "backend.pipeline.tasks.crawl.extract_content",
+        "backend.pipeline.tasks.enrich.enrich_influencer_platforms",
     ],
     SCORING: [
         "backend.pipeline.tasks.extract.extract_influencers",

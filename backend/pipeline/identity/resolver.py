@@ -44,8 +44,14 @@ def resolve_identity_clusters(
                 if candidate.get("mention_id"):
                     before.append(str(candidate["mention_id"]))
                 canonical[index] = decision["canonical"]
-                payload = {"canonical_id": canonical[index]["influencer_id"], "merged_from": list(dict.fromkeys(before)),
-                           "confidence": decision["confidence"]}
+                payload = {
+                    "canonical_id": canonical[index]["influencer_id"],
+                    "merged_influencer_id": candidate.get("influencer_id"),
+                    "merged_from": list(dict.fromkeys(before)),
+                    "confidence": decision["confidence"],
+                    "strategy": decision.get("strategy", "cluster"),
+                    "reason": decision.get("reason", "auto_merge"),
+                }
                 merge_events.append(payload)
                 if event_emitter and campaign_id:
                     event_emitter(campaign_id, "identity.merged", payload)

@@ -1,21 +1,36 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState, type ReactNode } from 'react';
 import SaveToListPopover from '@/components/ui/SaveToListPopover';
 import { useToast } from '@/components/ui/ToastProvider';
 
-export default function ProfileInteractions() {
-  // ROI estimator state
-  const followers = 341000;
-  const reachBase = 0.4 * followers;
+type ProfileInteractionsProps = {
+  influencerId: string;
+  campaignId?: string;
+  creatorName: string;
+  followerCount: number;
+  deepAnalysis?: ReactNode;
+};
+
+export default function ProfileInteractions({
+  influencerId,
+  campaignId,
+  creatorName,
+  followerCount,
+  deepAnalysis,
+}: ProfileInteractionsProps) {
+  const reachBase = 0.4 * followerCount;
   const [budgetRaw, setBudgetRaw] = useState('2,400');
   const [reach, setReach] = useState('196K');
   const [engagement, setEngagement] = useState('12.2K');
   const [cpe, setCpe] = useState('0.20');
-
-  // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    recompute(budgetRaw.replace(/,/g, ''));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followerCount]);
 
   const fmtK = (n: number) => {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
@@ -63,7 +78,7 @@ export default function ProfileInteractions() {
     closeModal();
     toast(
       <>
-        Message queued for <span style={{ fontFamily: 'Instrument Serif, serif', fontStyle: 'italic' }}>Lila Park</span> · we&apos;ll notify you on reply.
+        Message queued for <span style={{ fontFamily: 'Instrument Serif, serif', fontStyle: 'italic' }}>{creatorName}</span> · we&apos;ll notify you on reply.
       </>,
       { type: 'success', duration: 4200 }
     );
@@ -71,7 +86,6 @@ export default function ProfileInteractions() {
 
   return (
     <>
-      {/* ROI Estimator */}
       <section className="panel">
         <div className="panel-head">
           <h3>
@@ -108,10 +122,12 @@ export default function ProfileInteractions() {
         </div>
       </section>
 
-      {/* Actions */}
       <div className="actions-row">
         <div style={{ position: 'relative' }}>
-          <SaveToListPopover>
+          <SaveToListPopover
+            influencerId={influencerId}
+            sourceCampaignId={campaignId}
+          >
             <button className="btn btn-ghost" id="save-btn" type="button">
               <svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
                 <path d="M19 21l-7-4.5L5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16Z" />
@@ -120,13 +136,13 @@ export default function ProfileInteractions() {
             </button>
           </SaveToListPopover>
         </div>
+        {deepAnalysis}
         <button className="btn btn-primary" id="contact-btn" type="button" onClick={openModal}>
           Contact This Influencer
           <span className="arrow">→</span>
         </button>
       </div>
 
-      {/* Contact Modal */}
       {isModalOpen && (
         <div
           id="contact-modal"
@@ -171,14 +187,14 @@ export default function ProfileInteractions() {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div className="pfp" style={{ width: '44px', height: '44px', fontSize: '14px', boxShadow: '0 0 0 2px #fff, 0 0 0 3px var(--line)', margin: 0 }}>
-                  LP
+                  {creatorName.slice(0, 2).toUpperCase()}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '11px', fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>
                     New outreach
                   </div>
                   <div style={{ fontSize: '17px', fontWeight: 500, letterSpacing: '-0.012em', marginTop: '2px' }}>
-                    Contact <span style={{ fontFamily: "'Instrument Serif',Georgia,serif", fontStyle: 'italic' }}>Lila Park</span>
+                    Contact <span style={{ fontFamily: "'Instrument Serif',Georgia,serif", fontStyle: 'italic' }}>{creatorName}</span>
                   </div>
                 </div>
                 <button
@@ -205,113 +221,6 @@ export default function ProfileInteractions() {
             </div>
 
             <form id="contact-form" className="contact-modal-form" style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }} onSubmit={handleSubmit}>
-              <div className="contact-channel-row" style={{ display: 'flex', gap: '8px' }}>
-                <label
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    border: '1px solid var(--line)',
-                    borderRadius: '9px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '12.5px',
-                    color: 'var(--ink-soft)',
-                    cursor: 'pointer',
-                    background: 'linear-gradient(180deg,oklch(0.97 0.025 285),#fff)',
-                  }}
-                >
-                  <input type="radio" name="channel" defaultChecked style={{ accentColor: 'var(--violet)' }} />
-                  <span
-                    style={{
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '6px',
-                      background: 'linear-gradient(135deg,var(--violet),var(--coral))',
-                      display: 'grid',
-                      placeItems: 'center',
-                      color: '#fff',
-                    }}
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.7">
-                      <rect x="3" y="5" width="18" height="14" rx="2" />
-                      <path d="m3 7 9 6 9-6" />
-                    </svg>
-                  </span>
-                  Email
-                </label>
-                <label
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    border: '1px solid var(--line)',
-                    borderRadius: '9px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '12.5px',
-                    color: 'var(--ink-soft)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input type="radio" name="channel" style={{ accentColor: 'var(--violet)' }} />
-                  <span
-                    style={{
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '6px',
-                      background: 'linear-gradient(135deg,#f58529,#dd2a7b 50%,#8134af 80%,#515bd4)',
-                      display: 'grid',
-                      placeItems: 'center',
-                      color: '#fff',
-                    }}
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.7">
-                      <rect x="3" y="3" width="18" height="18" rx="5" />
-                      <circle cx="12" cy="12" r="4" />
-                    </svg>
-                  </span>
-                  Instagram DM
-                </label>
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '11.5px',
-                    fontFamily: "'JetBrains Mono',monospace",
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    color: 'var(--muted)',
-                    marginBottom: '6px',
-                  }}
-                >
-                  Campaign
-                </label>
-                <div className="select-wrap" style={{ position: 'relative' }}>
-                  <select
-                    className="select"
-                    style={{
-                      width: '100%',
-                      height: '40px',
-                      padding: '0 36px 0 12px',
-                      border: '1px solid var(--line)',
-                      borderRadius: '9px',
-                      background: '#fff',
-                      fontSize: '14px',
-                      appearance: 'none',
-                      WebkitAppearance: 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option>SS26 Trail Capsule — Product Launch</option>
-                    <option>Ramadan Campaign 2026 — Awareness</option>
-                    <option>Holiday gifting (US + UK) — Sales</option>
-                  </select>
-                </div>
-              </div>
-
               <div>
                 <label
                   style={{
@@ -329,7 +238,7 @@ export default function ProfileInteractions() {
                 <input
                   id="contact-subject"
                   style={{ width: '100%', height: '40px', padding: '0 12px', border: '1px solid var(--line)', borderRadius: '9px', background: '#fff', fontSize: '14px', outline: 'none' }}
-                  defaultValue="Collab idea — Northwind SS26 capsule + your K-beauty audience"
+                  defaultValue={`Collab idea with ${creatorName}`}
                 />
               </div>
 
@@ -362,7 +271,7 @@ export default function ProfileInteractions() {
                     fontFamily: 'inherit',
                     lineHeight: 1.5,
                   }}
-                  defaultValue={`Hi Lila,\n\nI'm Elena from Northwind Outdoor. We're launching our SS26 Trail capsule and your ingredient-led storytelling feels like a perfect match for our audience.\n\nOpen to discussing a 2-post Reels collab in the $1,800–$2,600 range, with full creative control on your side. Would love to chat — would the week of May 19 work?\n\n— Elena`}
+                  defaultValue={`Hi ${creatorName.split(' ')[0]},\n\nWe'd love to explore a collaboration. Would you be open to a quick chat this week?\n\n— Team`}
                 />
               </div>
 

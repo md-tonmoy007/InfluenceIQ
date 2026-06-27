@@ -1,15 +1,15 @@
-export type CampaignBriefPayload = {
-  brand: string;
-  product: string;
-  category: string;
-  goals: string[];
-  ages: string[];
-  gender: string;
-  locations: string[];
-  platforms: string[];
-  tier: string;
-  budget: string;
-  interests?: string[];
-  notes?: string;
-  query?: string;
+export type CampaignWeights = {
+  relevance: number;
+  credibility: number;
+  engagement: number;
+  sentiment: number;
+  brand_safety: number;
+};
+
+export const DEFAULT_CAMPAIGN_WEIGHTS: CampaignWeights = {
+  relevance: 0.2,
+  credibility: 0.2,
+  engagement: 0.15,
+  sentiment: 0.15,
+  brand_safety: 0.15,
 };

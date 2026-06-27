@@ -161,6 +161,9 @@ class Influencer(Base):
     avg_views = Column(Integer, nullable=True)
     primary_category = Column(String(128), nullable=True)
     primary_location = Column(String(128), nullable=True)
+    merged_into_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id", ondelete="SET NULL"), nullable=True)
+    is_canonical = Column(Boolean, default=True, nullable=False)
+    identity_confidence = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -175,6 +178,10 @@ class Influencer(Base):
     campaign_contracts = relationship(
         "CampaignContract", back_populates="influencer", cascade="all, delete-orphan"
     )
+    platform_profiles = relationship(
+        "PlatformProfile", back_populates="influencer", cascade="all, delete-orphan"
+    )
+    merged_into = relationship("Influencer", remote_side=[id], foreign_keys=[merged_into_id])
 
 
 class InfluencerScore(Base):
@@ -201,6 +208,14 @@ class InfluencerScore(Base):
     positive_reasons = Column(JSONB, nullable=True)
     negative_reasons = Column(JSONB, nullable=True)
     source_provenance = Column(JSONB, nullable=True)
+    is_current = Column(Boolean, default=True, nullable=False)
+    run_trigger = Column(String(32), nullable=True)
+    superseded_by = Column(UUID(as_uuid=True), ForeignKey("influencer_scores.id", ondelete="SET NULL"), nullable=True)
+    scoring_weights = Column(JSONB, nullable=True)
+    grade = Column(String(8), nullable=True)
+    trust_caps = Column(JSONB, nullable=True)
+    model_versions = Column(JSONB, nullable=True)
+    explanation_payload = Column(JSONB, nullable=True)
     computed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     influencer = relationship("Influencer", back_populates="scores")
@@ -262,6 +277,14 @@ class BrandSafetyFlag(Base):
     source_url = Column(String, nullable=False)
     risk_type = Column(String, nullable=False)
     reason = Column(Text, nullable=False)
+    severity = Column(String(16), nullable=True)
+    detection_method = Column(String(32), nullable=True)
+    matched_keyword = Column(String(255), nullable=True)
+    context_snippet = Column(Text, nullable=True)
+    model_provider = Column(String(64), nullable=True)
+    model_name = Column(String(128), nullable=True)
+    requires_llm_review = Column(Boolean, default=False, nullable=False)
+    score_run_id = Column(UUID(as_uuid=True), ForeignKey("influencer_scores.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     influencer = relationship("Influencer", back_populates="brand_safety_flags")
@@ -278,6 +301,13 @@ class CredentialVerification(Base):
     credential_value = Column(String, nullable=False)
     verified = Column(Boolean, default=False, nullable=False)
     verified_at = Column(DateTime, nullable=True)
+    source_url = Column(String(2048), nullable=True)
+    crawl_source_id = Column(UUID(as_uuid=True), ForeignKey("crawl_sources.id", ondelete="SET NULL"), nullable=True)
+    extracted_claim = Column(Text, nullable=True)
+    verifier = Column(String(64), nullable=True)
+    confidence = Column(Float, nullable=True)
+    review_state = Column(String(32), nullable=True)
+    evidence = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     influencer = relationship("Influencer", back_populates="verifications")
@@ -304,6 +334,176 @@ Index("idx_brand_safety_campaign", BrandSafetyFlag.campaign_id)
 Index("idx_credential_verifications_influencer", CredentialVerification.influencer_id)
 Index("idx_campaigns_created_by", Campaign.created_by)
 Index("idx_campaigns_entry_point", Campaign.entry_point)
+
+
+class PlatformProfile(Base):
+    """Structured platform profile snapshot for an influencer."""
+    __tablename__ = "platform_profiles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id", ondelete="CASCADE"), nullable=False)
+    platform = Column(String(32), nullable=False)
+    platform_account_id = Column(String(255), nullable=True)
+    handle = Column(String(255), nullable=True)
+    profile_url = Column(String(2048), nullable=False)
+    display_name = Column(String(512), nullable=True)
+    bio = Column(Text, nullable=True)
+    followers = Column(Integer, nullable=True)
+    following = Column(Integer, nullable=True)
+    avg_engagement = Column(Integer, nullable=True)
+    engagement_rate = Column(Float, nullable=True)
+    verified = Column(Boolean, default=False, nullable=False)
+    fetch_provider = Column(String(64), nullable=True)
+    fetch_status = Column(String(32), nullable=False, default="ok")
+    raw = Column(JSONB, nullable=True)
+    fetched_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    influencer = relationship("Influencer", back_populates="platform_profiles")
+    posts = relationship("PlatformPost", back_populates="platform_profile", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("platform", "profile_url", name="uq_platform_profiles_platform_url"),
+    )
+
+
+class PlatformPost(Base):
+    """Recent post snapshot from a platform profile."""
+    __tablename__ = "platform_posts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    platform_profile_id = Column(UUID(as_uuid=True), ForeignKey("platform_profiles.id", ondelete="CASCADE"), nullable=False)
+    platform = Column(String(32), nullable=False)
+    platform_post_id = Column(String(255), nullable=False)
+    post_url = Column(String(2048), nullable=True)
+    title = Column(Text, nullable=True)
+    caption = Column(Text, nullable=True)
+    published_at = Column(DateTime, nullable=True)
+    view_count = Column(Integer, nullable=True)
+    like_count = Column(Integer, nullable=True)
+    comment_count = Column(Integer, nullable=True)
+    share_count = Column(Integer, nullable=True)
+    fetch_provider = Column(String(64), nullable=True)
+    raw = Column(JSONB, nullable=True)
+    fetched_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    platform_profile = relationship("PlatformProfile", back_populates="posts")
+    comments = relationship("PlatformComment", back_populates="platform_post", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("platform_profile_id", "platform_post_id", name="uq_platform_posts_profile_post"),
+    )
+
+
+class PlatformComment(Base):
+    """Comment snapshot attached to a platform post."""
+    __tablename__ = "platform_comments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    platform_post_id = Column(UUID(as_uuid=True), ForeignKey("platform_posts.id", ondelete="CASCADE"), nullable=False)
+    platform_comment_id = Column(String(255), nullable=True)
+    author_handle_hash = Column(String(128), nullable=True)
+    text = Column(Text, nullable=False)
+    like_count = Column(Integer, nullable=True)
+    published_at = Column(DateTime, nullable=True)
+    raw = Column(JSONB, nullable=True)
+    fetched_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    platform_post = relationship("PlatformPost", back_populates="comments")
+
+
+class CandidateSnapshot(Base):
+    """Frozen candidate payload used for a scoring run."""
+    __tablename__ = "candidate_snapshots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
+    influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id", ondelete="CASCADE"), nullable=False)
+    snapshot = Column(JSONB, nullable=False)
+    platform_fetch_watermark = Column(DateTime, nullable=True)
+    built_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class IdentityMerge(Base):
+    """Audit record for influencer identity consolidation."""
+    __tablename__ = "identity_merges"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="SET NULL"), nullable=True)
+    canonical_influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id", ondelete="CASCADE"), nullable=False)
+    merged_influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id", ondelete="CASCADE"), nullable=False)
+    confidence = Column(Float, nullable=False)
+    merge_strategy = Column(String(32), nullable=True)
+    reason = Column(Text, nullable=True)
+    merged_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("canonical_influencer_id", "merged_influencer_id", name="uq_identity_merges_pair"),
+    )
+
+
+class DeepAnalysisRun(Base):
+    """Deep comment analysis job for a shortlisted influencer."""
+    __tablename__ = "deep_analysis_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
+    influencer_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(32), nullable=False, default="queued")
+    requested_comment_target = Column(Integer, nullable=False, default=2000)
+    collected_comment_count = Column(Integer, nullable=False, default=0)
+    provider_coverage = Column(JSONB, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    failed_at = Column(DateTime, nullable=True)
+    failure_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    post_results = relationship("DeepAnalysisPostResult", back_populates="run", cascade="all, delete-orphan")
+    report = relationship("DeepAnalysisReport", back_populates="run", uselist=False, cascade="all, delete-orphan")
+
+
+class DeepAnalysisPostResult(Base):
+    """Per-post analysis output for a deep analysis run."""
+    __tablename__ = "deep_analysis_post_results"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("deep_analysis_runs.id", ondelete="CASCADE"), nullable=False)
+    platform_post_id = Column(UUID(as_uuid=True), ForeignKey("platform_posts.id", ondelete="SET NULL"), nullable=True)
+    sentiment_score = Column(Float, nullable=True)
+    fake_comment_risk = Column(Float, nullable=True)
+    toxicity_score = Column(Float, nullable=True)
+    engagement_quality = Column(Float, nullable=True)
+    summary = Column(Text, nullable=True)
+    evidence = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    run = relationship("DeepAnalysisRun", back_populates="post_results")
+
+
+class DeepAnalysisReport(Base):
+    """Final deep analysis report for an influencer."""
+    __tablename__ = "deep_analysis_reports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("deep_analysis_runs.id", ondelete="CASCADE"), nullable=False, unique=True)
+    overall_grade = Column(String(8), nullable=True)
+    audience_sentiment = Column(Float, nullable=True)
+    fake_engagement_risk = Column(Float, nullable=True)
+    brand_safety_summary = Column(Text, nullable=True)
+    recommendation = Column(Text, nullable=True)
+    confidence = Column(String(16), nullable=True)
+    report_payload = Column(JSONB, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    run = relationship("DeepAnalysisRun", back_populates="report")
+
+
+Index("idx_platform_profiles_influencer", PlatformProfile.influencer_id)
+Index("idx_platform_comments_post", PlatformComment.platform_post_id)
 
 
 class SavedList(Base):

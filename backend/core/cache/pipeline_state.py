@@ -14,12 +14,16 @@ def initialize_pipeline_state(campaign_id: str, total_urls: int = 0) -> None:
     key = f"{STATE_KEY_PREFIX}{campaign_id}"
     initial_state = {
         "campaign_id": campaign_id,
+        "status": "queued",
         "phase": "initializing",
         "urls_discovered": str(total_urls),
         "urls_scraped": "0",
+        "urls_processed": "0",
         "urls_failed": "0",
         "influencers_found": "0",
         "scores_computed": "0",
+        "platforms_enriched": "0",
+        "enrichment_failed": "0",
     }
     redis_client.hset(key, mapping=initial_state)
     redis_client.expire(key, STATE_TTL)
@@ -32,6 +36,16 @@ def update_pipeline_state(campaign_id: str, **fields) -> None:
     if mapping:
         redis_client.hset(key, mapping=mapping)
     redis_client.expire(key, STATE_TTL)
+
+
+def increment_pipeline_counter(campaign_id: str, field: str, delta: int = 1) -> int:
+    """Atomically increment a numeric pipeline counter and return the new value."""
+    key = f"{STATE_KEY_PREFIX}{campaign_id}"
+    new_value = int(redis_client.hincrby(key, field, delta))
+    if field == "urls_scraped":
+        redis_client.hincrby(key, "urls_processed", delta)
+    redis_client.expire(key, STATE_TTL)
+    return new_value
 
 
 def get_pipeline_state(campaign_id: str) -> dict | None:
@@ -70,9 +84,12 @@ def _coerce_int_columns(state: dict) -> dict:
     int_cols = (
         "urls_discovered",
         "urls_scraped",
+        "urls_processed",
         "urls_failed",
         "influencers_found",
         "scores_computed",
+        "platforms_enriched",
+        "enrichment_failed",
     )
     for col in int_cols:
         if col in state:
@@ -89,6 +106,7 @@ __all__ = [
     "aget_pipeline_state",
     "aupdate_pipeline_state",
     "get_pipeline_state",
+    "increment_pipeline_counter",
     "initialize_pipeline_state",
     "update_pipeline_state",
 ]

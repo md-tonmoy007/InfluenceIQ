@@ -126,18 +126,20 @@ def _build_query_set(payload: dict[str, Any]) -> list[str]:
     goals = (payload.get("goals") or "").strip()
     audience = (payload.get("target_audience") or "").strip()
     platforms = payload.get("preferred_platforms") or []
+    locations = payload.get("locations") or []
 
     queries: list[str] = []
+    location_suffix = f" {' '.join(locations[:2])}".strip() if locations else ""
     if product and niche:
-        queries.append(f"{product} {niche} influencers")
+        queries.append(f"{product} {niche} influencers{location_suffix}".strip())
     if niche:
-        queries.append(f"top {niche} creators")
+        queries.append(f"top {niche} creators{location_suffix}".strip())
     if product:
-        queries.append(f"{product} reviews and recommendations")
+        queries.append(f"{product} reviews and recommendations{location_suffix}".strip())
     if audience and niche:
-        queries.append(f"{niche} creators for {audience}")
+        queries.append(f"{niche} creators for {audience}{location_suffix}".strip())
     if goals and niche:
-        queries.append(f"{niche} influencers {goals}".strip())
+        queries.append(f"{niche} influencers {goals}{location_suffix}".strip())
     if not queries:
         queries.append("trusted creator recommendations")
 

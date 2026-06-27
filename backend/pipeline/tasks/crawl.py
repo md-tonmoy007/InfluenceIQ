@@ -160,10 +160,9 @@ def _mark_failed(campaign_id: str, crawl_source_id: str, error: str) -> None:
 
 
 def _bump_counter(campaign_id: str, field: str) -> int:
-    from backend.core.cache.pipeline_state import get_pipeline_state
+    from backend.core.cache.pipeline_state import increment_pipeline_counter
 
-    state = get_pipeline_state(campaign_id) or {}
-    return int(state.get(field, 0)) + 1
+    return increment_pipeline_counter(campaign_id, field)
 
 
 __all__ = ["extract_content", "fetch_page"]

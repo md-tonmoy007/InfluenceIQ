@@ -2,12 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+
+import DeepAnalysisTrigger from "@/components/profile/DeepAnalysisTrigger";
+import SafetyFlagsPanel from "@/components/profile/SafetyFlagsPanel";
+import ScoreBreakdownPanel from "@/components/profile/ScoreBreakdownPanel";
+import ProfileInteractions from "./ProfileInteractions";
 import {
   getCampaign,
-  getCampaignInfluencer,
+  getInfluencerProfile,
+  getInfluencerSafetyFlags,
+  getInfluencerScores,
+  getInfluencerVerifications,
   type CampaignSummary,
 } from "@/lib/api";
-import type { InfluencerRecommendation } from "@/types/influencer";
 import {
   avatarFromName,
   displayEngagement,
@@ -17,59 +24,68 @@ import {
   extractCategory,
   extractLocation,
   extractTags,
-  formatCompactNumber,
   titleize,
 } from "@/lib/influencerPresentation";
 import { shortlistHref } from "@/lib/routes";
-import ProfileInteractions from "./ProfileInteractions";
+import type { InfluencerRecommendation } from "@/types/influencer";
 
 type LiveProfilePageClientProps = {
   campaignId?: string;
   influencerId: string;
 };
 
-const platformLinks = (item: InfluencerRecommendation) => {
-  const identity = item.sourcePayload.identity;
-  if (identity && typeof identity === "object") {
-    const url = (identity as Record<string, unknown>).canonical_profile_url;
-    if (typeof url === "string" && url) {
-      return [url];
-    }
-  }
-  return item.citations.slice(0, 3);
+const gradeFromScore = (score: number): InfluencerRecommendation["trustGrade"] => {
+  if (score >= 90) return "A+";
+  if (score >= 80) return "A";
+  if (score >= 70) return "B";
+  if (score >= 60) return "C";
+  return "D";
 };
+
+const platformLinks = (platforms: Record<string, unknown>) =>
+  Object.values(platforms)
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .slice(0, 3);
 
 export default function LiveProfilePageClient({
   campaignId,
   influencerId,
 }: LiveProfilePageClientProps) {
-  const missingCampaignId = !campaignId;
   const [campaign, setCampaign] = useState<CampaignSummary | null>(null);
-  const [influencer, setInfluencer] = useState<InfluencerRecommendation | null>(null);
+  const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
+  const [scores, setScores] = useState<Array<Record<string, unknown>>>([]);
+  const [safetyFlags, setSafetyFlags] = useState<Array<Record<string, unknown>>>([]);
+  const [verifications, setVerifications] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(!missingCampaignId);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (missingCampaignId) {
-      return;
-    }
-
     let cancelled = false;
+
     const load = async () => {
       try {
         setLoading(true);
-        const [campaignData, influencerData] = await Promise.all([
-          getCampaign(campaignId),
-          getCampaignInfluencer(campaignId, influencerId),
-        ]);
-        if (cancelled) return;
-        setCampaign(campaignData);
-        if (!influencerData) {
-          setError("Creator not found in this campaign shortlist.");
-        } else {
-          setInfluencer(influencerData);
-          setError("");
+        const requests: Promise<unknown>[] = [
+          getInfluencerProfile(influencerId),
+          getInfluencerScores(influencerId),
+          getInfluencerSafetyFlags(influencerId),
+          getInfluencerVerifications(influencerId),
+        ];
+        if (campaignId) {
+          requests.push(getCampaign(campaignId));
         }
+
+        const [profileData, scoreData, flagData, verificationData, campaignData] =
+          await Promise.all(requests);
+
+        if (cancelled) return;
+
+        setProfile(profileData as Record<string, unknown>);
+        setScores(scoreData as Array<Record<string, unknown>>);
+        setSafetyFlags(flagData as Array<Record<string, unknown>>);
+        setVerifications(verificationData as Array<Record<string, unknown>>);
+        setCampaign((campaignData as CampaignSummary | undefined) ?? null);
+        setError("");
       } catch (nextError) {
         if (!cancelled) {
           setError(nextError instanceof Error ? nextError.message : "Unable to load profile");
@@ -85,61 +101,83 @@ export default function LiveProfilePageClient({
     return () => {
       cancelled = true;
     };
-  }, [campaignId, influencerId, missingCampaignId]);
+  }, [campaignId, influencerId]);
 
-  const profile = useMemo(() => {
-    if (!influencer) return null;
+  const campaignScore = useMemo(() => {
+    if (campaignId) {
+      return scores.find((score) => String(score.campaign_id) === campaignId) ?? null;
+    }
+    return scores[0] ?? null;
+  }, [campaignId, scores]);
 
-    const links = platformLinks(influencer);
-    const engagement = influencer.sourcePayload.engagement;
-    const engagementData =
-      engagement && typeof engagement === "object"
-        ? (engagement as Record<string, unknown>)
-        : {};
-    const profiles = Array.isArray(influencer.sourcePayload.profiles)
-      ? (influencer.sourcePayload.profiles as Array<Record<string, unknown>>)
-      : [];
+  const viewModel = useMemo(() => {
+    if (!profile) return null;
+
+    const name = String(profile.canonical_name ?? "Unknown creator");
+    const handle = String(profile.primary_handle ?? "@unknown");
+    const platform = titleize(String(profile.primary_platform ?? "instagram"));
+    const platforms = (profile.platforms as Record<string, unknown> | undefined) ?? {};
+    const finalScore = Number(campaignScore?.final_score ?? 0);
+    const subScores = {
+      relevance: Number(campaignScore?.relevance_score ?? 0),
+      credibility: Number(campaignScore?.credibility_score ?? 0),
+      engagement: Number(campaignScore?.engagement_score ?? 0),
+      sentiment: Number(campaignScore?.sentiment_score ?? 0),
+      brand_safety: Number(campaignScore?.brand_safety_score ?? 0),
+    };
+    const positiveReasons = (campaignScore?.positive_reasons as string[] | undefined) ?? [];
+    const negativeReasons = (campaignScore?.negative_reasons as string[] | undefined) ?? [];
+    const sourceProvenance =
+      (campaignScore?.source_provenance as Array<Record<string, unknown>> | undefined) ?? [];
+    const citations = sourceProvenance
+      .map((source) => String(source.url ?? ""))
+      .filter(Boolean);
+
+    const recommendation: InfluencerRecommendation = {
+      id: influencerId,
+      name,
+      handle,
+      platform: String(profile.primary_platform ?? "instagram"),
+      followers: Number(profile.follower_count ?? 0),
+      engagementRate: Number(profile.engagement_rate ?? 0),
+      rate: "",
+      matchScore: finalScore,
+      trustGrade: gradeFromScore(finalScore),
+      brandSafetyFlags: safetyFlags.map((flag) => String(flag.reason ?? flag.risk_type ?? "Flag")),
+      citations,
+      subScores,
+      scorePayload: {},
+      sourcePayload: {
+        platforms,
+        credentials: profile.credentials ?? [],
+      },
+    };
 
     return {
-      name: influencer.name,
-      handle: influencer.handle || "@unknown",
-      platform: titleize(influencer.platform),
-      avatar: avatarFromName(influencer.name),
-      verified: influencer.trustGrade === "A+" || influencer.trustGrade === "A",
-      bio:
-        (profiles[0]?.bio as string) ||
-        "Profile bio was not available from the enrichment source.",
-      category: extractCategory(influencer),
-      tags: extractTags(influencer),
-      location: extractLocation(influencer),
-      followers: displayFollowers(influencer),
-      avgViews: displayViews(influencer),
-      engagement: displayEngagement(influencer),
-      postsPerMonth: Number(engagementData.sample_size ?? 0),
-      rate: displayRate(influencer),
-      links,
-      citations: influencer.citations,
-      brandSafetyFlags: influencer.brandSafetyFlags,
-      trustGrade: influencer.trustGrade,
-      matchScore: Math.round(influencer.matchScore),
-      sampleSize: Number(engagementData.sample_size ?? 0),
-      avgLikes: Number(engagementData.average_likes ?? 0),
-      avgComments: Number(engagementData.average_comments ?? 0),
-      avgShares: Number(engagementData.average_shares ?? 0),
-      avgViewsRaw: Number(engagementData.average_views ?? 0),
+      name,
+      handle,
+      platform,
+      avatar: avatarFromName(name),
+      verified: verifications.some((item) => item.verified === true),
+      bio: "Canonical profile loaded from the influencer record.",
+      category: String(profile.primary_category ?? extractCategory(recommendation)),
+      tags: extractTags(recommendation),
+      location: String(profile.primary_location ?? extractLocation(recommendation)),
+      followers: displayFollowers(recommendation),
+      avgViews: displayViews(recommendation),
+      engagement: displayEngagement(recommendation),
+      sampleSize: Number(profile.avg_views ?? 0) > 0 ? 12 : 0,
+      rate: displayRate(recommendation),
+      links: platformLinks(platforms),
+      citations,
+      trustGrade: gradeFromScore(finalScore),
+      matchScore: Math.round(finalScore),
+      subScores,
+      positiveReasons,
+      negativeReasons,
+      followerCount: Number(profile.follower_count ?? 0),
     };
-  }, [influencer]);
-
-  if (missingCampaignId) {
-    return (
-      <div className="panel">
-        <p>A campaignId is required to load a live creator profile.</p>
-        <Link className="back-link" href="/discover">
-          Back to discover
-        </Link>
-      </div>
-    );
-  }
+  }, [campaignScore, influencerId, profile, safetyFlags, verifications]);
 
   if (loading) {
     return (
@@ -149,7 +187,7 @@ export default function LiveProfilePageClient({
     );
   }
 
-  if (error || !profile) {
+  if (error || !viewModel) {
     return (
       <div className="panel">
         <p>{error || "Creator profile unavailable."}</p>
@@ -169,7 +207,7 @@ export default function LiveProfilePageClient({
         <svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ width: "14px", height: "14px" }}>
           <path d="M15 6l-6 6 6 6" />
         </svg>
-        Back to shortlist
+        Back to {campaignId ? "shortlist" : "discover"}
       </Link>
 
       <div className="layout">
@@ -177,8 +215,8 @@ export default function LiveProfilePageClient({
           <div className="panel">
             <div className="profile-head">
               <div className="pfp">
-                {profile.avatar}
-                {profile.verified ? (
+                {viewModel.avatar}
+                {viewModel.verified ? (
                   <span className="verified" title="Verified creator">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
@@ -188,23 +226,29 @@ export default function LiveProfilePageClient({
                 ) : null}
               </div>
               <div className="name-row">
-                <h1>{profile.name}</h1>
-                <div className="handle">{profile.handle}</div>
+                <h1>{viewModel.name}</h1>
+                <div className="handle">{viewModel.handle}</div>
                 <div className="platforms">
-                  {profile.links.map((link) => (
+                  {viewModel.links.map((link) => (
                     <a key={link} className="pf pf-yt" href={link} target="_blank" rel="noreferrer">
-                      {new URL(link).hostname.replace(/^www\./, "")}
+                      {(() => {
+                        try {
+                          return new URL(link).hostname.replace(/^www\./, "");
+                        } catch {
+                          return link;
+                        }
+                      })()}
                     </a>
                   ))}
                 </div>
               </div>
             </div>
 
-            <p className="bio">{profile.bio}</p>
+            <p className="bio">{viewModel.bio}</p>
 
             <div className="tags">
-              <span className="tag violet">{profile.category}</span>
-              {profile.tags.map((tag) => (
+              <span className="tag violet">{viewModel.category}</span>
+              {viewModel.tags.map((tag) => (
                 <span className="tag" key={tag}>
                   {tag}
                 </span>
@@ -214,45 +258,45 @@ export default function LiveProfilePageClient({
             <div className="meta-row">
               <div className="item">
                 <span className="lab">Location</span>
-                <span>{profile.location}</span>
+                <span>{viewModel.location}</span>
               </div>
               <div className="item">
                 <span className="lab">Platform</span>
-                <span>{profile.platform}</span>
+                <span>{viewModel.platform}</span>
               </div>
               <div className="item">
                 <span className="lab">Campaign</span>
-                <span>{campaign?.product ?? "Live shortlist"}</span>
+                <span>{campaign?.product ?? (campaignId ? "Linked campaign" : "Not linked")}</span>
               </div>
             </div>
 
             <div className="stats">
               <div>
                 <div className="lbl">Followers</div>
-                <div className="val">{profile.followers}</div>
+                <div className="val">{viewModel.followers}</div>
               </div>
               <div>
                 <div className="lbl">Avg Views</div>
-                <div className="val">{profile.avgViews}</div>
+                <div className="val">{viewModel.avgViews}</div>
               </div>
               <div>
                 <div className="lbl">Engagement</div>
-                <div className="val eng">{profile.engagement}</div>
+                <div className="val eng">{viewModel.engagement}</div>
               </div>
               <div>
-                <div className="lbl">Sample size</div>
-                <div className="val">{profile.sampleSize}</div>
+                <div className="lbl">Verifications</div>
+                <div className="val">{verifications.length}</div>
               </div>
             </div>
 
             <div className="rate-card">
               <div className="lab">Estimated rate per post</div>
-              <div className="v">{profile.rate}</div>
-              <div className="note">Derived from shortlist data and follower band.</div>
+              <div className="v">{viewModel.rate}</div>
+              <div className="note">Derived from follower band and campaign context.</div>
             </div>
 
             <div className="contact">
-              {profile.links.map((link) => (
+              {viewModel.links.map((link) => (
                 <a key={link} className="contact-item" href={link} target="_blank" rel="noreferrer">
                   <span className="cico" style={{ background: "linear-gradient(135deg,var(--violet),var(--coral))" }}>
                     <svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
@@ -285,12 +329,12 @@ export default function LiveProfilePageClient({
                   </linearGradient>
                 </defs>
                 <circle cx="65" cy="65" r="55" stroke="rgba(255,255,255,0.12)" strokeWidth="10" fill="none" />
-                <circle cx="65" cy="65" r="55" stroke="url(#matchG)" strokeWidth="10" fill="none" strokeDasharray="345.5" strokeDashoffset={`${345.5 - 3.455 * profile.matchScore}`} strokeLinecap="round"></circle>
+                <circle cx="65" cy="65" r="55" stroke="url(#matchG)" strokeWidth="10" fill="none" strokeDasharray="345.5" strokeDashoffset={`${345.5 - 3.455 * viewModel.matchScore}`} strokeLinecap="round"></circle>
               </svg>
               <div className="center">
                 <div>
                   <div className="num">
-                    {profile.matchScore}
+                    {viewModel.matchScore}
                     <span className="pct">%</span>
                   </div>
                   <div className="label">AI Match</div>
@@ -299,75 +343,45 @@ export default function LiveProfilePageClient({
             </div>
             <div>
               <h2>
-                Live shortlist profile for <span className="accent">{campaign?.brand ?? "your campaign"}</span>.
+                Canonical profile for{" "}
+                <span className="accent">{campaign?.brand ?? viewModel.name}</span>.
               </h2>
               <p>
-                This profile is rendered from backend enrichment, crawl provenance, and scoring output for the current campaign.
+                Loaded from influencer, score, safety, and verification APIs
+                {campaignId ? " with campaign context." : "."}
               </p>
               <div className="badge-row">
-                <span className="mb good">Grade {profile.trustGrade}</span>
-                <span className="mb">{profile.platform}</span>
-                <span className="mb">{profile.sampleSize} sampled posts</span>
-                <span className="mb">{profile.brandSafetyFlags.length ? "Review flags" : "Brand safe"}</span>
+                <span className="mb good">Grade {viewModel.trustGrade}</span>
+                <span className="mb">{viewModel.platform}</span>
+                <span className="mb">{verifications.length} verifications</span>
+                <span className="mb">{safetyFlags.length ? "Review flags" : "Brand safe"}</span>
               </div>
             </div>
           </section>
 
-          <section className="panel">
-            <div className="panel-head">
-              <h3>
-                <span className="pin"></span>Why This Creator Ranked
-              </h3>
-              <span className="meta">Derived from live backend scoring</span>
-            </div>
-            <div className="reasons">
-              <div className="reason">
-                <div className="body">
-                  <div className="t">Campaign score: {profile.matchScore}%</div>
-                  <div className="d">The backend shortlist scored this creator against relevance, credibility, engagement, sentiment, and brand-safety signals.</div>
-                </div>
-              </div>
-              <div className="reason">
-                <div className="body">
-                  <div className="t">Engagement sample from {profile.sampleSize} recent posts</div>
-                  <div className="d">
-                    Avg views {formatCompactNumber(profile.avgViewsRaw)}, likes {formatCompactNumber(profile.avgLikes)}, comments {formatCompactNumber(profile.avgComments)}, shares {formatCompactNumber(profile.avgShares)}.
-                  </div>
-                </div>
-              </div>
-              <div className="reason">
-                <div className="body">
-                  <div className="t">Source-backed identity</div>
-                  <div className="d">The profile keeps crawl citations and platform enrichment payloads attached to the campaign result.</div>
-                </div>
-              </div>
-              <div className="reason">
-                <div className="body">
-                  <div className="t">Brand-safety review</div>
-                  <div className="d">
-                    {profile.brandSafetyFlags.length
-                      ? profile.brandSafetyFlags.join(", ")
-                      : "No deterministic brand-safety flags were attached to this result."}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
+          <ScoreBreakdownPanel
+            finalScore={campaignScore?.final_score as number | undefined}
+            subScores={viewModel.subScores}
+            positiveReasons={viewModel.positiveReasons}
+            negativeReasons={viewModel.negativeReasons}
+          />
+
+          <SafetyFlagsPanel flags={safetyFlags} />
 
           <section className="panel">
             <div className="panel-head">
               <h3>
                 <span className="pin"></span>Supporting Sources
               </h3>
-              <span className="meta">{profile.citations.length} citations</span>
+              <span className="meta">{viewModel.citations.length} citations</span>
             </div>
             <div className="comments">
-              {profile.citations.length ? (
-                profile.citations.map((citation) => (
+              {viewModel.citations.length ? (
+                viewModel.citations.map((citation) => (
                   <div className="comment" key={citation}>
                     <div>
                       <div className="who">{citation}</div>
-                      <div className="txt">Crawl or profile source used in this campaign result.</div>
+                      <div className="txt">Source used in campaign scoring provenance.</div>
                     </div>
                     <span className="pill pill-neu">Source</span>
                   </div>
@@ -383,7 +397,22 @@ export default function LiveProfilePageClient({
             </div>
           </section>
 
-          <ProfileInteractions />
+          <ProfileInteractions
+            influencerId={influencerId}
+            campaignId={campaignId}
+            creatorName={viewModel.name}
+            followerCount={viewModel.followerCount}
+            deepAnalysis={
+              campaignId ? (
+                <DeepAnalysisTrigger
+                  influencerId={influencerId}
+                  campaignId={campaignId}
+                  className="btn btn-ghost"
+                  label="Run deep analysis"
+                />
+              ) : null
+            }
+          />
         </div>
       </div>
     </>

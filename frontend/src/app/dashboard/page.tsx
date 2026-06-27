@@ -49,26 +49,46 @@ const formatTimeAgo = (iso: string | null | undefined): string => {
   });
 };
 
-const initialsOf = (name: string | null | undefined): string => {
-  if (!name) return "IQ";
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("") || "IQ";
-};
-
 const platformLabel = (entryPoint: string | null | undefined): string => {
   if (entryPoint === "topbar_search") return "Topbar";
   if (entryPoint === "discover_search") return "Discover";
   return "Brief";
 };
 
-const scoreClass = (score: number): string => {
-  if (score >= 90) return "good";
-  if (score >= 80) return "mid";
-  return "low";
+const searchStatus = (status: string): { label: string; className: string } => {
+  switch (status) {
+    case "completed":
+      return { label: "Completed", className: "complete" };
+    case "running":
+    case "pending":
+      return { label: "Running", className: "active" };
+    case "failed":
+      return { label: "Failed", className: "failed" };
+    case "draft":
+      return { label: "Draft", className: "draft" };
+    default:
+      return { label: status, className: "active" };
+  }
+};
+
+const searchTitle = (row: WorkspaceSummary["recent_searches"][number]): string => {
+  const product = row.product?.trim();
+  if (product) return product;
+  return row.label?.trim() || "Untitled search";
+};
+
+const searchSubtitle = (row: WorkspaceSummary["recent_searches"][number]): string | null => {
+  const title = searchTitle(row);
+  const label = row.label?.trim();
+  if (label && label !== title) return label;
+  const goal = row.goal?.trim();
+  if (goal && goal !== title) return goal;
+  return null;
+};
+
+const searchInitial = (row: WorkspaceSummary["recent_searches"][number]): string => {
+  const source = searchTitle(row);
+  return source.charAt(0).toUpperCase() || "S";
 };
 
 const categoryOf = (niche: string | null | undefined): string => {
@@ -245,76 +265,69 @@ function DashboardContent() {
             <Link href="/briefs">View all →</Link>
           </div>
         </div>
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th style={{ width: "40%" }}>Query</th>
-              <th>Filters</th>
-              <th>Top match</th>
-              <th>Results</th>
-              <th>When</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {recent_searches.length === 0 ? (
-              <tr className="empty-row">
-                <td colSpan={6}>
-                  No searches yet. Launch your first campaign from{" "}
-                  <Link href="/briefs/new">a brief</Link> or the{" "}
-                  <Link href="/discover">Discover</Link> page.
-                </td>
-              </tr>
-            ) : (
-              recent_searches.map((row) => {
-                // Top score isn't in the workspace summary; render an
-                // em-dash so the table never fabricates a value.
-                const topScore: number | null = null;
-                const targetHref = campaignHref(row.campaign_id, row.status);
-                return (
-                  <tr key={row.campaign_id}>
-                    <td className="query">
-                      <strong>{row.label || row.product}</strong>
-                    </td>
-                    <td>
+        {recent_searches.length === 0 ? (
+          <div className="search-empty">
+            <p>
+              No searches yet. Launch your first campaign from{" "}
+              <Link href="/briefs/new">a brief</Link> or the{" "}
+              <Link href="/discover">Discover</Link> page.
+            </p>
+          </div>
+        ) : (
+          <div className="search-list">
+            {recent_searches.map((row, index) => {
+              const status = searchStatus(row.status);
+              const targetHref = campaignHref(row.campaign_id, row.status);
+              const subtitle = searchSubtitle(row);
+              const glyphClass =
+                status.className === "complete"
+                  ? "g"
+                  : status.className === "draft"
+                    ? "d"
+                    : status.className === "failed"
+                      ? "c"
+                      : "v";
+
+              return (
+                <Link
+                  key={row.campaign_id}
+                  className="search-row"
+                  href={targetHref}
+                  style={{ animationDelay: `${0.05 + index * 0.06}s` }}
+                >
+                  <span className={`search-glyph gl-${glyphClass}`}>
+                    {searchInitial(row)}
+                  </span>
+                  <div className="search-body">
+                    <div className="search-head">
+                      <span className="search-title">{searchTitle(row)}</span>
+                      <span className={`search-status ${status.className}`}>
+                        {status.label}
+                      </span>
+                    </div>
+                    {subtitle ? (
+                      <p className="search-sub">{subtitle}</p>
+                    ) : null}
+                    <div className="search-meta">
                       <span className="tag violet">{categoryOf(row.niche)}</span>
                       <span className="tag">{platformLabel(row.entry_point)}</span>
-                    </td>
-                    <td>
-                      {topScore != null ? (
-                        <span className={`score ${scoreClass(topScore)}`}>
-                          {Math.round(topScore)}
-                        </span>
-                      ) : (
-                        <span className="score" style={{ color: "var(--muted)" }}>
-                          —
-                        </span>
-                      )}
-                    </td>
-                    <td className="results">
-                      {row.status === "completed"
-                        ? "View"
-                        : row.status === "failed"
-                          ? "Failed"
-                          : "Running…"}
-                    </td>
-                    <td className="when">{formatTimeAgo(row.created_at)}</td>
-                    <td>
-                      <Link className="open" href={targetHref}>
-                        Open <span className="arrow">→</span>
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-            <tr className="empty-row">
-              <td colSpan={6}>
-                Searches are kept for 90 days. Pin a search to a saved list to keep it longer.
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                      <span className="dot" aria-hidden="true" />
+                      <span>{formatTimeAgo(row.created_at)}</span>
+                    </div>
+                  </div>
+                  <span className="search-arrow" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+        <p className="panel-foot">
+          Searches are kept for 90 days. Pin a search to a saved list to keep it longer.
+        </p>
       </section>
 
       <UpgradeCard usage={upgrade_usage} />

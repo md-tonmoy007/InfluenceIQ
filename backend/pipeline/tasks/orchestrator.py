@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 
 from backend.core.cache.event_log import emit_event
+from backend.core.cache.pipeline_state import update_pipeline_state
 from backend.core.database.session import _get_session_local
 from backend.pipeline.tasks import _common
 
@@ -53,6 +54,13 @@ def start_campaign(campaign_id: str) -> dict:
     from backend.pipeline.tasks.search import generate_queries
 
     log.info("start_campaign dispatching generate_queries campaign_id=%s", campaign_id)
+    update_pipeline_state(campaign_id, status="running", phase="query_generation")
+    _common.publish_event(
+        campaign_id,
+        "campaign.started",
+        status="running",
+        phase="query_generation",
+    )
     async_result = generate_queries.delay(campaign_id)
     return {
         "campaign_id": campaign_id,
@@ -72,7 +80,7 @@ def cancel_campaign(campaign_id: str, reason: str = "cancelled") -> dict:
     try:
         campaign = _common.get_campaign(session, campaign_id)
         previous_status = campaign.status
-        campaign.status = "failed"
+        campaign.status = "cancelled"
         from datetime import datetime
 
         campaign.failed_at = datetime.utcnow()
@@ -82,12 +90,14 @@ def cancel_campaign(campaign_id: str, reason: str = "cancelled") -> dict:
         session.close()
 
     try:
+        update_pipeline_state(campaign_id, status="cancelled", phase="cancelled")
         emit_event(
             campaign_id,
             "campaign.cancelled",
             {
                 "reason": reason,
                 "previous_status": previous_status,
+                "status": "cancelled",
             },
         )
     except Exception as exc:  # pragma: no cover

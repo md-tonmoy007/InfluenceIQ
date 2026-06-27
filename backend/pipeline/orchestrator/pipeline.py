@@ -294,8 +294,12 @@ def run_role4_pipeline(candidate: dict[str, Any],
         "source_confidence_score": sub_scores["source_confidence"],
         "overall_fake_risk_score": overall_fake,
     }
-    trust = calculate_role4_trust(trust_input, data_source_count=source_count,
-                                  severe_brand_safety=severe_brand_safety)
+    trust = calculate_role4_trust(
+        trust_input,
+        data_source_count=source_count,
+        severe_brand_safety=severe_brand_safety,
+        positive_weights=campaign.get("positive_weights") if campaign else None,
+    )
     sub_scores["role4_trust_score"] = trust.role4_trust_score
 
     # ---- Signal scores (Pipeline 6 - signal_scores table contract) ----

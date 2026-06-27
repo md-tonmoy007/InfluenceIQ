@@ -19,6 +19,7 @@ import { getCampaignWebSocketUrl } from '@/lib/websocket';
 import type { CampaignPipelineEvent } from '@/types/events';
 import { isTerminalPipelineEvent } from '@/types/events';
 import { useToast } from '@/components/ui/ToastProvider';
+import DeepAnalysisTrigger from '@/components/profile/DeepAnalysisTrigger';
 
 const platformGlyphs: Record<string, ReactNode> = {
   instagram: (
@@ -117,6 +118,24 @@ const hostLabel = (rawUrl: string) => {
   }
 };
 
+const formatHandle = (handle: string): string => {
+  const trimmed = handle.trim();
+  if (!trimmed) return '@unknown';
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const segment = url.pathname.replace(/^\/+/, '').split('/')[0];
+      if (segment) return `@${segment}`;
+      return url.hostname.replace(/^www\./, '');
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
+};
+
+const hasMetricValue = (value: string) => value.trim() !== '' && value.trim() !== '—';
+
 const avatarFromName = (name: string) =>
   name
     .split(/\s+/)
@@ -178,7 +197,7 @@ const toMatchRows = (influencers: InfluencerListResult['items']): MatchRow[] =>
       id: item.id,
       rank: index + 1,
       name: item.name,
-      handle: item.handle || '@unknown',
+      handle: formatHandle(item.handle),
       platform,
       avatar: avatarFromName(item.name),
       avBg: gradientByPlatform[platform],
@@ -205,12 +224,24 @@ const toMatchRows = (influencers: InfluencerListResult['items']): MatchRow[] =>
 
 const eventLabel = (event: CampaignPipelineEvent) => {
   switch (event.type) {
-    case 'pipeline.started':
-      return 'Pipeline started';
-    case 'query.generated':
-      return `Generated ${Array.isArray(event.payload.queries) ? event.payload.queries.length : 0} search queries`;
-    case 'page.scraped':
-      return `Scraped ${String(event.payload.url ?? 'page')}`;
+    case 'campaign.started':
+      return 'Campaign started';
+    case 'campaign.completed':
+      return 'Campaign completed';
+    case 'campaign.partial':
+      return 'Partial campaign results ready';
+    case 'campaign.failed':
+      return `Campaign failed: ${String(event.payload.reason ?? event.payload.error ?? 'unknown error')}`;
+    case 'campaign.cancelled':
+      return 'Campaign cancelled';
+    case 'query.generation.completed':
+      return `Generated ${String(event.payload.query_count ?? 0)} search queries`;
+    case 'page.fetched':
+      return `Fetched ${String(event.payload.url ?? 'page')}`;
+    case 'platform.enriched':
+      return 'Platform data enriched';
+    case 'deep_analysis.report_ready':
+      return 'Deep analysis report ready';
     case 'score.calculated':
       return `Scored influencer ${String(event.payload.influencer_id ?? '')}`;
     case 'pipeline.completed':
@@ -455,7 +486,9 @@ export default function ShortlistPageClient() {
 
     if (
       state.status !== 'completed' &&
+      state.status !== 'partial' &&
       state.status !== 'failed' &&
+      state.status !== 'cancelled' &&
       !state.partial_results_available &&
       (state.scores_computed ?? 0) <= 0
     ) {
@@ -497,7 +530,10 @@ export default function ShortlistPageClient() {
     }
 
     const isTerminal =
-      pipelineState?.status === 'completed' || pipelineState?.status === 'failed';
+      pipelineState?.status === 'completed' ||
+      pipelineState?.status === 'partial' ||
+      pipelineState?.status === 'failed' ||
+      pipelineState?.status === 'cancelled';
     if (isTerminal) {
       return;
     }
@@ -721,11 +757,13 @@ export default function ShortlistPageClient() {
                   </div>
                   <div className="info-col">
                     <div className="name-row">
-                      <span className="name">{m.name}</span>
-                      {m.verified ? (
-                        <svg className="verified" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.4 2.1 3.1-.4 1.4 2.8 2.8 1.4-.4 3.1L23 12l-2.1 2.4.4 3.1-2.8 1.4-1.4 2.8-3.1-.4L12 23l-2.4-2.1-3.1.4-1.4-2.8-2.8-1.4.4-3.1L1 12l2.1-2.4-.4-3.1 2.8-1.4 1.4-2.8 3.1.4L12 1z" /><path d="M8.5 12.5l2.4 2.4 4.6-5" stroke="white" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                      ) : null}
-                      <span className="handle">{m.handle}</span>
+                      <div className="name-line">
+                        <span className="name">{m.name}</span>
+                        {m.verified ? (
+                          <svg className="verified" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.4 2.1 3.1-.4 1.4 2.8 2.8 1.4-.4 3.1L23 12l-2.1 2.4.4 3.1-2.8 1.4-1.4 2.8-3.1-.4L12 23l-2.4-2.1-3.1.4-1.4-2.8-2.8-1.4.4-3.1L1 12l2.1-2.4-.4-3.1 2.8-1.4 1.4-2.8 3.1.4L12 1z" /><path d="M8.5 12.5l2.4 2.4 4.6-5" stroke="white" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        ) : null}
+                      </div>
+                      <span className="handle" title={m.handle}>{m.handle}</span>
                     </div>
                     <div className="reason">
                       <span className="spark"><svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M12 3l1.8 4.5L18 9.3l-4.2 1.8L12 15.6l-1.8-4.5L6 9.3l4.2-1.8L12 3z" /></svg></span>
@@ -737,11 +775,11 @@ export default function ShortlistPageClient() {
                       {m.tags.map(t => <span key={t} className="tag">{t}</span>)}
                     </div>
                   </div>
-                  <div className="stats-col">
-                    <div><div className="lbl">Followers</div><div className="val">{m.followers}</div></div>
-                    <div><div className="lbl">Engagement</div><div className="val eng">{m.engagement}</div></div>
-                    <div><div className="lbl">Avg views</div><div className="val">{m.avgViews}</div></div>
-                    <div><div className="lbl">Rate / post</div><div className="val">{m.rate}</div></div>
+                  <div className={`stats-col ${!hasMetricValue(m.followers) && !hasMetricValue(m.engagement) && !hasMetricValue(m.avgViews) && !hasMetricValue(m.rate) ? 'is-pending' : ''}`}>
+                    <div><div className="lbl">Followers</div><div className={`val ${hasMetricValue(m.followers) ? '' : 'is-empty'}`}>{m.followers}</div></div>
+                    <div><div className="lbl">Engagement</div><div className={`val eng ${hasMetricValue(m.engagement) ? '' : 'is-empty'}`}>{m.engagement}</div></div>
+                    <div><div className="lbl">Avg views</div><div className={`val ${hasMetricValue(m.avgViews) ? '' : 'is-empty'}`}>{m.avgViews}</div></div>
+                    <div><div className="lbl">Rate / post</div><div className={`val ${hasMetricValue(m.rate) ? '' : 'is-empty'}`}>{m.rate}</div></div>
                   </div>
                   <div className="actions-col">
                     <div className="match-ring" title={`${m.match}% match`}>
@@ -759,6 +797,10 @@ export default function ShortlistPageClient() {
                       <div className={`val ${matchClass}`}>{m.match}<span className="pct">% MATCH</span></div>
                     </div>
                     <Link href={`/profile/${encodeURIComponent(m.id)}?campaignId=${encodeURIComponent(campaignId)}`} className="row-cta">View profile <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M13 6l6 6-6 6" /></svg></Link>
+                    <DeepAnalysisTrigger
+                      influencerId={m.id}
+                      campaignId={campaignId}
+                    />
                     {!isContracted ? (
                       <button
                         type="button"

@@ -529,6 +529,13 @@ export type CampaignCreateOptions = {
   briefSnapshot?: Record<string, unknown> | null;
   /** When false, create a draft without starting the pipeline. */
   startPipeline?: boolean;
+  weights?: {
+    relevance: number;
+    credibility: number;
+    engagement: number;
+    sentiment: number;
+    brand_safety: number;
+  };
 };
 
 export type CampaignDraftUpdateBody = {
@@ -570,6 +577,7 @@ const buildCampaignRequestBody = (
   if (options.campaignName) body.campaign_name = options.campaignName;
   if (options.searchQuery) body.search_query = options.searchQuery;
   if (options.briefSnapshot) body.brief_snapshot = options.briefSnapshot;
+  if (options.weights) body.weights = options.weights;
 
   return body;
 };
@@ -686,6 +694,54 @@ export const getCampaign = async (campaignId: string): Promise<CampaignSummary> 
 
 export const getCampaignState = async (campaignId: string): Promise<CampaignState> =>
   requestJson<CampaignState>(`/api/campaigns/${encodeURIComponent(campaignId)}/state`);
+
+export const cancelCampaign = async (campaignId: string): Promise<Record<string, unknown>> =>
+  requestJson<Record<string, unknown>>(
+    `/api/campaigns/${encodeURIComponent(campaignId)}/cancel`,
+    { method: "POST" }
+  );
+
+export const getInfluencerProfile = async (influencerId: string): Promise<Record<string, unknown>> =>
+  requestJson<Record<string, unknown>>(`/api/influencers/${encodeURIComponent(influencerId)}`);
+
+export const getInfluencerScores = async (influencerId: string): Promise<Array<Record<string, unknown>>> =>
+  requestJson<Array<Record<string, unknown>>>(`/api/influencers/${encodeURIComponent(influencerId)}/scores`);
+
+export const getInfluencerSafetyFlags = async (influencerId: string): Promise<Array<Record<string, unknown>>> =>
+  requestJson<Array<Record<string, unknown>>>(`/api/influencers/${encodeURIComponent(influencerId)}/safety`);
+
+export const getInfluencerVerifications = async (
+  influencerId: string
+): Promise<Array<Record<string, unknown>>> =>
+  requestJson<Array<Record<string, unknown>>>(
+    `/api/influencers/${encodeURIComponent(influencerId)}/verifications`
+  );
+
+export const triggerDeepAnalysis = async (
+  influencerId: string,
+  campaignId: string,
+  commentTarget = 2000
+): Promise<Record<string, unknown>> =>
+  requestJson<Record<string, unknown>>(
+    `/api/influencers/${encodeURIComponent(influencerId)}/deep-analysis?campaign_id=${encodeURIComponent(campaignId)}&comment_target=${commentTarget}`,
+    { method: "POST" }
+  );
+
+export const getDeepAnalysisStatus = async (
+  influencerId: string,
+  runId: string
+): Promise<Record<string, unknown>> =>
+  requestJson<Record<string, unknown>>(
+    `/api/influencers/${encodeURIComponent(influencerId)}/deep-analysis/${encodeURIComponent(runId)}`
+  );
+
+export const getDeepAnalysisReport = async (
+  influencerId: string,
+  reportId: string
+): Promise<Record<string, unknown>> =>
+  requestJson<Record<string, unknown>>(
+    `/api/influencers/${encodeURIComponent(influencerId)}/reports/${encodeURIComponent(reportId)}`
+  );
 
 export const getCampaignInfluencers = async (
   campaignId: string,

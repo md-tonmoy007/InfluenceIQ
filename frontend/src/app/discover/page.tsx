@@ -1,10 +1,10 @@
 import React from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import AppShell from "@/components/shell/AppShell";
 import DiscoverSearch from "@/components/discover/DiscoverSearch";
 import RangeFilter from "@/components/discover/RangeFilter";
 import LiveCampaignDiscover from "@/components/discover/LiveCampaignDiscover";
+import CampaignDiscoverPageClient from "@/components/discover/CampaignDiscoverPageClient";
 import { shortlistHref } from "@/lib/routes";
 import "../discover.css";
 
@@ -15,10 +15,30 @@ export default async function DiscoverPage({
 }) {
   const params = await searchParams;
   const campaignId = params.campaignId;
-  if (campaignId) {
-    redirect(shortlistHref(campaignId));
-  }
   const crumbs = [{ label: "Workspace" }, { label: "Discover", current: true }];
+
+  if (campaignId) {
+    return (
+      <AppShell crumbs={crumbs} showSearch={false}>
+        <main className="content">
+          <div className="page-head">
+            <div>
+              <h1>
+                Discover <span className="accent">creators.</span>
+              </h1>
+              <p className="sub">
+                Filter and browse live campaign results with facet counts and cursor pagination.
+              </p>
+            </div>
+            <Link className="btn btn-ghost" href={shortlistHref(campaignId)}>
+              Back to shortlist
+            </Link>
+          </div>
+          <CampaignDiscoverPageClient campaignId={campaignId} variant="grid" />
+        </main>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell crumbs={crumbs} showSearch={false}>

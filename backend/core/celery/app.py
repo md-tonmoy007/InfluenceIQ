@@ -16,7 +16,9 @@ celery_app = Celery(
         "backend.pipeline.tasks.search",
         "backend.pipeline.tasks.crawl",
         "backend.pipeline.tasks.extract",
+        "backend.pipeline.tasks.enrich",
         "backend.pipeline.tasks.score",
+        "backend.pipeline.tasks.deep",
     ],
 )
 

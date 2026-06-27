@@ -25,3 +25,11 @@ export function campaignHref(campaignId: string, status: string): string {
   }
   return shortlistHref(campaignId);
 }
+
+export function discoverHref(campaignId: string): string {
+  return `/discover?campaignId=${encodeURIComponent(campaignId)}`;
+}
+
+export function reportHref(influencerId: string, reportId: string): string {
+  return `/report/${encodeURIComponent(influencerId)}?reportId=${encodeURIComponent(reportId)}`;
+}

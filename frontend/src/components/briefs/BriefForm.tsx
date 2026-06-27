@@ -22,6 +22,8 @@ import {
   type BriefFormPayload,
 } from '@/lib/campaignPayload';
 import { useToast } from '@/components/ui/ToastProvider';
+import { WeightSliders } from '@/components/briefs/WeightSliders';
+import { DEFAULT_CAMPAIGN_WEIGHTS, type CampaignWeights } from '@/types/campaign';
 
 type FieldErrors = Partial<Record<'brand' | 'product' | 'goals' | 'platforms', string>>;
 
@@ -59,6 +61,7 @@ export default function BriefForm() {
   const [activeDraftId, setActiveDraftId] = useState(draftCampaignId);
 
   const [brief, setBrief] = useState<BriefFormPayload>(emptyBrief);
+  const [weights, setWeights] = useState<CampaignWeights>(DEFAULT_CAMPAIGN_WEIGHTS);
 
   useEffect(() => {
     let cancelled = false;
@@ -316,6 +319,7 @@ export default function BriefForm() {
           entryPoint: 'brief_form',
           campaignName: brief.campaign || brief.product,
           briefSnapshot: buildBriefSnapshot(brief),
+          weights,
         });
       };
 
@@ -330,7 +334,7 @@ export default function BriefForm() {
       setLoadingStep(3);
 
       window.setTimeout(() => {
-        router.push(`/shortlist?campaignId=${encodeURIComponent(campaign.campaignId)}`);
+        router.push(`/matching?campaignId=${encodeURIComponent(campaign.campaignId)}`);
       }, 450);
     } catch (error) {
       clearInterval(counterInterval);
@@ -552,6 +556,11 @@ export default function BriefForm() {
               ))}
             </div>
             {fieldErrors.platforms ? <span className="hint" style={{ color: 'var(--coral)' }}>{fieldErrors.platforms}</span> : null}
+          </section>
+
+          <section className="section">
+            <div className="section-head"><span className="num">5b</span><h2>Scoring weights</h2><span className="desc">Tune how much each trust signal matters.</span></div>
+            <WeightSliders value={weights} onChange={setWeights} />
           </section>
 
           {/* Tier */}
