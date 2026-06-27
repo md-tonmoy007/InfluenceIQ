@@ -57,5 +57,12 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Stripe Billing (optional — billing endpoints return 503 when unset)
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_GROWTH_MONTHLY: str = ""
+    STRIPE_PRICE_GROWTH_ANNUAL: str = ""
+    FRONTEND_URL: str = "http://localhost:3000"
+
 
 settings = Settings()

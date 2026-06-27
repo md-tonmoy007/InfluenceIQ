@@ -293,7 +293,16 @@ class SettingsModelSurfaceTest(unittest.TestCase):
 
         # Subscription
         sub_cols = models.Subscription.__table__.columns
-        self.assertIn("plan", sub_cols)
+        for column in (
+            "plan",
+            "stripe_customer_id",
+            "stripe_subscription_id",
+            "billing_interval",
+            "status",
+            "trial_end",
+            "current_period_end",
+        ):
+            self.assertIn(column, sub_cols, f"Subscription.{column} should exist")
 
 
 class SettingsSchemaSurfaceTest(unittest.TestCase):
@@ -393,6 +402,23 @@ class SettingsRouterRoutesTest(unittest.TestCase):
         # Subscription
         self.assertIn(("GET", "/api/settings/subscription"), paths_by_method)
         self.assertIn(("POST", "/api/settings/subscription"), paths_by_method)
+
+
+class BillingRouterRoutesTest(unittest.TestCase):
+    """The billing router exposes checkout, portal, and webhook endpoints."""
+
+    def test_billing_routes_present(self) -> None:
+        from backend.api.routers import billing as billing_router
+
+        paths_by_method: dict[tuple[str, str], str] = {}
+        for route in billing_router.router.routes:
+            for method in route.methods or ():
+                if method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
+                    paths_by_method[(method, route.path)] = route.name
+
+        self.assertIn(("POST", "/api/billing/checkout"), paths_by_method)
+        self.assertIn(("POST", "/api/billing/portal"), paths_by_method)
+        self.assertIn(("POST", "/api/billing/webhook"), paths_by_method)
 
 
 class GetCurrentUserSoftDeleteFilterTest(unittest.TestCase):

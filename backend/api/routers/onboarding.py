@@ -29,13 +29,22 @@ def submit_onboarding(
         profile = BrandProfile(user_id=current_user.id, brand_name=payload.brand_name)
         db.add(profile)
 
+    # Only overwrite fields the client explicitly sent so partial step
+    # saves (and the settings brand form) don't null out untouched columns.
+    fields_set = payload.model_fields_set
     profile.brand_name = payload.brand_name
-    profile.industry = payload.industry
-    profile.company_size = payload.company_size
-    profile.country = payload.country
-    profile.goals = payload.goals
-    profile.platforms = payload.platforms
-    profile.monthly_budget = payload.monthly_budget
+    if "industry" in fields_set:
+        profile.industry = payload.industry
+    if "company_size" in fields_set:
+        profile.company_size = payload.company_size
+    if "country" in fields_set:
+        profile.country = payload.country
+    if "goals" in fields_set:
+        profile.goals = payload.goals
+    if "platforms" in fields_set:
+        profile.platforms = payload.platforms
+    if "monthly_budget" in fields_set:
+        profile.monthly_budget = payload.monthly_budget
 
     db.commit()
     db.refresh(profile)

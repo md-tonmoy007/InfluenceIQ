@@ -325,39 +325,77 @@ function DashboardContent() {
 }
 
 function UpgradeCard({ usage }: { usage: WorkspaceSummary["upgrade_usage"] }) {
+  const planLabels: Record<string, string> = {
+    starter: "Starter",
+    pro: "Pro",
+    scale: "Scale",
+  };
+  const planLabel = planLabels[usage.plan] ?? "Starter";
+  const isStarter = usage.plan === "starter";
+  const pct = Math.min(
+    100,
+    Math.round((usage.used / Math.max(1, usage.limit)) * 100)
+  );
+  const barState = pct >= 100 ? "full" : pct >= 80 ? "warn" : "ok";
+  const atLimit = usage.remaining <= 0;
+
+  const description = isStarter
+    ? "Unlock unlimited briefs, saved-list CRM, and sentiment analytics on Pro."
+    : atLimit
+      ? "You've reached your monthly brief limit. Manage your plan to add capacity."
+      : `${usage.remaining} brief slot${usage.remaining === 1 ? "" : "s"} remaining on your ${planLabel} plan.`;
+
   return (
-    <section className="panel" aria-label="Plan usage" style={{ marginTop: "18px" }}>
-      <div className="panel-head">
-        <h3>Plan & usage</h3>
-        <div className="meta">
-          <span>
-            {usage.used} of {usage.limit} active briefs this month
-          </span>
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-        <div style={{ flex: 1 }}>
+    <section className="plan-usage-card" aria-label="Plan usage">
+      <span className="sparkle" aria-hidden="true">
+        ✦
+      </span>
+      <div className="plan-usage-inner">
+        <div className="plan-usage-main">
+          <div className="plan-usage-head">
+            <div>
+              <span className="plan-badge">{planLabel}</span>
+              <h3>Plan &amp; usage</h3>
+            </div>
+            <div className="plan-usage-count" aria-label={`${usage.used} of ${usage.limit} briefs used`}>
+              <strong>{usage.used}</strong>
+              <span> / {usage.limit}</span>
+            </div>
+          </div>
+          <p className="plan-usage-desc">{description}</p>
           <div
-            style={{
-              height: "8px",
-              background: "var(--line, #efece4)",
-              borderRadius: "4px",
-              overflow: "hidden",
-            }}
+            className="plan-usage-bar"
+            role="progressbar"
+            aria-valuenow={usage.used}
+            aria-valuemin={0}
+            aria-valuemax={usage.limit}
+            aria-label="Brief usage this month"
           >
             <div
-              style={{
-                width: `${Math.min(100, Math.round((usage.used / Math.max(1, usage.limit)) * 100))}%`,
-                height: "100%",
-                background:
-                  "linear-gradient(90deg, oklch(0.58 0.22 285), oklch(0.74 0.18 30))",
-              }}
+              className={`plan-usage-bar-fill is-${barState}`}
+              style={{ width: `${pct}%` }}
             />
           </div>
+          <div className="plan-usage-foot">
+            <span>
+              {usage.used} of {usage.limit} active briefs this month
+            </span>
+            {atLimit ? (
+              <span className="plan-usage-warn">Limit reached</span>
+            ) : (
+              <span>{usage.remaining} remaining</span>
+            )}
+          </div>
         </div>
-        <Link className="btn btn-ghost btn-sm" href="/settings">
-          {usage.plan === "starter" ? "Upgrade to Pro" : "Manage plan"}
-        </Link>
+        <div className="plan-usage-cta">
+          <Link
+            className={`btn ${isStarter ? "btn-primary" : "btn-ghost"} btn-sm`}
+            href="/settings#billing"
+          >
+            {isStarter ? "Upgrade to Pro" : "Manage plan"}
+            <span className="arrow">→</span>
+          </Link>
+        </div>
       </div>
     </section>
   );

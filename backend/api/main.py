@@ -9,7 +9,7 @@ from fastapi.openapi.utils import get_openapi
 from backend.api.middleware.cors import setup_cors
 from backend.api.middleware.error_handlers import register_error_handlers
 from backend.api.middleware.request_logging import setup_logging_middleware
-from backend.api.routers import auth, campaigns, demo, health, influencers, lists, onboarding, websocket, workspace
+from backend.api.routers import auth, billing, campaigns, demo, health, influencers, lists, onboarding, websocket, workspace
 from backend.api.routers import settings as settings_router
 from backend.api.schemas.errors import ErrorEnvelope
 from backend.core.config import settings
@@ -78,6 +78,7 @@ register_error_handlers(app)
 
 # Register endpoints routers
 app.include_router(auth.router)
+app.include_router(billing.router)
 app.include_router(health.router)
 app.include_router(onboarding.router)
 app.include_router(settings_router.router)
@@ -118,6 +119,7 @@ def _custom_openapi() -> dict:
             {"name": "auth", "description": "Signup, login, token refresh, current-user lookup."},
             {"name": "onboarding", "description": "Create/retrieve the current user's brand profile."},
             {"name": "settings", "description": "Notifications, integrations, API keys, subscription."},
+            {"name": "billing", "description": "Stripe Checkout, Customer Portal, and webhooks."},
             {"name": "campaigns", "description": "Create, list, retrieve, and inspect campaigns."},
             {"name": "influencers", "description": "Influencer profile, score history, brand-safety flags."},
             {"name": "lists", "description": "User-curated saved lists of influencers."},

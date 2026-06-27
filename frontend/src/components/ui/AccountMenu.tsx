@@ -112,26 +112,6 @@ export default function AccountMenu({ orgName = "Northwind Outdoor", user }: Acc
             stroke="currentColor"
             strokeWidth="1.7"
           >
-            <circle cx="12" cy="8" r="4" />
-            <path d="M4 21a8 8 0 0 1 16 0" />
-          </svg>
-          Profile
-        </Link>
-        <Link
-          href="/settings"
-          style={itemStyle(1)}
-          onMouseEnter={() => setHoveredIndex(1)}
-          onMouseLeave={() => setHoveredIndex(null)}
-          onClick={() => setOpen(false)}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-          >
             <circle cx="12" cy="12" r="3" />
             <path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.5-2.5.9a7 7 0 0 0-2.1-1.2L14 3h-4l-.3 2.4a7 7 0 0 0-2.1 1.2L5.1 5.7l-2 3.5 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.5 2.5-.9c.6.5 1.4.9 2.1 1.2L10 21h4l.3-2.4a7 7 0 0 0 2.1-1.2l2.5.9 2-3.5-2-1.6c.1-.4.1-.8.1-1.2z" />
           </svg>
@@ -139,8 +119,8 @@ export default function AccountMenu({ orgName = "Northwind Outdoor", user }: Acc
         </Link>
         <button
           type="button"
-          style={itemStyle(2, true)}
-          onMouseEnter={() => setHoveredIndex(2)}
+          style={itemStyle(1, true)}
+          onMouseEnter={() => setHoveredIndex(1)}
           onMouseLeave={() => setHoveredIndex(null)}
           onClick={handleLogout}
         >

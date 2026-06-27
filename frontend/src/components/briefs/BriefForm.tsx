@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createCampaign } from '@/lib/api';
+import { createCampaign, getOnboarding } from '@/lib/api';
+import { briefDefaultsFromBrandProfile } from '@/lib/brandProfile';
 import { buildBriefSnapshot } from '@/lib/campaignPayload';
 import { useToast } from '@/components/ui/ToastProvider';
 
@@ -14,23 +15,48 @@ export default function BriefForm() {
   const [profileCount, setProfileCount] = useState(0);
 
   const [brief, setBrief] = useState({
-    brand: 'Northwind Outdoor',
-    product: 'SS26 Trail Capsule',
+    brand: '',
+    product: '',
     category: 'Outdoor & Activewear',
-    campaign: 'SS26 trail launch — May',
-    goal: 'Product Launch',
-    ages: ['18–24', '25–34'],
+    campaign: '',
+    goal: '',
+    ages: [] as string[],
     gender: 'All',
     lang: 'English',
-    locs: ['USA', 'Canada'],
-    interests: ['Hiking', 'Trail running', 'Sustainability', 'Pacific Northwest'],
+    locs: [] as string[],
+    interests: [] as string[],
     budgetMin: 2500,
     budgetMax: 12000,
     currency: 'USD',
-    platforms: ['Instagram', 'YouTube'],
+    platforms: [] as string[],
     tier: 'Established',
-    notes: 'Prefer creators with authentic outdoor lifestyle content. Strong preference for Pacific Northwest, Rocky Mountain, or West Coast audiences. Avoid heavy fashion-haul formats — we want story-driven posts.'
+    notes: ''
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    getOnboarding()
+      .then((profile) => {
+        if (cancelled) return;
+        const defaults = briefDefaultsFromBrandProfile(profile);
+        setBrief((prev) => ({
+          ...prev,
+          brand: defaults.brand || prev.brand,
+          category: defaults.category || prev.category,
+          goal: defaults.goal || prev.goal,
+          platforms: defaults.platforms.length ? defaults.platforms : prev.platforms,
+          budgetMax: defaults.budgetMax,
+          budgetMin: Math.min(prev.budgetMin, defaults.budgetMax),
+          locs: profile.country && profile.country !== 'Global' ? [profile.country] : prev.locs,
+        }));
+      })
+      .catch(() => {
+        // User hasn't onboarded — keep form defaults.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [tagInput, setTagInput] = useState('');
 

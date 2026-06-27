@@ -5,9 +5,8 @@ the same upsert-by-user pattern as :mod:`backend.api.routers.onboarding`
 so a save from the settings page creates the row on first call and
 updates it on subsequent calls.
 
-This module intentionally has no Stripe or real OAuth wiring — those
-endpoints flip a boolean in the DB and are documented as "stub" in
-the API description.
+This module handles notifications, integrations, API keys, and subscription
+reads. Plan changes go through :mod:`backend.api.routers.billing`.
 """
 
 from __future__ import annotations
@@ -29,6 +28,7 @@ from backend.api.schemas.settings import (
     SubscriptionUpdateRequest,
 )
 from backend.core.auth import get_current_user, hash_password
+from backend.core.billing.sync import subscription_to_response
 from backend.core.database.models import (
     ApiKey,
     IntegrationConnection,
@@ -279,7 +279,7 @@ def revoke_api_key(
 
 
 # ---------------------------------------------------------------------------
-# Subscription (stub)
+# Subscription
 # ---------------------------------------------------------------------------
 
 
@@ -300,9 +300,10 @@ def _get_or_create_subscription(db: Session, user_id: uuid.UUID) -> Subscription
 def get_subscription(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> Subscription:
-    """Return the current user's plan (``"starter"`` if no row yet)."""
-    return _get_or_create_subscription(db, current_user.id)
+) -> SubscriptionResponse:
+    """Return the current user's plan and Stripe billing metadata."""
+    sub = _get_or_create_subscription(db, current_user.id)
+    return subscription_to_response(sub)
 
 
 @router.post("/subscription", response_model=SubscriptionResponse)
@@ -310,17 +311,9 @@ def update_subscription(
     payload: SubscriptionUpdateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> Subscription:
-    """Stub: update the current user's ``plan`` field directly.
-
-    No payment processing, no Stripe — the settings UI calls this
-    from the "Upgrade to Pro" / "Compare plans" buttons. The free-text
-    ``plan`` field accepts any non-empty string but the UI only sends
-    ``"starter"``, ``"pro"``, or ``"scale"``.
-    """
-    sub = _get_or_create_subscription(db, current_user.id)
-    sub.plan = payload.plan
-    sub.updated_at = datetime.now(UTC)
-    db.commit()
-    db.refresh(sub)
-    return sub
+) -> SubscriptionResponse:
+    """Plan changes are handled via Stripe Checkout and Customer Portal."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Plan changes must be made through billing checkout or the customer portal",
+    )

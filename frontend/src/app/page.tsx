@@ -1,6 +1,8 @@
 import "./landing.css";
 import Link from "next/link";
 import LandingInteractions from "@/components/landing/LandingInteractions";
+import LandingNav from "@/components/landing/LandingNav";
+import LandingPriceCta from "@/components/landing/LandingPriceCta";
 
 export const metadata = {
   title: "InfluenceIQ \u2014 Find the Perfect Influencer. Instantly.",
@@ -30,27 +32,7 @@ export default function LandingPage() {
       {/* ===== LANDING ===== */}
       <div className="landing">
 
-        {/* ── Nav ── */}
-        <header className="nav">
-          <div className="nav-inner">
-            <a className="brand" href="#" aria-label="InfluenceIQ home">
-              <span className="brand-mark">i</span>
-              <span>InfluenceIQ</span>
-            </a>
-            <nav className="nav-links">
-              <a href="#">Discover</a>
-              <a href="#how">How It Works</a>
-              <a href="#">Pricing</a>
-            </nav>
-            <div className="nav-cta">
-              <Link className="signin" href="/login">Sign in</Link>
-              <Link className="btn btn-primary" href="/signup" id="cta-getstarted">
-                Get Started
-                <span className="arrow" aria-hidden="true">&rarr;</span>
-              </Link>
-            </div>
-          </div>
-        </header>
+        <LandingNav />
 
         {/* ── Hero ── */}
         <section className="hero">
@@ -584,7 +566,7 @@ export default function LandingPage() {
         </section>
 
         {/* ===== Section 6 — Pricing ===== */}
-        <section className="pricing">
+        <section className="pricing" id="pricing">
           <div className="pricing-inner">
             <div className="pricing-head">
               <div className="eyebrow-row">Pricing</div>
@@ -609,7 +591,7 @@ export default function LandingPage() {
                   <li><b>1</b>&nbsp;saved list</li>
                   <li>No contact reveal</li>
                 </ul>
-                <Link className="price-cta" href="/signup">Get Started Free <span className="arr">&rarr;</span></Link>
+                <LandingPriceCta plan="explorer" guestHref="/signup" guestLabel="Get Started Free" />
               </article>
 
               <article className="price-card popular">
@@ -625,7 +607,12 @@ export default function LandingPage() {
                   <li>Campaign brief builder</li>
                   <li>ROI estimator</li>
                 </ul>
-                <Link className="price-cta filled" href="/signup">Start Free Trial <span className="arr">&rarr;</span></Link>
+                <LandingPriceCta
+                  plan="growth"
+                  guestHref="/signup"
+                  guestLabel="Start Free Trial"
+                  filled
+                />
               </article>
 
               <article className="price-card">
@@ -639,7 +626,7 @@ export default function LandingPage() {
                   <li>Team seats &amp; SSO</li>
                   <li>Dedicated support</li>
                 </ul>
-                <a className="price-cta" href="#">Contact Sales <span className="arr">&rarr;</span></a>
+                <LandingPriceCta plan="scale" guestHref="#" guestLabel="Contact Sales" />
               </article>
             </div>
 

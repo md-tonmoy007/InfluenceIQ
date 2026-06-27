@@ -71,3 +71,36 @@ Celery tasks in `pipeline/tasks/` wrap this for async campaign execution. See [`
 ## Optional ML
 
 `backend/ml` is optional. The scoring pipeline uses deterministic heuristics by default and only calls ML when env flags are set (`ML_USE_SEMANTIC_V2`, etc.). See [`ml/README.md`](ml/README.md).
+
+## Stripe Billing (Growth subscriptions)
+
+Self-serve upgrades use **Stripe Checkout**; plan changes and cancellation use the **Customer Portal**. Webhooks sync state into the `subscriptions` table.
+
+### Dashboard setup (one-time)
+
+1. Create a **Growth** product with two recurring prices:
+   - **Monthly:** $29.00 USD / month
+   - **Annual:** $276.00 USD / year ($23/mo effective)
+2. Enable the **Customer Portal** with cancellation, plan switching between the two Growth prices, and payment-method updates.
+3. Register a webhook endpoint pointing at `/api/billing/webhook` with events:
+   `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
+
+### Local webhook forwarding
+
+```bash
+stripe listen --forward-to localhost:8000/api/billing/webhook
+```
+
+Copy the `whsec_...` signing secret into `STRIPE_WEBHOOK_SECRET`.
+
+### Environment variables (`backend/.env`)
+
+```bash
+STRIPE_SECRET_KEY=sk_test_...          # prefer rk_ restricted key in production
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_GROWTH_MONTHLY=price_...
+STRIPE_PRICE_GROWTH_ANNUAL=price_...
+FRONTEND_URL=http://localhost:3000
+```
+
+Billing endpoints return `503` when these are unset so the rest of the stack can run without Stripe configured.

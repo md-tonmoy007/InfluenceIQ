@@ -1,22 +1,43 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { submitOnboarding } from "@/lib/api";
+import { getOnboarding, submitOnboarding, type OnboardingPayload } from "@/lib/api";
 
 export default function OnboardingStepper() {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [brandName, setBrandName] = useState("Northwind Outdoor");
+  const [brandName, setBrandName] = useState("");
   const [industry, setIndustry] = useState("Outdoor & activewear");
   const [companySize, setCompanySize] = useState("11–50");
   const [country, setCountry] = useState("Canada");
-  const [goals, setGoals] = useState<string[]>(["awareness", "sales"]);
-  const [platforms, setPlatforms] = useState<string[]>(["instagram", "tiktok"]);
+  const [goals, setGoals] = useState<string[]>([]);
+  const [platforms, setPlatforms] = useState<string[]>([]);
   const [budget, setBudget] = useState(12500);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOnboarding()
+      .then((profile) => {
+        if (cancelled) return;
+        setBrandName(profile.brand_name);
+        if (profile.industry) setIndustry(profile.industry);
+        if (profile.company_size) setCompanySize(profile.company_size);
+        if (profile.country) setCountry(profile.country);
+        if (profile.goals?.length) setGoals(profile.goals);
+        if (profile.platforms?.length) setPlatforms(profile.platforms);
+        if (profile.monthly_budget != null) setBudget(profile.monthly_budget);
+      })
+      .catch(() => {
+        // No saved profile yet — keep blank defaults.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const go = (s: number) => {
     setStep(s);
@@ -39,21 +60,50 @@ export default function OnboardingStepper() {
     setBudget(parseInt(e.target.value, 10));
   };
 
-  const buildPayload = () => ({
-    brand_name: brandName,
-    industry,
-    company_size: companySize,
-    country,
-    goals,
-    platforms,
-    monthly_budget: budget,
-  });
+  type SaveStep = 1 | 2 | 3;
+
+  const buildPayload = (saveStep: SaveStep): OnboardingPayload => {
+    const payload: OnboardingPayload = {
+      brand_name: brandName.trim() || "Untitled brand",
+      industry,
+      company_size: companySize,
+      country,
+    };
+    if (saveStep >= 2) {
+      payload.goals = goals;
+    }
+    if (saveStep >= 3) {
+      payload.platforms = platforms;
+      payload.monthly_budget = budget;
+    }
+    return payload;
+  };
+
+  const saveProgress = async (saveStep: SaveStep) => {
+    setError(null);
+    await submitOnboarding(buildPayload(saveStep));
+  };
+
+  const advanceFromStep = async (fromStep: SaveStep, nextStep: number) => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await saveProgress(fromStep);
+      go(nextStep);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to save onboarding details"
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const finish = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      await submitOnboarding(buildPayload());
+      await saveProgress(3);
       router.push("/dashboard?welcome=1");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save onboarding details");
@@ -65,7 +115,8 @@ export default function OnboardingStepper() {
     // Best-effort: persist whatever was filled in so far, but don't block
     // the user from leaving onboarding if the save fails.
     try {
-      await submitOnboarding(buildPayload());
+      const saveStep: SaveStep = step >= 3 ? 3 : step >= 2 ? 2 : 1;
+      await saveProgress(saveStep);
     } catch {
       // ignored — skipping should never get stuck on a network error
     }
@@ -184,18 +235,25 @@ export default function OnboardingStepper() {
             </div>
             <div className="actions">
               <span></span>
-              <button className="next" onClick={() => go(2)}>
-                Next
-                <span
-                  style={{
-                    fontFamily: "Instrument Serif, serif",
-                    fontStyle: "italic",
-                  }}
-                >
-                  →
-                </span>
+              <button
+                className="next"
+                onClick={() => advanceFromStep(1, 2)}
+                disabled={submitting}
+              >
+                {submitting ? "Saving…" : "Next"}
+                {!submitting && (
+                  <span
+                    style={{
+                      fontFamily: "Instrument Serif, serif",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    →
+                  </span>
+                )}
               </button>
             </div>
+            {error && step === 1 && <p className="error">{error}</p>}
           </section>
 
           {/* STEP 2 */}
@@ -301,21 +359,28 @@ export default function OnboardingStepper() {
               </span>
             </div>
             <div className="actions">
-              <button className="back" onClick={() => go(1)}>
+              <button className="back" onClick={() => go(1)} disabled={submitting}>
                 ← Back
               </button>
-              <button className="next" onClick={() => go(3)}>
-                Next
-                <span
-                  style={{
-                    fontFamily: "Instrument Serif, serif",
-                    fontStyle: "italic",
-                  }}
-                >
-                  →
-                </span>
+              <button
+                className="next"
+                onClick={() => advanceFromStep(2, 3)}
+                disabled={submitting}
+              >
+                {submitting ? "Saving…" : "Next"}
+                {!submitting && (
+                  <span
+                    style={{
+                      fontFamily: "Instrument Serif, serif",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    →
+                  </span>
+                )}
               </button>
             </div>
+            {error && step === 2 && <p className="error">{error}</p>}
           </section>
 
           {/* STEP 3 */}

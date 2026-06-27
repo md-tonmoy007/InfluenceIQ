@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import AppShell from '@/components/shell/AppShell';
 import SettingsToggles from '@/components/settings/SettingsToggles';
 import SettingsNav from '@/components/settings/SettingsNav';
@@ -32,7 +32,9 @@ export default function SettingsPage() {
           <div>
             <ProfileForm />
             <BrandForm />
-            <PlanBillingSection />
+            <Suspense fallback={<section className="card"><p className="desc">Loading billing…</p></section>}>
+              <PlanBillingSection />
+            </Suspense>
             <SettingsToggles />
             <IntegrationsSection />
             <ApiKeysSection />

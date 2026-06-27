@@ -437,12 +437,11 @@ class ApiKey(Base):
 
 
 class Subscription(Base):
-    """Stub subscription plan for a user.
+    """Subscription plan for a user, synced from Stripe Billing.
 
-    One-to-one with :class:`User`. The ``plan`` field is a free-text
-    string (``"starter"`` / ``"pro"`` / ``"scale"``); the settings
-    UI flips it via ``POST /api/settings/subscription``. No payment
-    processing, no Stripe — the value is purely cosmetic.
+    One-to-one with :class:`User`. ``plan`` is ``"starter"`` /
+    ``"pro"`` / ``"scale"``. Paid Growth (``pro``) is provisioned via
+    Stripe Checkout; downgrades and cancellations sync from webhooks.
     """
     __tablename__ = "subscriptions"
 
@@ -451,6 +450,12 @@ class Subscription(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     plan = Column(String, nullable=False, default="starter", server_default="starter")
+    stripe_customer_id = Column(String, nullable=True, index=True)
+    stripe_subscription_id = Column(String, nullable=True, unique=True)
+    billing_interval = Column(String, nullable=True)
+    status = Column(String, nullable=True)
+    trial_end = Column(DateTime, nullable=True)
+    current_period_end = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="subscription")

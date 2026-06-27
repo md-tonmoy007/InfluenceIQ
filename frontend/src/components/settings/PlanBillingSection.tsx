@@ -1,64 +1,93 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getSubscription, updateSubscription, type PlanId } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  createBillingPortalSession,
+  createCheckoutSession,
+  getSubscription,
+  type BillingInterval,
+  type PlanId,
+  type Subscription,
+} from "@/lib/api";
 
 const PLANS: Array<{
   id: PlanId;
   name: string;
-  price: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
   bullets: string[];
+  selfServe: boolean;
 }> = [
   {
     id: "starter",
-    name: "Starter",
-    price: "$0",
+    name: "Explorer",
+    monthlyPrice: 0,
+    yearlyPrice: 0,
     bullets: ["5 active briefs", "Up to 200 matches", "CSV export"],
+    selfServe: true,
   },
   {
     id: "pro",
-    name: "Pro",
-    price: "$149",
+    name: "Growth",
+    monthlyPrice: 29,
+    yearlyPrice: 23,
     bullets: [
       "Unlimited briefs",
       "Direct outreach",
       "Saved-list CRM",
       "Sentiment analytics",
     ],
+    selfServe: true,
   },
   {
     id: "scale",
     name: "Scale",
-    price: "$499",
+    monthlyPrice: 0,
+    yearlyPrice: 0,
     bullets: [
-      "Everything in Pro",
+      "Everything in Growth",
       "5 seats included",
       "API access",
       "Priority support",
     ],
+    selfServe: false,
   },
 ];
 
+function formatPeriodEnd(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export default function PlanBillingSection() {
-  const [currentPlan, setCurrentPlan] = useState<string>("starter");
+  const searchParams = useSearchParams();
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<PlanId | null>(null);
+  const [busy, setBusy] = useState<"checkout" | "portal" | null>(null);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(
     null
   );
 
+  const loadSubscription = useCallback(async () => {
+    const sub = await getSubscription();
+    setSubscription(sub);
+    if (sub.billing_interval) {
+      setBillingInterval(sub.billing_interval);
+    }
+    return sub;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    getSubscription()
-      .then((sub) => {
-        if (!cancelled) {
-          // Normalise the server's free-text ``plan`` to one of our
-          // three known ids so the "current" badge sticks to the
-          // matching card. Unknown values still render as the active
-          // plan via the free-text check below.
-          setCurrentPlan(sub.plan);
-        }
-      })
+    loadSubscription()
       .catch((err) => {
         if (!cancelled) {
           setMessage({
@@ -73,27 +102,89 @@ export default function PlanBillingSection() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadSubscription]);
 
-  const switchPlan = async (plan: PlanId) => {
-    if (plan === currentPlan) return;
-    setBusy(plan);
+  useEffect(() => {
+    const billing = searchParams.get("billing");
+    if (!billing) return;
+
+    const scrollToBilling = () => {
+      const el = document.getElementById("billing");
+      if (!el) return;
+      const topbarHeight = 64;
+      const padding = 24;
+      const offset =
+        el.getBoundingClientRect().top + window.scrollY - topbarHeight - padding;
+      window.scrollTo({ top: offset, behavior: "smooth" });
+    };
+
+    scrollToBilling();
+
+    if (billing === "success") {
+      void loadSubscription()
+        .then(() => {
+          setMessage({
+            type: "ok",
+            text: "Subscription updated. Your plan will reflect shortly.",
+          });
+        })
+        .catch(() => {
+          setMessage({
+            type: "ok",
+            text: "Checkout completed. Refresh if your plan has not updated yet.",
+          });
+        });
+    } else if (billing === "canceled") {
+      setMessage({ type: "err", text: "Checkout was canceled." });
+    }
+
+    window.history.replaceState(null, "", "/settings#billing");
+  }, [searchParams, loadSubscription]);
+
+  const currentPlan = subscription?.plan ?? "starter";
+  const isPaid =
+    subscription?.status === "active" ||
+    subscription?.status === "trialing" ||
+    subscription?.status === "past_due";
+  const trialEndLabel = formatPeriodEnd(subscription?.trial_end ?? null);
+  const renewLabel = formatPeriodEnd(subscription?.current_period_end ?? null);
+
+  const startCheckout = async () => {
+    setBusy("checkout");
     setMessage(null);
     try {
-      const sub = await updateSubscription(plan);
-      setCurrentPlan(sub.plan);
-      setMessage({
-        type: "ok",
-        text: `Switched to the ${plan} plan.`,
-      });
+      const { checkout_url } = await createCheckoutSession("pro", billingInterval);
+      window.location.href = checkout_url;
     } catch (err) {
       setMessage({
         type: "err",
-        text: err instanceof Error ? err.message : "Failed to switch plan",
+        text: err instanceof Error ? err.message : "Failed to start checkout",
       });
-    } finally {
       setBusy(null);
     }
+  };
+
+  const openPortal = async () => {
+    setBusy("portal");
+    setMessage(null);
+    try {
+      const { portal_url } = await createBillingPortalSession();
+      window.location.href = portal_url;
+    } catch (err) {
+      setMessage({
+        type: "err",
+        text: err instanceof Error ? err.message : "Failed to open billing portal",
+      });
+      setBusy(null);
+    }
+  };
+
+  const displayPrice = (plan: (typeof PLANS)[number]) => {
+    if (plan.id === "scale") return "Custom";
+    if (plan.monthlyPrice === 0) return "$0";
+    const amount =
+      billingInterval === "year" ? plan.yearlyPrice : plan.monthlyPrice;
+    return `$${amount}`;
   };
 
   return (
@@ -102,32 +193,47 @@ export default function PlanBillingSection() {
       <p className="desc">
         {loading
           ? "Loading your current plan…"
-          : `You're on the ${capitalize(currentPlan)}. Upgrade for unlimited briefs and direct outreach.`}
+          : isPaid
+            ? `You're on ${capitalize(currentPlan)}. Manage billing or change your plan below.`
+            : `You're on ${capitalize(currentPlan)}. Upgrade for unlimited briefs and direct outreach.`}
       </p>
+
+      <div className="billing-toggle" style={{ marginBottom: "16px" }}>
+        <button
+          type="button"
+          className={billingInterval === "month" ? "on" : ""}
+          onClick={() => setBillingInterval("month")}
+          disabled={busy !== null || isPaid}
+        >
+          Monthly
+        </button>
+        <button
+          type="button"
+          className={billingInterval === "year" ? "on" : ""}
+          onClick={() => setBillingInterval("year")}
+          disabled={busy !== null || isPaid}
+        >
+          Annual <span className="save">SAVE 20%</span>
+        </button>
+      </div>
 
       <div className="plan-grid">
         {PLANS.map((p) => {
           const isCurrent = p.id === currentPlan;
+          const isScale = p.id === "scale";
           return (
             <div
               key={p.id}
               className={`plan${isCurrent ? " current" : ""}`}
-              onClick={() => {
-                if (!isCurrent && !busy) void switchPlan(p.id);
-              }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if ((e.key === "Enter" || e.key === " ") && !isCurrent && !busy) {
-                  void switchPlan(p.id);
-                }
-              }}
-              style={{ cursor: isCurrent ? "default" : "pointer" }}
+              role="presentation"
+              style={{ cursor: "default" }}
             >
               <h3>{p.name}</h3>
               <div className="price">
-                {p.price}
-                <span className="u">/mo</span>
+                {displayPrice(p)}
+                {!isScale && p.monthlyPrice > 0 && (
+                  <span className="u">/mo</span>
+                )}
               </div>
               <ul>
                 {p.bullets.map((b) => (
@@ -160,26 +266,29 @@ export default function PlanBillingSection() {
           flexWrap: "wrap",
         }}
       >
-        <button
-          className="btn btn-primary btn-sm"
-          type="button"
-          onClick={() => switchPlan("pro")}
-          disabled={currentPlan === "pro" || busy !== null}
-        >
-          {busy === "pro"
-            ? "Switching…"
-            : currentPlan === "pro"
-              ? "On Pro plan"
-              : "Upgrade to Pro"}
-        </button>
-        <button
-          className="btn btn-ghost btn-sm"
-          type="button"
-          onClick={() => switchPlan("scale")}
-          disabled={currentPlan === "scale" || busy !== null}
-        >
-          Compare plans →
-        </button>
+        {currentPlan === "starter" && (
+          <button
+            className="btn btn-primary btn-sm"
+            type="button"
+            onClick={() => void startCheckout()}
+            disabled={busy !== null}
+          >
+            {busy === "checkout" ? "Redirecting…" : "Start 14-day free trial"}
+          </button>
+        )}
+        {isPaid && (
+          <button
+            className="btn btn-primary btn-sm"
+            type="button"
+            onClick={() => void openPortal()}
+            disabled={busy !== null}
+          >
+            {busy === "portal" ? "Opening…" : "Manage plan"}
+          </button>
+        )}
+        <a className="btn btn-ghost btn-sm" href="mailto:sales@influenceiq.com">
+          Contact sales for Scale
+        </a>
       </div>
 
       {message && (
@@ -215,10 +324,18 @@ export default function PlanBillingSection() {
           Payment method
         </div>
         <div className="billing-card">
-          <span className="pic">VISA</span>
+          <span className="pic">
+            {subscription?.has_payment_method ? "PRO" : "FREE"}
+          </span>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: "13.5px", fontWeight: 500 }}>
-              No payment method on file
+              {subscription?.status === "past_due"
+                ? "Payment failed — update your card"
+                : subscription?.status === "trialing"
+                  ? "Trial active"
+                  : subscription?.has_payment_method
+                    ? "Growth subscription active"
+                    : "No payment method on file"}
             </div>
             <div
               style={{
@@ -227,18 +344,31 @@ export default function PlanBillingSection() {
                 marginTop: "1px",
               }}
             >
-              Billing is a placeholder for this release — no card is
-              stored, and plan switches are stub-only.
+              {subscription?.status === "trialing" && trialEndLabel
+                ? `Trial ends ${trialEndLabel}.`
+                : subscription?.status === "past_due"
+                  ? "Update your payment method in the billing portal to avoid interruption."
+                  : subscription?.has_payment_method && renewLabel
+                    ? `Renews ${renewLabel}${
+                        subscription.billing_interval === "year"
+                          ? " (annual)"
+                          : subscription.billing_interval === "month"
+                            ? " (monthly)"
+                            : ""
+                      }.`
+                    : "Upgrade to Growth for a 14-day trial with card on file."}
             </div>
           </div>
-          <button
-            className="btn btn-ghost btn-sm"
-            type="button"
-            disabled
-            title="Card management is not wired in this release"
-          >
-            Update
-          </button>
+          {(isPaid || subscription?.has_payment_method) && (
+            <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              onClick={() => void openPortal()}
+              disabled={busy !== null}
+            >
+              Update
+            </button>
+          )}
         </div>
       </div>
     </section>
@@ -246,6 +376,11 @@ export default function PlanBillingSection() {
 }
 
 function capitalize(value: string): string {
-  if (!value) return "Starter";
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  if (!value) return "Explorer";
+  const labels: Record<string, string> = {
+    starter: "Explorer",
+    pro: "Growth",
+    scale: "Scale",
+  };
+  return labels[value] ?? value.charAt(0).toUpperCase() + value.slice(1);
 }

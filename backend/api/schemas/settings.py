@@ -111,13 +111,16 @@ class ApiKeyCreatedResponse(ApiKeyResponse):
 
 
 class SubscriptionResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     plan: str
+    status: str | None = None
+    billing_interval: str | None = None
+    trial_end: datetime | None = None
+    current_period_end: datetime | None = None
+    has_payment_method: bool = False
     updated_at: datetime
 
 
 class SubscriptionUpdateRequest(BaseModel):
-    """Stub: the UI sends a new plan string and we just flip the field."""
+    """Deprecated — plan changes are handled via Stripe Checkout / Portal."""
 
     plan: str = Field(..., min_length=1, max_length=64)

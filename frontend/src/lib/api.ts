@@ -639,6 +639,35 @@ export const logout = async (): Promise<{ status: string }> =>
 export const getMe = async (): Promise<CurrentUser> =>
   requestJson<CurrentUser>("/api/auth/me");
 
+/** Like getMe, but returns null for unauthenticated users without redirecting. */
+export const getMeOptional = async (): Promise<CurrentUser | null> => {
+  if (!API_BASE_URL) return null;
+
+  const fetchMe = async (token?: string | null): Promise<Response> => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return fetch(apiUrl("/api/auth/me"), {
+      method: "GET",
+      credentials: "include",
+      headers,
+      cache: "no-store",
+    });
+  };
+
+  let response = await fetchMe(getAccessToken());
+  if (response.status === 401) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      response = await fetchMe(newToken);
+    } else {
+      return null;
+    }
+  }
+
+  if (!response.ok) return null;
+  return response.json() as Promise<CurrentUser>;
+};
+
 export type OnboardingPayload = {
   brand_name: string;
   industry?: string | null;
@@ -785,23 +814,37 @@ export const revokeApiKey = async (id: string): Promise<void> => {
 };
 
 // ---------------------------------------------------------------------------
-// Settings: subscription (stub — no real Stripe wiring)
+// Settings: subscription (Stripe Billing via /api/billing)
 // ---------------------------------------------------------------------------
 
 export type PlanId = "starter" | "pro" | "scale";
+export type BillingInterval = "month" | "year";
 
 export type Subscription = {
   plan: string;
+  status: string | null;
+  billing_interval: BillingInterval | null;
+  trial_end: string | null;
+  current_period_end: string | null;
+  has_payment_method: boolean;
   updated_at: string;
 };
 
 export const getSubscription = async (): Promise<Subscription> =>
   requestJson<Subscription>("/api/settings/subscription");
 
-export const updateSubscription = async (plan: string): Promise<Subscription> =>
-  requestJson<Subscription>("/api/settings/subscription", {
+export const createCheckoutSession = async (
+  plan: "pro",
+  interval: BillingInterval
+): Promise<{ checkout_url: string }> =>
+  requestJson<{ checkout_url: string }>("/api/billing/checkout", {
     method: "POST",
-    body: JSON.stringify({ plan }),
+    body: JSON.stringify({ plan, interval }),
+  });
+
+export const createBillingPortalSession = async (): Promise<{ portal_url: string }> =>
+  requestJson<{ portal_url: string }>("/api/billing/portal", {
+    method: "POST",
   });
 
 // ---------------------------------------------------------------------------

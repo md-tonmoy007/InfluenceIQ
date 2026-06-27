@@ -1,29 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getOnboarding, submitOnboarding, type BrandProfile } from "@/lib/api";
-
-const INDUSTRY_OPTIONS = [
-  "Outdoor & activewear",
-  "Beauty & skincare",
-  "Food & beverage",
-  "Tech & SaaS",
-  "Fashion & apparel",
-  "Fitness & wellness",
-  "Travel & hospitality",
-  "Gaming & entertainment",
-];
-
-const COMPANY_SIZE_OPTIONS = ["1–10", "11–50", "51–200", "201–1000", "1000+"];
-
-const COUNTRY_OPTIONS = [
-  "United States",
-  "Canada",
-  "United Kingdom",
-  "India",
-  "Bangladesh",
-  "Global",
-];
+import { getOnboarding, submitOnboarding } from "@/lib/api";
+import {
+  BUDGET_MAX,
+  BUDGET_MIN,
+  BUDGET_STEP,
+  COMPANY_SIZE_OPTIONS,
+  COUNTRY_OPTIONS,
+  DEFAULT_MONTHLY_BUDGET,
+  GOAL_OPTIONS,
+  INDUSTRY_OPTIONS,
+  PLATFORM_OPTIONS,
+  budgetSliderPercent,
+} from "@/lib/brandProfile";
 
 export default function BrandForm() {
   const [loading, setLoading] = useState(true);
@@ -32,23 +22,27 @@ export default function BrandForm() {
     null
   );
   const [brandName, setBrandName] = useState("");
-  const [industry, setIndustry] = useState(INDUSTRY_OPTIONS[0]);
-  const [companySize, setCompanySize] = useState(COMPANY_SIZE_OPTIONS[1]);
-  const [country, setCountry] = useState(COUNTRY_OPTIONS[1]);
+  const [industry, setIndustry] = useState<string>(INDUSTRY_OPTIONS[0]);
+  const [companySize, setCompanySize] = useState<string>(COMPANY_SIZE_OPTIONS[1]);
+  const [country, setCountry] = useState<string>(COUNTRY_OPTIONS[1]);
+  const [goals, setGoals] = useState<string[]>([]);
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [monthlyBudget, setMonthlyBudget] = useState(DEFAULT_MONTHLY_BUDGET);
 
   useEffect(() => {
     let cancelled = false;
     getOnboarding()
-      .then((profile: BrandProfile) => {
+      .then((profile) => {
         if (cancelled) return;
         setBrandName(profile.brand_name);
         if (profile.industry) setIndustry(profile.industry);
         if (profile.company_size) setCompanySize(profile.company_size);
         if (profile.country) setCountry(profile.country);
+        setGoals(profile.goals ?? []);
+        setPlatforms(profile.platforms ?? []);
+        setMonthlyBudget(profile.monthly_budget ?? DEFAULT_MONTHLY_BUDGET);
       })
       .catch(() => {
-        // 404 means the user hasn't onboarded yet — fall back to
-        // blank defaults so they can fill the form from scratch.
         if (cancelled) return;
         setBrandName("");
       })
@@ -60,6 +54,20 @@ export default function BrandForm() {
     };
   }, []);
 
+  const toggleGoal = (goalId: string) => {
+    setGoals((prev) =>
+      prev.includes(goalId) ? prev.filter((id) => id !== goalId) : [...prev, goalId]
+    );
+  };
+
+  const togglePlatform = (platformId: string) => {
+    setPlatforms((prev) =>
+      prev.includes(platformId)
+        ? prev.filter((id) => id !== platformId)
+        : [...prev, platformId]
+    );
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -70,6 +78,9 @@ export default function BrandForm() {
         industry,
         company_size: companySize,
         country,
+        goals,
+        platforms,
+        monthly_budget: monthlyBudget,
       });
       setMessage({ type: "ok", text: "Brand profile saved." });
     } catch (err) {
@@ -81,6 +92,8 @@ export default function BrandForm() {
       setSaving(false);
     }
   };
+
+  const budgetPct = budgetSliderPercent(monthlyBudget);
 
   if (loading) {
     return (
@@ -107,10 +120,7 @@ export default function BrandForm() {
           </div>
           <div className="field">
             <label>Industry</label>
-            <select
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-            >
+            <select value={industry} onChange={(e) => setIndustry(e.target.value)}>
               {INDUSTRY_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>
                   {opt}
@@ -122,10 +132,7 @@ export default function BrandForm() {
         <div className="row">
           <div className="field">
             <label>Country</label>
-            <select
-              value={country}
-              onChange={(e) => setCountry(e.target.value)}
-            >
+            <select value={country} onChange={(e) => setCountry(e.target.value)}>
               {COUNTRY_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>
                   {opt}
@@ -147,6 +154,80 @@ export default function BrandForm() {
             </select>
           </div>
         </div>
+
+        <div className="brand-section">
+          <h3>Campaign goals</h3>
+          <p className="brand-section-desc">
+            Prioritise creators with proven outcomes against these goals.
+          </p>
+          <div className="brand-chips">
+            {GOAL_OPTIONS.map((goal) => (
+              <button
+                key={goal.id}
+                type="button"
+                className={`brand-chip ${goals.includes(goal.id) ? "on" : ""}`}
+                onClick={() => toggleGoal(goal.id)}
+              >
+                {goal.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="brand-section">
+          <h3>Platforms</h3>
+          <p className="brand-section-desc">
+            The channels you focus on for influencer campaigns.
+          </p>
+          <div className="brand-platforms">
+            {PLATFORM_OPTIONS.map((platform) => (
+              <button
+                key={platform.id}
+                type="button"
+                className={`brand-platform ${platforms.includes(platform.id) ? "on" : ""}`}
+                onClick={() => togglePlatform(platform.id)}
+              >
+                <span className="brand-platform-name">{platform.label}</span>
+                <span className="brand-platform-desc">{platform.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="brand-section">
+          <h3>Monthly budget</h3>
+          <p className="brand-section-desc">
+            Typical monthly spend on influencer campaigns.
+          </p>
+          <div className="brand-budget">
+            <div className="brand-budget-head">
+              <span className="brand-budget-value">
+                ${monthlyBudget.toLocaleString()}
+                <span className="brand-budget-unit">/mo</span>
+              </span>
+            </div>
+            <div className="brand-slider">
+              <div className="brand-slider-fill" style={{ width: `${budgetPct}%` }} />
+              <div className="brand-slider-thumb" style={{ left: `${budgetPct}%` }} />
+              <input
+                type="range"
+                min={BUDGET_MIN}
+                max={BUDGET_MAX}
+                step={BUDGET_STEP}
+                value={monthlyBudget}
+                onChange={(e) => setMonthlyBudget(parseInt(e.target.value, 10))}
+                aria-label="Monthly budget"
+              />
+            </div>
+            <div className="brand-slider-scale">
+              <span>$500</span>
+              <span>$10K</span>
+              <span>$25K</span>
+              <span>$50K+</span>
+            </div>
+          </div>
+        </div>
+
         {message && (
           <p
             className="msg"

@@ -28,6 +28,7 @@ dependencies = [
   "bcrypt==4.0.1",
   "PyJWT==2.10.1",
   "rapidfuzz==3.10.1",
+  "stripe>=11,<12",
 ]
 
 [tool.setuptools.packages.find]

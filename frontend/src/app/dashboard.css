@@ -384,6 +384,128 @@
   .stats .stat:nth-child(2) { animation-delay: .15s; }
   .stats .stat:nth-child(3) { animation-delay: .25s; }
   .panel { animation-delay: .35s; }
+  .plan-usage-card {
+    position: relative;
+    margin-top: 18px;
+    padding: 22px 24px;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--line);
+    background:
+      radial-gradient(280px 120px at 100% 0%, rgba(255, 122, 89, 0.18), transparent 55%),
+      radial-gradient(240px 100px at 0% 100%, rgba(120, 80, 255, 0.18), transparent 55%),
+      #fff;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: cardIn .6s cubic-bezier(.2, .8, .2, 1) .42s forwards;
+  }
+  .plan-usage-card .sparkle {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    font-size: 14px;
+    background: linear-gradient(135deg, var(--violet), var(--coral));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-style: italic;
+    pointer-events: none;
+  }
+  .plan-usage-inner {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+  .plan-usage-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .plan-usage-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .plan-badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--violet-soft);
+    color: var(--violet-ink);
+    border: 1px solid color-mix(in oklab, var(--violet), white 80%);
+    margin-bottom: 6px;
+  }
+  .plan-usage-card h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+  }
+  .plan-usage-count {
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+    line-height: 1;
+    padding-top: 4px;
+  }
+  .plan-usage-count strong {
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .plan-usage-desc {
+    margin: 0 0 14px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+    max-width: 52ch;
+  }
+  .plan-usage-bar {
+    height: 10px;
+    background: var(--paper-2);
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid var(--line-soft);
+  }
+  .plan-usage-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--violet), var(--coral));
+    transition: width .4s ease;
+  }
+  .plan-usage-bar-fill.is-warn {
+    background: linear-gradient(90deg, oklch(0.72 0.16 75), var(--coral));
+  }
+  .plan-usage-bar-fill.is-full {
+    background: linear-gradient(90deg, oklch(0.55 0.20 25), var(--coral));
+  }
+  .plan-usage-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .plan-usage-warn {
+    color: oklch(0.40 0.18 30);
+    font-weight: 500;
+  }
+  .plan-usage-cta {
+    flex-shrink: 0;
+  }
+  .plan-usage-cta .btn {
+    white-space: nowrap;
+    min-height: 38px;
+    padding-inline: 16px;
+  }
   @keyframes cardIn { to { opacity: 1; transform: none; } }
 
   /* pulseDot used by notification dot */
@@ -610,6 +732,15 @@
     .panel {
       overflow-x: auto;
     }
+    .plan-usage-inner {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 18px;
+    }
+    .plan-usage-cta .btn {
+      width: 100%;
+      justify-content: center;
+    }
   }
 
   @media (max-width: 640px) {
@@ -675,5 +806,18 @@
     .empty-row td {
       padding-left: 14px;
       padding-right: 14px;
+    }
+    .plan-usage-card {
+      padding: 18px 16px;
+    }
+    .plan-usage-head {
+      flex-wrap: wrap;
+    }
+    .plan-usage-count {
+      padding-top: 0;
+    }
+    .plan-usage-foot {
+      flex-direction: column;
+      gap: 4px;
     }
   }

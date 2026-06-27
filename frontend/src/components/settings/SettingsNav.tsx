@@ -21,6 +21,20 @@ export default function SettingsNav() {
   const [activeId, setActiveId] = useState('profile');
 
   useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (hash && navItems.some((item) => item.id === hash)) {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(hash);
+        if (el) {
+          const topbarHeight = 64;
+          const padding = 24;
+          const offset = el.getBoundingClientRect().top + window.scrollY - topbarHeight - padding;
+          window.scrollTo({ top: offset, behavior: 'smooth' });
+          setActiveId(hash);
+        }
+      });
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
