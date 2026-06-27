@@ -20,6 +20,7 @@ import {
   formatCompactNumber,
   titleize,
 } from "@/lib/influencerPresentation";
+import { shortlistHref } from "@/lib/routes";
 import ProfileInteractions from "./ProfileInteractions";
 
 type LiveProfilePageClientProps = {
@@ -152,8 +153,8 @@ export default function LiveProfilePageClient({
     return (
       <div className="panel">
         <p>{error || "Creator profile unavailable."}</p>
-        <Link className="back-link" href={campaignId ? `/discover?campaignId=${encodeURIComponent(campaignId)}` : "/discover"}>
-          Back to discover
+        <Link className="back-link" href={campaignId ? shortlistHref(campaignId) : "/discover"}>
+          Back to shortlist
         </Link>
       </div>
     );
@@ -163,12 +164,12 @@ export default function LiveProfilePageClient({
     <>
       <Link
         className="back-link"
-        href={campaignId ? `/discover?campaignId=${encodeURIComponent(campaignId)}` : "/discover"}
+        href={campaignId ? shortlistHref(campaignId) : "/discover"}
       >
         <svg className="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ width: "14px", height: "14px" }}>
           <path d="M15 6l-6 6 6 6" />
         </svg>
-        Back to Discover
+        Back to shortlist
       </Link>
 
       <div className="layout">

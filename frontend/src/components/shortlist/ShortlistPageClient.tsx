@@ -224,6 +224,58 @@ const eventLabel = (event: CampaignPipelineEvent) => {
   }
 };
 
+type ListEmptyStat = { label: string; value: string };
+
+function ListEmptyState({
+  title,
+  description,
+  stats,
+  progressPct,
+  progressLabel,
+  loading = false,
+}: {
+  title: string;
+  description: string;
+  stats?: ListEmptyStat[];
+  progressPct?: number | null;
+  progressLabel?: string;
+  loading?: boolean;
+}) {
+  return (
+    <article className="list-empty">
+      <div className={`list-empty-icon ${loading ? 'loading' : ''}`} aria-hidden="true">
+        {loading ? null : (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round" />
+          </svg>
+        )}
+      </div>
+      <div className="list-empty-body">
+        <h3>{title}</h3>
+        <p>{description}</p>
+        {stats?.length ? (
+          <div className="list-empty-stats">
+            {stats.map(stat => (
+              <div key={stat.label} className="list-empty-stat">
+                <span className="k">{stat.label}</span>
+                <span className="v">{stat.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {progressPct != null ? (
+          <div className="list-empty-progress">
+            <div className="bar">
+              <div className="fill" style={{ width: `${Math.min(100, Math.max(0, progressPct))}%` }} />
+            </div>
+            {progressLabel ? <div className="hint">{progressLabel}</div> : null}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 export default function ShortlistPageClient() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
@@ -568,6 +620,17 @@ export default function ShortlistPageClient() {
   });
   const stateStatus = pipelineState?.status ?? campaign?.status ?? 'loading';
   const statePhase = String(pipelineState?.phase ?? 'queued');
+  const urlsScraped = pipelineState?.urls_scraped ?? 0;
+  const urlsDiscovered = pipelineState?.urls_discovered ?? 0;
+  const scoresComputed = pipelineState?.scores_computed ?? 0;
+  const urlProgressPct =
+    urlsDiscovered > 0 ? Math.round((urlsScraped / urlsDiscovered) * 100) : null;
+  const pipelineStats: ListEmptyStat[] = [
+    { label: 'Status', value: titleize(stateStatus) },
+    { label: 'Phase', value: titleize(statePhase) },
+    { label: 'URLs scraped', value: `${urlsScraped}/${urlsDiscovered}` },
+    { label: 'Scores', value: String(scoresComputed) },
+  ];
 
   if (!campaignId) {
     return (
@@ -628,12 +691,11 @@ export default function ShortlistPageClient() {
       <div className="layout">
         <section className="list">
           {loadingCampaign ? (
-            <article className="row checked">
-              <div className="info-col">
-                <div className="name-row"><span className="name">Loading campaign</span></div>
-                <div className="reason">Connecting to backend and fetching campaign state.</div>
-              </div>
-            </article>
+            <ListEmptyState
+              title="Loading campaign"
+              description="Connecting to the backend and fetching your campaign state."
+              loading
+            />
           ) : matches.length ? (
             matches.map((m, i) => {
               const circ = 2 * Math.PI * 28;
@@ -712,14 +774,22 @@ export default function ShortlistPageClient() {
               );
             })
           ) : (
-            <article className="row checked">
-              <div className="info-col">
-                <div className="name-row"><span className="name">{loadingInfluencers ? 'Loading shortlist' : 'Campaign is still processing'}</span></div>
-                <div className="reason">
-                  Status: {titleize(stateStatus)} · Phase: {titleize(statePhase)} · URLs {pipelineState?.urls_scraped ?? 0}/{pipelineState?.urls_discovered ?? 0} · Scores {pipelineState?.scores_computed ?? 0}
-                </div>
-              </div>
-            </article>
+            <ListEmptyState
+              title={loadingInfluencers ? 'Loading shortlist' : 'Campaign is still processing'}
+              description={
+                loadingInfluencers
+                  ? 'Pulling ranked creators as the pipeline surfaces matches.'
+                  : 'InfluenceIQ is discovering creators, scraping profiles, and scoring fit against your brief. Matches will appear here automatically.'
+              }
+              stats={pipelineStats}
+              progressPct={urlProgressPct}
+              progressLabel={
+                urlProgressPct != null
+                  ? `${urlProgressPct}% of discovered URLs scraped`
+                  : undefined
+              }
+              loading={loadingInfluencers || stateStatus === 'running'}
+            />
           )}
         </section>
 

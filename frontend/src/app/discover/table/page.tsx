@@ -1,6 +1,8 @@
 import React from "react";
+import { redirect } from "next/navigation";
 import AppShell from "@/components/shell/AppShell";
 import LiveCampaignDiscover from "@/components/discover/LiveCampaignDiscover";
+import { shortlistHref } from "@/lib/routes";
 import "../../discover-table.css";
 
 export default async function DiscoverTablePage({
@@ -10,6 +12,9 @@ export default async function DiscoverTablePage({
 }) {
   const params = await searchParams;
   const campaignId = params.campaignId;
+  if (campaignId) {
+    redirect(shortlistHref(campaignId));
+  }
   const crumbs = [
     { label: "Workspace" },
     { label: "Discover", href: "/discover" },
@@ -30,7 +35,7 @@ export default async function DiscoverTablePage({
             </p>
           </div>
         </div>
-        <LiveCampaignDiscover campaignId={campaignId} variant="table" />
+        <LiveCampaignDiscover variant="table" />
       </main>
     </AppShell>
   );

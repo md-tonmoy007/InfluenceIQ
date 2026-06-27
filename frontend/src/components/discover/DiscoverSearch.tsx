@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createCampaign } from "@/lib/api";
 import { buildCampaignPayloadFromQuery, buildDiscoverBriefSnapshot } from "@/lib/campaignPayload";
+import { shortlistHref } from "@/lib/routes";
 import { useToast } from "@/components/ui/ToastProvider";
 
 export default function DiscoverSearch() {
@@ -28,7 +29,7 @@ export default function DiscoverSearch() {
         campaignName,
         briefSnapshot: buildDiscoverBriefSnapshot(brief, campaignName),
       });
-      const next = `/discover?campaignId=${encodeURIComponent(campaign.campaignId)}`;
+      const next = shortlistHref(campaign.campaignId);
       router.push(
         `/matching?campaignId=${encodeURIComponent(campaign.campaignId)}&next=${encodeURIComponent(next)}`
       );

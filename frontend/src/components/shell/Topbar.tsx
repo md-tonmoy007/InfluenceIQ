@@ -9,6 +9,7 @@ import AccountMenu from "../ui/AccountMenu";
 import NotificationMenu from "../ui/NotificationMenu";
 import { createCampaign, type CurrentUser } from "@/lib/api";
 import { buildCampaignPayloadFromQuery, buildDiscoverBriefSnapshot } from "@/lib/campaignPayload";
+import { shortlistHref } from "@/lib/routes";
 import { useToast } from "@/components/ui/ToastProvider";
 
 export type Crumb = {
@@ -58,7 +59,7 @@ export default function Topbar({
         campaignName,
         briefSnapshot: buildDiscoverBriefSnapshot(brief, campaignName),
       });
-      const next = `/discover?campaignId=${encodeURIComponent(campaign.campaignId)}`;
+      const next = shortlistHref(campaign.campaignId);
       router.push(
         `/matching?campaignId=${encodeURIComponent(campaign.campaignId)}&next=${encodeURIComponent(next)}`
       );

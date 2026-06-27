@@ -1,6 +1,7 @@
 import React from "react";
 import AppShell from "@/components/shell/AppShell";
 import LiveProfilePageClient from "@/components/profile/LiveProfilePageClient";
+import { shortlistHref } from "@/lib/routes";
 import "../../profile.css";
 
 export default async function ProfilePage({
@@ -15,7 +16,12 @@ export default async function ProfilePage({
 
   const crumbs = [
     { label: "Workspace", href: "/" },
-    { label: "Discover", href: resolvedSearchParams.campaignId ? `/discover?campaignId=${encodeURIComponent(resolvedSearchParams.campaignId)}` : "/discover" },
+    {
+      label: "Shortlist",
+      href: resolvedSearchParams.campaignId
+        ? shortlistHref(resolvedSearchParams.campaignId)
+        : "/shortlist",
+    },
     { label: "Creator profile", current: true },
   ];
 

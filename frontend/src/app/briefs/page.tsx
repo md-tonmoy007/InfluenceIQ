@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/shell/AppShell";
 import { duplicateCampaign, listCampaigns, type CampaignListItem } from "@/lib/api";
+import { campaignHref } from "@/lib/routes";
 import { useToast } from "@/components/ui/ToastProvider";
 import "../briefs.css";
 
@@ -220,11 +221,7 @@ function BriefsContent() {
         <div className="brief-list">
           {filtered.map((campaign) => {
             const isDraft = campaign.status === "draft";
-            const target = isDraft
-              ? `/briefs/new?campaignId=${encodeURIComponent(campaign.id)}`
-              : campaign.status === "running" || campaign.status === "pending"
-                ? `/discover?campaignId=${encodeURIComponent(campaign.id)}`
-                : `/shortlist?campaignId=${encodeURIComponent(campaign.id)}`;
+            const target = campaignHref(campaign.id, campaign.status);
             const goal = goalTag(campaign);
             const status = statusLabel(campaign.status);
             const label =

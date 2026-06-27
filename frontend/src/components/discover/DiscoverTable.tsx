@@ -22,6 +22,7 @@ import {
   normalizePlatform,
   tierFromFollowers,
 } from "@/lib/influencerPresentation";
+import { shortlistHref } from "@/lib/routes";
 
 type DiscoverTableProps = {
   items?: InfluencerRecommendation[];
@@ -140,11 +141,16 @@ export default function DiscoverTable({ items, campaignId }: DiscoverTableProps)
   }, []);
 
   const rows = useMemo<LiveRow[]>(
-    () =>
-      items?.length
-        ? items.map(fromInfluencer)
-        : tableCreators.map((creator, index) => ({ ...creator, id: String(index + 1) })),
-    [items]
+    () => {
+      if (items?.length) {
+        return items.map(fromInfluencer);
+      }
+      if (campaignId) {
+        return [];
+      }
+      return tableCreators.map((creator, index) => ({ ...creator, id: String(index + 1) }));
+    },
+    [campaignId, items]
   );
 
   const sortedData = useMemo(() => {
@@ -253,11 +259,19 @@ export default function DiscoverTable({ items, campaignId }: DiscoverTableProps)
   const isAllSelected = selectedIndices.size === filteredData.length && filteredData.length > 0;
   const isMixed = selectedIndices.size > 0 && selectedIndices.size < filteredData.length;
 
+  if (campaignId && !items?.length) {
+    return (
+      <div style={{ padding: "18px 20px", borderRadius: "20px", background: "var(--panel)" }}>
+        Matches will appear as the pipeline runs.
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="controls">
         <div className="seg" role="tablist">
-          <Link href={campaignId ? `/discover?campaignId=${encodeURIComponent(campaignId)}` : "/discover"}>
+          <Link href={campaignId ? shortlistHref(campaignId) : "/discover"}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
               <rect x="3" y="3" width="7" height="7" rx="1.4" />
               <rect x="14" y="3" width="7" height="7" rx="1.4" />

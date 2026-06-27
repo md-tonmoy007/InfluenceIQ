@@ -103,6 +103,14 @@ const fromLiveItem = (item: InfluencerRecommendation): GridCard => {
 };
 
 export default function DiscoverGrid({ items, campaignId }: DiscoverGridProps) {
+  if (campaignId && !items?.length) {
+    return (
+      <div style={{ padding: "18px 20px", borderRadius: "20px", background: "var(--panel)" }}>
+        Matches will appear as the pipeline runs.
+      </div>
+    );
+  }
+
   const cards: GridCard[] = items?.length
     ? items.map(fromLiveItem)
     : discoverCreators.map((creator) => ({

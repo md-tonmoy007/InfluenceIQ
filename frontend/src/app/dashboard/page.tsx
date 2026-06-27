@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/shell/AppShell";
 import { getWorkspaceSummary, type WorkspaceSummary } from "@/lib/api";
+import { campaignHref } from "@/lib/routes";
 import { useToast } from "@/components/ui/ToastProvider";
 import "../dashboard.css";
 
@@ -269,12 +270,7 @@ function DashboardContent() {
                 // Top score isn't in the workspace summary; render an
                 // em-dash so the table never fabricates a value.
                 const topScore: number | null = null;
-                const targetHref =
-                  row.status === "draft"
-                    ? `/briefs/new?campaignId=${encodeURIComponent(row.campaign_id)}`
-                    : row.status === "running" || row.status === "pending"
-                    ? `/discover?campaignId=${encodeURIComponent(row.campaign_id)}`
-                    : `/shortlist?campaignId=${encodeURIComponent(row.campaign_id)}`;
+                const targetHref = campaignHref(row.campaign_id, row.status);
                 return (
                   <tr key={row.campaign_id}>
                     <td className="query">

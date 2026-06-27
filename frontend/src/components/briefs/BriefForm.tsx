@@ -160,20 +160,21 @@ export default function BriefForm() {
   };
 
   // Handle budget
+  const budgetFloor = 500;
+  const budgetCeiling = 50000;
+  const budgetSymbol = brief.currency === 'BDT' ? '৳' : '$';
+  const budgetMinPct =
+    ((brief.budgetMin - budgetFloor) / (budgetCeiling - budgetFloor)) * 100;
+  const budgetMaxPct =
+    ((brief.budgetMax - budgetFloor) / (budgetCeiling - budgetFloor)) * 100;
+
   const handleRange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseInt(e.target.value);
-    setBrief(prev => ({ ...prev, budgetMax: v }));
+    const v = parseInt(e.target.value, 10);
+    setBrief(prev => ({ ...prev, budgetMax: Math.max(v, prev.budgetMin) }));
   };
   const handleMin = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseInt(e.target.value.replace(/[^0-9]/g, '')) || 500;
-    setBrief(prev => ({ ...prev, budgetMin: v }));
-  };
-
-  const syncRangeStyles = () => {
-    const min = 500, max = 50000;
-    const p1 = ((brief.budgetMin - min) / (max - min)) * 100;
-    const p2 = ((brief.budgetMax - min) / (max - min)) * 100;
-    return { '--p1': `${p1}%`, '--p2': `${p2}%` } as React.CSSProperties;
+    const v = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || budgetFloor;
+    setBrief(prev => ({ ...prev, budgetMin: Math.min(Math.max(v, budgetFloor), prev.budgetMax) }));
   };
 
   const getBudgetText = () => {
@@ -477,20 +478,50 @@ export default function BriefForm() {
           <section className="section">
             <div className="section-head"><span className="num">4</span><h2>Budget</h2><span className="desc">Total spend across creators.</span></div>
             <div className="budget-row">
-              <div className="field">
+              <div className="field budget-field-min">
                 <label>Min</label>
-                <input className="input mono" type="text" value={`$${brief.budgetMin.toLocaleString()}`} onChange={handleMin} />
+                <input
+                  className="input mono"
+                  type="text"
+                  value={`${budgetSymbol}${brief.budgetMin.toLocaleString()}`}
+                  onChange={handleMin}
+                />
               </div>
-              <div className="field">
+              <div className="field budget-field-range">
                 <label>Range</label>
-                <div className="range-wrap">
-                  <input type="range" className="range" min="500" max="50000" step="500" value={brief.budgetMax} onChange={handleRange} style={syncRangeStyles()} />
-                  <div className="budget-readout"><span>$500</span><strong>{getBudgetText()}</strong><span>$50,000</span></div>
+                <div className="budget-slider">
+                  <div className="budget-slider-track">
+                    <div
+                      className="budget-slider-fill"
+                      style={{ left: `${budgetMinPct}%`, width: `${budgetMaxPct - budgetMinPct}%` }}
+                    />
+                    <div className="budget-slider-thumb" style={{ left: `${budgetMaxPct}%` }} />
+                    <input
+                      type="range"
+                      className="budget-slider-input"
+                      min={budgetFloor}
+                      max={budgetCeiling}
+                      step="500"
+                      value={brief.budgetMax}
+                      onChange={handleRange}
+                      aria-label="Maximum budget"
+                    />
+                  </div>
+                  <div className="budget-readout">
+                    <span>{budgetSymbol}{budgetFloor.toLocaleString()}</span>
+                    <strong>{getBudgetText()}</strong>
+                    <span>{budgetSymbol}{budgetCeiling.toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
-              <div className="field">
+              <div className="field budget-field-max">
                 <label>Max</label>
-                <input className="input mono" type="text" value={`$${brief.budgetMax.toLocaleString()}`} readOnly />
+                <input
+                  className="input mono"
+                  type="text"
+                  value={`${budgetSymbol}${brief.budgetMax.toLocaleString()}`}
+                  readOnly
+                />
               </div>
             </div>
             <div className="currency-row">

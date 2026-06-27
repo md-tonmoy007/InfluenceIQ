@@ -14,3 +14,14 @@ export const routes = {
   profile: "/profile/lila-park",
   settings: "/settings",
 } as const;
+
+export function shortlistHref(campaignId: string): string {
+  return `/shortlist?campaignId=${encodeURIComponent(campaignId)}`;
+}
+
+export function campaignHref(campaignId: string, status: string): string {
+  if (status === "draft") {
+    return `/briefs/new?campaignId=${encodeURIComponent(campaignId)}`;
+  }
+  return shortlistHref(campaignId);
+}
