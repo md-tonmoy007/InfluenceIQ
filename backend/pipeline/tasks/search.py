@@ -10,7 +10,7 @@ import re
 from typing import Any
 from uuid import uuid4
 
-from celery import shared_task
+from backend.core.celery.app import celery_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.core.database import models
@@ -299,7 +299,7 @@ def _llm_filter_urls(results: list[dict], payload: dict[str, Any]) -> list[dict]
         return results
 
 
-@shared_task(name="backend.pipeline.tasks.search.generate_queries", bind=True, max_retries=2)
+@celery_app.task(name="backend.pipeline.tasks.search.generate_queries", bind=True, max_retries=2)
 def generate_queries(self, campaign_id: str) -> dict:
     """Generate search queries for a campaign and fan out to :func:`execute_search`."""
     log.info("generate_queries start campaign_id=%s", campaign_id)
@@ -345,7 +345,7 @@ def _generate_planned_queries(payload: dict[str, Any]) -> list[str]:
     return queries[:5]
 
 
-@shared_task(name="backend.pipeline.tasks.search.execute_search", bind=True, max_retries=3)
+@celery_app.task(name="backend.pipeline.tasks.search.execute_search", bind=True, max_retries=3)
 def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
     """Run a single web search and materialise the results as ``CrawlSource`` rows."""
     log.info("execute_search campaign_id=%s query=%r", campaign_id, query)

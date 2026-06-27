@@ -46,3 +46,8 @@ celery_app.conf.update(
         }
     },
 )
+
+# Ensure @shared_task decorators in pipeline.tasks.* bind here so .delay()
+# from the API uses task_routes (ai_agent_queue, scraping_queue, etc.)
+# instead of the broker default "celery" queue that no worker consumes.
+celery_app.set_default()

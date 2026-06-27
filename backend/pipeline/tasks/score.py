@@ -6,7 +6,7 @@ import logging
 import os
 from uuid import UUID, uuid4
 
-from celery import shared_task
+from backend.core.celery.app import celery_app
 
 from backend.core.database import models
 from backend.pipeline.analysis.brand_safety_blocklist import scan_brand_safety
@@ -23,7 +23,7 @@ from backend.pipeline.tasks._common import (
 log = logging.getLogger(__name__)
 
 
-@shared_task(name="backend.pipeline.tasks.score.score_influencer", bind=True, max_retries=2)
+@celery_app.task(name="backend.pipeline.tasks.score.score_influencer", bind=True, max_retries=2)
 def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
     """Run the role-5 pipeline for a single influencer and persist the score."""
     log.info("score_influencer campaign_id=%s influencer_id=%s", campaign_id, influencer_id)
@@ -42,9 +42,10 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
         campaign = session.get(models.Campaign, campaign_uuid)
         candidate = _build_candidate(session, influencer, campaign_uuid)
         sources_for_event = _sources_summary(session, influencer_uuid, campaign_uuid)
+        campaign_context = _campaign_context(campaign)
 
     try:
-        result = run_role4_pipeline(candidate, campaign=_campaign_context(campaign))
+        result = run_role4_pipeline(candidate, campaign=campaign_context)
     except Exception as exc:
         log.exception("run_role4_pipeline failed for %s: %s", influencer_id, exc)
         with db_session() as session:
@@ -100,6 +101,7 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
         if existing is None:
             session.add(score_row)
         refresh_campaign_status(session, campaign_id)
+        final_score = float(score_row.final_score or 0.0)
 
     severe_flags = [
         flag for flag in (result.analysis.get("brand_safety", {}).get("flags", []) or [])
@@ -124,12 +126,12 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
     return {
         "influencer_id": influencer_id,
         "grade": result.grade,
-        "final_score": score_row.final_score,
+        "final_score": final_score,
         "confidence": result.confidence,
     }
 
 
-@shared_task(name="backend.pipeline.tasks.score.classify_brand_safety", bind=True, max_retries=2)
+@celery_app.task(name="backend.pipeline.tasks.score.classify_brand_safety", bind=True, max_retries=2)
 def classify_brand_safety(self, campaign_id: str, source_url: str, text: str,
                           mention_label: str = "", influencer_id: str = "") -> dict:
     """Run a brand-safety scan and persist the flags as :class:`BrandSafetyFlag` rows."""

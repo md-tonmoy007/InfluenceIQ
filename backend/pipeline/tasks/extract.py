@@ -8,7 +8,7 @@ import os
 import re
 from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
 
-from celery import shared_task
+from backend.core.celery.app import celery_app
 
 from backend.core.database import models
 from backend.pipeline.events import (
@@ -159,7 +159,7 @@ def _normalize_llm_mentions(items: list[dict], source_url: str) -> list[dict]:
     return mentions
 
 
-@shared_task(name="backend.pipeline.tasks.extract.extract_influencers", bind=True, max_retries=2)
+@celery_app.task(name="backend.pipeline.tasks.extract.extract_influencers", bind=True, max_retries=2)
 def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: dict) -> dict:
     """Parse a content dict into influencer mentions and score each."""
     log.info("extract_influencers campaign_id=%s crawl_source_id=%s", campaign_id, crawl_source_id)
@@ -267,7 +267,7 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
     # Trigger identity cluster resolution after every extraction
     resolve_identity_cluster.delay(campaign_id)
 
-    for influencer_id in new_influencer_ids:
+    for influencer_id in dict.fromkeys(all_influencer_ids):
         from backend.pipeline.tasks.score import score_influencer
 
         score_influencer.delay(campaign_id, influencer_id)
@@ -280,7 +280,7 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
     }
 
 
-@shared_task(name="backend.pipeline.tasks.extract.resolve_identity_cluster", bind=True, max_retries=2)
+@celery_app.task(name="backend.pipeline.tasks.extract.resolve_identity_cluster", bind=True, max_retries=2)
 def resolve_identity_cluster(self, campaign_id: str) -> dict:
     """Campaign-wide identity cluster resolution.
 
@@ -380,7 +380,7 @@ def resolve_identity_cluster(self, campaign_id: str) -> dict:
     }
 
 
-@shared_task(name="backend.pipeline.tasks.extract.resolve_identity_llm", bind=True, max_retries=2)
+@celery_app.task(name="backend.pipeline.tasks.extract.resolve_identity_llm", bind=True, max_retries=2)
 def resolve_identity_llm(self, campaign_id: str, candidate_a: dict, candidate_b: dict) -> dict:
     """Reconcile two candidate mentions, optionally via LLM."""
     log.info("resolve_identity_llm campaign_id=%s", campaign_id)

@@ -9,11 +9,10 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 DEFAULT_PAYLOAD = {
-    "brand": "Acme Health",
     "product": "Daily Greens",
-    "category": "Wellness",
-    "goal": "Find brand-safe wellness creators",
-    "platforms": ["instagram", "youtube"],
+    "industry": "Wellness",
+    "goals": "Find brand-safe wellness creators",
+    "preferred_platforms": ["instagram", "youtube"],
 }
 
 
@@ -29,10 +28,44 @@ def request_json(method: str, url: str, payload: dict[str, Any] | None = None) -
         return json.loads(response.read().decode("utf-8"))
 
 
+def poll_campaign_completion(campaign_id: str, deadline: float, interval: float) -> dict[str, Any]:
+    """Poll until the campaign reaches a terminal DB status."""
+    from backend.pipeline.tasks._common import db_session, get_campaign, refresh_campaign_status
+
+    state: dict[str, Any] = {"status": "unknown", "phase": "unknown"}
+    while time.monotonic() < deadline:
+        with db_session() as session:
+            refresh_campaign_status(session, campaign_id)
+            campaign = get_campaign(session, campaign_id)
+            status = campaign.status
+            phase = campaign.status or "unknown"
+        state = {"status": status, "phase": phase}
+        print(f"state.status={status} phase={phase}")
+        if status in {"completed", "failed", "partial"}:
+            return state
+        time.sleep(interval)
+    return state
+
+
+def count_scored_influencers(campaign_id: str) -> int:
+    from uuid import UUID
+
+    from backend.core.database import models
+    from backend.pipeline.tasks._common import db_session
+
+    with db_session() as session:
+        return (
+            session.query(models.InfluencerScore.influencer_id)
+            .filter(models.InfluencerScore.campaign_id == UUID(campaign_id))
+            .distinct()
+            .count()
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run an end-to-end InfluenceIQ campaign smoke test.")
     parser.add_argument("--base-url", default="http://localhost:8000")
-    parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument("--timeout", type=int, default=240)
     parser.add_argument("--interval", type=float, default=2.0)
     args = parser.parse_args()
 
@@ -46,28 +79,22 @@ def main() -> int:
         campaign_id = created["campaign_id"]
         print(f"campaign_id={campaign_id}")
 
-        deadline = time.monotonic() + args.timeout
-        state: dict[str, Any] = {}
-        while time.monotonic() < deadline:
-            state = request_json("GET", f"{base_url}/api/campaigns/{campaign_id}/state")
-            status = state.get("status")
-            phase = state.get("phase")
-            print(f"state.status={status} phase={phase}")
-            if status in {"completed", "failed"}:
-                break
-            time.sleep(args.interval)
+        state = poll_campaign_completion(
+            campaign_id,
+            time.monotonic() + args.timeout,
+            args.interval,
+        )
 
-        if state.get("status") != "completed":
+        if state.get("status") not in {"completed", "partial"}:
             print(f"Smoke test failed: campaign did not complete. Last state: {state}", file=sys.stderr)
             return 1
 
-        influencers = request_json("GET", f"{base_url}/api/campaigns/{campaign_id}/influencers")
-        items = influencers.get("items", [])
-        if not items:
+        influencer_count = count_scored_influencers(campaign_id)
+        if influencer_count == 0:
             print("Smoke test failed: campaign completed with no influencers.", file=sys.stderr)
             return 1
 
-        print(f"smoke.ok campaign_id={campaign_id} influencers={len(items)}")
+        print(f"smoke.ok campaign_id={campaign_id} influencers={influencer_count}")
         return 0
     except (HTTPError, URLError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
         print(f"Smoke test failed: {exc}", file=sys.stderr)

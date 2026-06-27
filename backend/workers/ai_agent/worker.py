@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-# IMPORTANT: create the Celery app BEFORE importing the task modules so
-# the @shared_task decorators register with this worker's app instance
-# rather than the central backend.core.celery.app or a previously-created one.
-from backend.core.celery.factory import create_celery_app
-from backend.core.celery.roles import AI_AGENT
+# Use the central Celery app so @shared_task bodies register with the same
+# task_routes table the API uses when calling .delay().
+from backend.core.celery.app import celery_app
 
-celery_app = create_celery_app(AI_AGENT)
-
-# Import the task bodies so Celery can discover them.
-from backend.pipeline.tasks import (  # noqa: E402, F401
-    classify_brand_safety,
-    generate_queries,
-    resolve_identity_llm,
-)
+# Eager-import this worker's tasks so discovery is explicit at boot.
+from backend.pipeline.tasks.extract import resolve_identity_llm  # noqa: F401
+from backend.pipeline.tasks.score import classify_brand_safety  # noqa: F401
+from backend.pipeline.tasks.search import generate_queries  # noqa: F401

@@ -456,7 +456,8 @@ export default function ShortlistPageClient() {
     if (
       state.status !== 'completed' &&
       state.status !== 'failed' &&
-      !state.partial_results_available
+      !state.partial_results_available &&
+      (state.scores_computed ?? 0) <= 0
     ) {
       return;
     }

@@ -148,7 +148,15 @@ def refresh_campaign_status(session: Session, campaign_id: str) -> None:
         )
 
         influencer_count = len(linked_influencer_ids)
-        if total_sources == 0 or pending_sources > 0 or scored_count < influencer_count:
+        if total_sources == 0 or pending_sources > 0:
+            campaign.status = "running"
+            return
+
+        if influencer_count == 0:
+            campaign.status = "running"
+            return
+
+        if scored_count < influencer_count:
             campaign.status = "running"
             return
 

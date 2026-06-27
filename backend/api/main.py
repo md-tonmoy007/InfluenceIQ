@@ -12,6 +12,7 @@ from backend.api.middleware.request_logging import setup_logging_middleware
 from backend.api.routers import auth, billing, campaigns, demo, health, influencers, lists, onboarding, websocket, workspace
 from backend.api.routers import settings as settings_router
 from backend.api.schemas.errors import ErrorEnvelope
+from backend.core.celery.app import celery_app  # noqa: F401 — register pipeline tasks + routes before dispatch
 from backend.core.config import settings
 from backend.core.lifecycle import StartupValidationError, validate_settings
 

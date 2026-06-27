@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from celery import shared_task
+from backend.core.celery.app import celery_app
 from sqlalchemy.exc import OperationalError
 
 from backend.core.database import models
@@ -27,7 +27,7 @@ from backend.pipeline.tasks._common import (
 log = logging.getLogger(__name__)
 
 
-@shared_task(name="backend.pipeline.tasks.crawl.fetch_page", bind=True, max_retries=3)
+@celery_app.task(name="backend.pipeline.tasks.crawl.fetch_page", bind=True, max_retries=3)
 def fetch_page(self, campaign_id: str, crawl_source_id: str) -> dict:
     """Fetch the URL behind a ``CrawlSource`` row and persist the HTML."""
     log.info("fetch_page campaign_id=%s crawl_source_id=%s", campaign_id, crawl_source_id)
@@ -89,7 +89,7 @@ def fetch_page(self, campaign_id: str, crawl_source_id: str) -> dict:
     return {"crawl_source_id": crawl_source_id, "status": "scraped", "url": url}
 
 
-@shared_task(name="backend.pipeline.tasks.crawl.extract_content", bind=True, max_retries=2)
+@celery_app.task(name="backend.pipeline.tasks.crawl.extract_content", bind=True, max_retries=2)
 def extract_content(self, campaign_id: str, crawl_source_id: str, page: dict) -> dict:
     """Extract structured content from a fetched page and persist it."""
     log.info("extract_content campaign_id=%s crawl_source_id=%s", campaign_id, crawl_source_id)

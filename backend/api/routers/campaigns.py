@@ -905,6 +905,8 @@ def get_campaign_state_payload(campaign: models.Campaign, campaign_id_str: str) 
     if state:
         state.setdefault("status", campaign.status)
         state.setdefault("started_at", campaign.started_at.isoformat() if campaign.started_at else None)
+        scores_computed = int(state.get("scores_computed") or 0)
+        state["partial_results_available"] = scores_computed > 0
         return state
     return {
         "campaign_id": campaign_id_str,
