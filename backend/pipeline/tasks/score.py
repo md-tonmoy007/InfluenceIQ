@@ -46,6 +46,7 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
         sources_for_event = _sources_summary(session, influencer_uuid, campaign_uuid)
         campaign_context = _campaign_context(campaign)
         snapshot = persist_candidate_snapshot(session, campaign_uuid, influencer_uuid, candidate)
+        snapshot_id = snapshot.id
 
     try:
         result = run_role4_pipeline(candidate, campaign=campaign_context)
@@ -112,7 +113,7 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
             "summary": result.score_event.get("explanation"),
             "positive_reasons": result.positive_reasons,
             "negative_reasons": result.negative_reasons,
-            "candidate_snapshot_id": str(snapshot.id),
+            "candidate_snapshot_id": str(snapshot_id),
         }
         if existing_current is not None:
             existing_current.is_current = False

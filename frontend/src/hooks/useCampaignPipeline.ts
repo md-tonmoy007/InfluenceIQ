@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getCampaignState, getCampaignWebSocketUrl } from "@/lib/api";
+import { getCampaignState } from "@/lib/api";
 import type { CampaignState } from "@/lib/api";
+import { getCampaignWebSocketUrl } from "@/lib/websocket";
 
 const TERMINAL_STATUSES = new Set(["completed", "partial", "failed", "cancelled"]);
 

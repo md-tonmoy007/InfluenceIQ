@@ -22,6 +22,13 @@ def clear_campaign_run_artifacts(db: Session, campaign_id: UUID) -> None:
     db.query(models.InfluencerScore).filter(
         models.InfluencerScore.campaign_id == campaign_id
     ).delete(synchronize_session=False)
+    db.query(models.CrawlSourceInfluencer).filter(
+        models.CrawlSourceInfluencer.crawl_source_id.in_(
+            db.query(models.CrawlSource.id).filter(
+                models.CrawlSource.campaign_id == campaign_id
+            )
+        )
+    ).delete(synchronize_session=False)
     db.query(models.CrawlSource).filter(
         models.CrawlSource.campaign_id == campaign_id
     ).delete(synchronize_session=False)

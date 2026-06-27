@@ -72,10 +72,12 @@ def _brave_search(query: str, limit: int) -> list[SearchResult]:
 def _openserp_search(query: str, limit: int) -> list[SearchResult]:
     if not settings.OPENSERP_URL:
         return []
+    base = settings.OPENSERP_URL.rstrip("/")
+    url = base if base.endswith("/search") else f"{base}/google/search"
     headers = {"Authorization": f"Bearer {settings.OPENSERP_API_KEY}"} if settings.OPENSERP_API_KEY else {}
     response = httpx.get(
-        settings.OPENSERP_URL.rstrip("/"),
-        params={"q": query, "num": limit},
+        url,
+        params={"text": query, "limit": limit},
         headers=headers,
         timeout=15,
     )

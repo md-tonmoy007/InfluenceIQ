@@ -28,9 +28,9 @@ class CampaignResetTest(unittest.TestCase):
 
         clear_campaign_run_artifacts(db, campaign_id)
 
-        self.assertEqual(db.query.call_count, 5)
+        self.assertEqual(db.query.call_count, 7)
         delete_calls = [c for c in query.method_calls if c[0] == "delete"]
-        self.assertEqual(len(delete_calls), 5)
+        self.assertEqual(len(delete_calls), 6)
         for delete_call in delete_calls:
             self.assertEqual(delete_call.kwargs.get("synchronize_session"), False)
 

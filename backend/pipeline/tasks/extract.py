@@ -193,6 +193,7 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
         if crawl_source is None:
             return {"crawl_source_id": crawl_source_id, "status": "missing"}
 
+        pending_influencers: dict[UUID, models.Influencer] = {}
         for mention in mentions:
             canonical = canonicalize_candidate(mention)
             influencer_id = canonical["influencer_id"]
@@ -203,6 +204,8 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
 
             influencer = session.get(models.Influencer, influencer_uuid)
             if influencer is None:
+                influencer = pending_influencers.get(influencer_uuid)
+            if influencer is None:
                 influencer = models.Influencer(
                     id=influencer_uuid,
                     canonical_name=canonical.get("canonical_name") or mention.get("name") or "Unknown",
@@ -211,6 +214,7 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
                     mentions=[mention],
                 )
                 session.add(influencer)
+                pending_influencers[influencer_uuid] = influencer
                 new_influencer_ids.append(str(influencer_uuid))
             else:
                 existing_mentions = list(influencer.mentions or [])
