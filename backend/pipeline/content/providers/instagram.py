@@ -6,34 +6,11 @@ import httpx
 
 from backend.core.config import settings
 from backend.pipeline.content.contracts import normalize_url
+from backend.pipeline.content.providers.apify_client import profile_payloads, run_actor_sync
 from backend.pipeline.content.providers.base import PlatformProfile
 from backend.pipeline.content.providers.utils import handle_from_url, meta_content
 
 INSTAGRAM_APP_ID = "936619743392459"
-
-
-def _actor_path(actor_id: str) -> str:
-    return actor_id.replace("/", "~")
-
-
-def _pick_first_profile(items: Any, username: str) -> dict[str, Any] | None:
-    if isinstance(items, dict):
-        for key in ("items", "data", "results"):
-            if isinstance(items.get(key), list):
-                items = items[key]
-                break
-        else:
-            return items
-    if not isinstance(items, list):
-        return None
-    lowered = username.casefold()
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        raw_username = str(item.get("username") or item.get("handle") or "").lstrip("@").casefold()
-        if raw_username == lowered:
-            return item
-    return items[0] if items and isinstance(items[0], dict) else None
 
 
 def _parse_apify_profile(data: dict[str, Any], url: str, username: str) -> PlatformProfile:
@@ -86,33 +63,13 @@ def _parse_apify_profile(data: dict[str, Any], url: str, username: str) -> Platf
 
 
 def _fetch_apify_profile(url: str, username: str) -> PlatformProfile | None:
-    if not settings.APIFY_API_TOKEN:
-        return None
-    actor = _actor_path(settings.APIFY_INSTAGRAM_ACTOR)
-    endpoint = f"https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items"
-    payloads = [
-        {"usernames": [username], "resultsLimit": 1},
-        {"directUrls": [url], "resultsLimit": 1},
-        {"startUrls": [{"url": url}], "resultsLimit": 1},
-    ]
-    last_error: Exception | None = None
-    for payload in payloads:
-        try:
-            response = httpx.post(
-                endpoint,
-                params={"token": settings.APIFY_API_TOKEN, "clean": "true"},
-                json=payload,
-                timeout=120,
-            )
-            response.raise_for_status()
-            item = _pick_first_profile(response.json(), username)
-            if item:
-                return _parse_apify_profile(item, url, username)
-        except Exception as exc:
-            last_error = exc
-            continue
-    if last_error:
-        raise last_error
+    item = run_actor_sync(
+        settings.APIFY_INSTAGRAM_ACTOR,
+        profile_payloads(url, username),
+        username=username,
+    )
+    if item:
+        return _parse_apify_profile(item, url, username)
     return None
 
 

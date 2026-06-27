@@ -37,12 +37,14 @@ class Settings(BaseSettings):
     BRAVE_SEARCH_API_KEY: str = ""
     OPENSERP_URL: str = ""
     OPENSERP_API_KEY: str = ""
+    # auto | brave | openserp | serpapi | all (merge every configured provider)
+    SEARCH_PROVIDER_MODE: str = "auto"
     SCRAPE_DO_API: str = ""
 
     YOUTUBE_API_KEY: str = ""
     APIFY_API_TOKEN: str = ""
     APIFY_INSTAGRAM_ACTOR: str = "apify/instagram-profile-scraper"
-    APIFY_TIKTOK_ACTOR: str = "apify/tiktok-scraper"
+    APIFY_TIKTOK_ACTOR: str = "clockworks/tiktok-profile-scraper"
     APIFY_X_ACTOR: str = "apify/twitter-scraper"
     PLATFORM_COMMENT_LIMIT: int = 200
     PLATFORM_POST_LIMIT: int = 20

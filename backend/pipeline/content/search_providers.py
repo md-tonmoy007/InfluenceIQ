@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from urllib.parse import quote_plus
 
 import httpx
 
 from backend.core.config import settings
 from backend.pipeline.content.contracts import SearchResult
+
+SearchFn = Callable[[str, int], list[SearchResult]]
 
 
 def _dedupe(results: list[SearchResult], limit: int) -> list[dict]:
@@ -134,13 +137,49 @@ def _fallback_search(query: str, limit: int) -> list[SearchResult]:
     return candidates[:limit]
 
 
+def _search_provider_order() -> list[SearchFn]:
+    """Return configured search providers in priority order (failover chain)."""
+    mode = settings.SEARCH_PROVIDER_MODE.strip().lower()
+    brave = _brave_search
+    openserp = _openserp_search
+    serpapi = _serp_api_search
+
+    if mode == "brave":
+        return [brave, openserp, serpapi]
+    if mode == "openserp":
+        return [openserp, brave, serpapi]
+    if mode == "serpapi":
+        return [serpapi, brave, openserp]
+    if mode == "all":
+        return [serpapi, brave, openserp]
+
+    # auto: dev prefers self-hosted OpenSERP; production prefers Brave
+    env = settings.APP_ENV.strip().lower()
+    if env in {"production", "prod", "staging"}:
+        return [brave, openserp, serpapi]
+    return [openserp, brave, serpapi]
+
+
 def search_web(query: str, limit: int = 8) -> list[dict]:
     results: list[SearchResult] = []
-    for provider in (_serp_api_search, _brave_search, _openserp_search):
-        try:
-            results.extend(provider(query, limit))
-        except httpx.HTTPError:
-            continue
+    mode = settings.SEARCH_PROVIDER_MODE.strip().lower()
+
+    if mode == "all":
+        for provider in _search_provider_order():
+            try:
+                results.extend(provider(query, limit))
+            except httpx.HTTPError:
+                continue
+    else:
+        for provider in _search_provider_order():
+            try:
+                batch = provider(query, limit)
+                if batch:
+                    results = batch
+                    break
+            except httpx.HTTPError:
+                continue
+
     if not results:
         results = _fallback_search(query, limit)
     return _dedupe(results, limit)

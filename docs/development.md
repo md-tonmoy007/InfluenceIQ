@@ -20,7 +20,7 @@ This document is the practical local-development companion to [architecture.md](
 ## Environment Setup
 
 1. Copy `backend/.env.example` to `backend/.env`.
-2. Review any provider keys you want to enable.
+2. Review search and fetch provider keys — see [provider-configuration.md](./provider-configuration.md).
 3. For frontend-only local work, review `frontend/.env.example`.
 4. Create the backend environment with `uv sync --project backend --dev`.
 
@@ -31,7 +31,16 @@ The default Docker stack expects these exposed ports:
 - Postgres: `5434`
 - Redis: `6380`
 - Qdrant: `6335`
+- OpenSERP (optional search): `7000`
 - Flower: `5555`
+
+For local search without paid APIs, start OpenSERP:
+
+```bash
+docker compose up -d openserp
+```
+
+Set `OPENSERP_URL=http://openserp:7000` in `backend/.env` (see provider-configuration doc).
 
 ## Start The Full Stack
 

@@ -30,9 +30,9 @@ generate_queries
 | --- | --- | --- |
 | Campaign intake (`POST /api/campaigns`) | Done | Idempotency-Key + DB unique-key dedup, optional auth, dispatches pipeline post-commit |
 | Query generation | Done | Deterministic `_build_query_set` + dedup + platform coverage; optional LLM path behind `AI_AGENT_LLM_QUERY_PLANNING` with clean fallback |
-| Web search | Done | Brave + OpenSerp providers, synthetic fallback when no API keys are set |
-| Crawl / fetch | Done | httpx + per-platform providers, URL cache, circuit breaker, rate limiter, retries |
-| Social providers | Partial | YouTube is richest (channelId + RSS feed -> posts/comments). TikTok / Instagram / X are meta-tag scrapers only, fragile, no real engagement/comment depth |
+| Web search | Done | `SEARCH_PROVIDER_MODE=auto`: dev→OpenSERP, prod→Brave; failover to SerpAPI; synthetic fallback. See [provider-configuration.md](./provider-configuration.md) |
+| Crawl / fetch | Done | Per-platform providers; Apify for IG/TikTok/X when `APIFY_API_TOKEN` set; scrape.do/httpx for articles; URL cache, circuit breaker |
+| Social providers | Improved | YouTube: channelId + RSS → posts. IG/TikTok/X: Apify path when token set (`apify_instagram`, `apify_tiktok`, `apify_x`); free meta/fallback otherwise |
 | Influencer extraction | Done | spaCy/regex entities, handles, credentials, contact info |
 | Identity resolution | Done | fuzzy + URL match, auto-merge >= 0.85, ambiguous -> optional LLM |
 | Scoring + persistence | Done | Full role-5 pipeline, append-only `InfluencerScore`, provenance links, brand-safety flags |
@@ -41,7 +41,7 @@ generate_queries
 ### Gaps vs. the intended Normal-search spec
 
 - **Geolocation filtering: not implemented.** The spec calls for "filtering with geolocation and other metrics." There is no geo logic anywhere in the pipeline. Search is keyword-only; no region/country filter on queries or results.
-- **TikTok / Instagram are shallow.** Only YouTube actually pulls posts + comments. TikTok/IG providers grab `og:description` and a follower regex and will mostly hit the fallback path on real sites (both platforms block server-side scraping aggressively).
+- **TikTok / Instagram / X without Apify are still shallow.** Set `APIFY_API_TOKEN` for richer IG/TikTok/X profiles (posts, engagement). Without it, providers fall back to meta tags or URL-only identity.
 - **Relevance scoring is thin.** `relevance_score` is token overlap between brief and influencer text — acceptable for MVP, but it is the heaviest-weighted component of the trust formula.
 
 ---

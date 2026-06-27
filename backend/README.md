@@ -104,3 +104,33 @@ FRONTEND_URL=http://localhost:3000
 ```
 
 Billing endpoints return `503` when these are unset so the rest of the stack can run without Stripe configured.
+
+### Search and platform providers (`backend/.env`)
+
+Discovery (web search) and profile fetch use separate provider stacks. Full reference: [`docs/provider-configuration.md`](../docs/provider-configuration.md).
+
+**Search** (`SEARCH_PROVIDER_MODE=auto`):
+
+- `APP_ENV=dev` → OpenSERP first, then Brave, then SerpAPI
+- `APP_ENV=production` → Brave first, then OpenSERP, then SerpAPI
+
+**Fetch** (per URL platform):
+
+| Platform | Primary | Env keys |
+| --- | --- | --- |
+| YouTube | HTML + RSS | — |
+| Instagram / TikTok / X | Apify (when token set) | `APIFY_API_TOKEN`, `APIFY_*_ACTOR` |
+| Blogs / articles | scrape.do → httpx | `SCRAPE_DO_API` |
+
+```bash
+# Local dev (free search)
+OPENSERP_URL=http://openserp:7000
+SEARCH_PROVIDER_MODE=auto
+APP_ENV=dev
+
+# Judges / production deploy
+BRAVE_SEARCH_API_KEY=BSA...
+OPENSERP_URL=
+APP_ENV=production
+APIFY_API_TOKEN=apify_api_...
+```

@@ -48,6 +48,18 @@ The current operational split is the canonical three-queue layout:
 
 Extraction is part of the scoring side operationally even though it lives in the broader pipeline domain.
 
+## Search and platform providers
+
+External I/O is split into **search** (find URLs) and **fetch** (scrape a known profile or page). Configuration lives in `backend/.env`; see [`docs/provider-configuration.md`](../docs/provider-configuration.md).
+
+| Layer | Responsibility | Key files |
+| --- | --- | --- |
+| Search | Failover chain: OpenSERP / Brave / SerpAPI + synthetic fallback | `content/search_providers.py` |
+| Platform fetch | YouTube RSS; Apify for IG/TikTok/X; scrape.do for articles | `content/providers/`, `content/fetcher.py` |
+| Apify runner | Shared actor sync client | `content/providers/apify_client.py` |
+
+`SEARCH_PROVIDER_MODE=auto` uses OpenSERP in `dev` and Brave in `production`/`staging`.
+
 ## Key Workflows
 
 - Generate campaign-specific queries with deterministic fallbacks when model-backed planning is unavailable.

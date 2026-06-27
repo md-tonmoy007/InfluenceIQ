@@ -52,3 +52,4 @@ make test-ml     # optional backend.ml tests
 - The task implementations are still placeholders from the hackathon scaffold; this refactor changes runtime boundaries, queue ownership, and container topology.
 - Queue routing is service-oriented: `ai_agent_queue`, `scraping_queue`, and `scoring_queue`.
 - `backend/ml` is optional at runtime. Its heavier ML dependencies are intentionally not part of the default backend sync, and adapters fall back to deterministic behaviour when unavailable.
+- Search and platform fetch providers (OpenSERP, Brave, Apify, scrape.do): see [docs/provider-configuration.md](docs/provider-configuration.md).
