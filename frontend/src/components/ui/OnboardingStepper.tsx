@@ -4,17 +4,71 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getOnboarding, submitOnboarding, type OnboardingPayload } from "@/lib/api";
+import {
+  BUDGET_MAX,
+  BUDGET_MIN,
+  CAMPAIGN_GOAL_OPTIONS,
+  CATEGORY_OPTIONS,
+  COMPANY_SIZE_OPTIONS,
+  COUNTRY_OPTIONS,
+  DEFAULT_MONTHLY_BUDGET,
+  PLATFORM_OPTIONS,
+  normalizeCategory,
+} from "@/lib/brandProfile";
+
+const PLATFORM_ICON_STYLES: Record<
+  string,
+  { background: React.CSSProperties; icon: React.ReactNode }
+> = {
+  instagram: {
+    background: {
+      background:
+        "linear-gradient(135deg,#f58529,#dd2a7b 50%,#8134af 80%,#515bd4)",
+    },
+    icon: (
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="white" strokeWidth="2">
+        <rect x="3" y="3" width="18" height="18" rx="5" />
+        <circle cx="12" cy="12" r="4" />
+        <circle cx="17.5" cy="6.5" r="0.5" fill="white" />
+      </svg>
+    ),
+  },
+  tiktok: {
+    background: { background: "#0a0b10" },
+    icon: (
+      <svg viewBox="0 0 20 22" width="14" height="14" fill="white">
+        <path d="M14.5 1c.4 1.8 1.5 3.4 3 4.4 1.1.7 2.5 1.1 3.9 1.1V11c-1.6 0-3.2-.4-4.6-1.1-.6-.3-1.2-.7-1.7-1.1v6.6c0 4.1-3.4 7.5-7.5 7.5-1.6 0-3.1-.5-4.3-1.4-1.9-1.4-3.2-3.7-3.2-6.2 0-4.1 3.4-7.5 7.5-7.5.4 0 .9 0 1.3.1v4.4c-.4-.1-.8-.2-1.3-.2-1.7 0-3.1 1.4-3.1 3.1s1.4 3.2 3.2 3.2 3.2-1.4 3.2-3.1V1h3.6z" />
+      </svg>
+    ),
+  },
+  youtube: {
+    background: { background: "#ff0033" },
+    icon: (
+      <svg viewBox="0 0 24 18" width="16" height="12" fill="white">
+        <path d="M23.5 3.5a3 3 0 0 0-2.1-2.1C19.5 1 12 1 12 1s-7.5 0-9.4.4A3 3 0 0 0 .5 3.5C.1 5.4.1 9 .1 9s0 3.6.4 5.5a3 3 0 0 0 2.1 2.1C4.5 17 12 17 12 17s7.5 0 9.4-.4a3 3 0 0 0 2.1-2.1c.4-1.9.4-5.5.4-5.5s0-3.6-.4-5.5zM9.5 12.5v-7L15.5 9l-6 3.5z" />
+      </svg>
+    ),
+  },
+  facebook: {
+    background: { background: "#1877f2" },
+    icon: (
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="white">
+        <path d="M14 9V7c0-1 .5-2 2-2h2V1h-3c-3 0-5 2-5 5v3H7v4h3v9h4v-9h3l1-4h-4z" />
+      </svg>
+    ),
+  },
+};
 
 export default function OnboardingStepper() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [brandName, setBrandName] = useState("");
-  const [industry, setIndustry] = useState("Outdoor & activewear");
-  const [companySize, setCompanySize] = useState("11–50");
-  const [country, setCountry] = useState("Canada");
+  const [industry, setIndustry] = useState<string>(CATEGORY_OPTIONS[1]);
+  const [companySize, setCompanySize] = useState<string>(COMPANY_SIZE_OPTIONS[1]);
+  const [country, setCountry] = useState<string>(COUNTRY_OPTIONS[1]);
   const [goals, setGoals] = useState<string[]>([]);
   const [platforms, setPlatforms] = useState<string[]>([]);
-  const [budget, setBudget] = useState(12500);
+  const [budget, setBudget] = useState(DEFAULT_MONTHLY_BUDGET);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +78,7 @@ export default function OnboardingStepper() {
       .then((profile) => {
         if (cancelled) return;
         setBrandName(profile.brand_name);
-        if (profile.industry) setIndustry(profile.industry);
+        if (profile.industry) setIndustry(normalizeCategory(profile.industry));
         if (profile.company_size) setCompanySize(profile.company_size);
         if (profile.country) setCountry(profile.country);
         if (profile.goals?.length) setGoals(profile.goals);
@@ -65,7 +119,7 @@ export default function OnboardingStepper() {
   const buildPayload = (saveStep: SaveStep): OnboardingPayload => {
     const payload: OnboardingPayload = {
       brand_name: brandName.trim() || "Untitled brand",
-      industry,
+      industry: normalizeCategory(industry),
       company_size: companySize,
       country,
     };
@@ -123,7 +177,7 @@ export default function OnboardingStepper() {
     router.push("/dashboard?welcome=1");
   };
 
-  const budgetPct = ((budget - 500) / (50000 - 500)) * 100;
+  const budgetPct = ((budget - BUDGET_MIN) / (BUDGET_MAX - BUDGET_MIN)) * 100;
 
   return (
     <div className="wrap">
@@ -195,14 +249,11 @@ export default function OnboardingStepper() {
                   value={industry}
                   onChange={(e) => setIndustry(e.target.value)}
                 >
-                  <option>Outdoor & activewear</option>
-                  <option>Beauty & skincare</option>
-                  <option>Food & beverage</option>
-                  <option>Tech & SaaS</option>
-                  <option>Fashion & apparel</option>
-                  <option>Fitness & wellness</option>
-                  <option>Travel & hospitality</option>
-                  <option>Gaming & entertainment</option>
+                  {CATEGORY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="field">
@@ -211,11 +262,11 @@ export default function OnboardingStepper() {
                   value={companySize}
                   onChange={(e) => setCompanySize(e.target.value)}
                 >
-                  <option>1–10</option>
-                  <option>11–50</option>
-                  <option>51–200</option>
-                  <option>201–1000</option>
-                  <option>1000+</option>
+                  {COMPANY_SIZE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -225,12 +276,11 @@ export default function OnboardingStepper() {
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
               >
-                <option>United States</option>
-                <option>Canada</option>
-                <option>United Kingdom</option>
-                <option>India</option>
-                <option>Bangladesh</option>
-                <option>Global</option>
+                {COUNTRY_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="actions">
@@ -267,96 +317,27 @@ export default function OnboardingStepper() {
               outcomes against these.
             </p>
             <div className="chips" id="goals">
-              <span
-                className={`gchip ${goals.includes("awareness") ? "on" : ""}`}
-                onClick={() => toggleGoal("awareness")}
-              >
-                Brand Awareness{" "}
-                <span className="check">
-                  <svg viewBox="0 0 16 12">
-                    <path
-                      d="M1 6 L6 11 L15 1"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+              {CAMPAIGN_GOAL_OPTIONS.map((goal) => (
+                <span
+                  key={goal.id}
+                  className={`gchip ${goals.includes(goal.id) ? "on" : ""}`}
+                  onClick={() => toggleGoal(goal.id)}
+                >
+                  {goal.label}{" "}
+                  <span className="check">
+                    <svg viewBox="0 0 16 12">
+                      <path
+                        d="M1 6 L6 11 L15 1"
+                        stroke="white"
+                        strokeWidth="2.4"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
                 </span>
-              </span>
-              <span
-                className={`gchip ${goals.includes("launch") ? "on" : ""}`}
-                onClick={() => toggleGoal("launch")}
-              >
-                Product Launch{" "}
-                <span className="check">
-                  <svg viewBox="0 0 16 12">
-                    <path
-                      d="M1 6 L6 11 L15 1"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-              </span>
-              <span
-                className={`gchip ${goals.includes("sales") ? "on" : ""}`}
-                onClick={() => toggleGoal("sales")}
-              >
-                Sales{" "}
-                <span className="check">
-                  <svg viewBox="0 0 16 12">
-                    <path
-                      d="M1 6 L6 11 L15 1"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-              </span>
-              <span
-                className={`gchip ${goals.includes("event") ? "on" : ""}`}
-                onClick={() => toggleGoal("event")}
-              >
-                Event Promotion{" "}
-                <span className="check">
-                  <svg viewBox="0 0 16 12">
-                    <path
-                      d="M1 6 L6 11 L15 1"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-              </span>
-              <span
-                className={`gchip ${goals.includes("ltp") ? "on" : ""}`}
-                onClick={() => toggleGoal("ltp")}
-              >
-                Long-term Partnership{" "}
-                <span className="check">
-                  <svg viewBox="0 0 16 12">
-                    <path
-                      d="M1 6 L6 11 L15 1"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-              </span>
+              ))}
             </div>
             <div className="actions">
               <button className="back" onClick={() => go(1)} disabled={submitting}>
@@ -394,125 +375,36 @@ export default function OnboardingStepper() {
               budget.
             </p>
             <div className="pgrid" id="platforms">
-              <div
-                className={`pcard ${platforms.includes("instagram") ? "on" : ""}`}
-                onClick={() => togglePlatform("instagram")}
-              >
-                <span
-                  className="icon"
-                  style={{
-                    background:
-                      "linear-gradient(135deg,#f58529,#dd2a7b 50%,#8134af 80%,#515bd4)",
-                  }}
+              {PLATFORM_OPTIONS.map((platform) => (
+                <div
+                  key={platform.id}
+                  className={`pcard ${platforms.includes(platform.id) ? "on" : ""}`}
+                  onClick={() => togglePlatform(platform.id)}
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="2"
+                  <span
+                    className="icon"
+                    style={PLATFORM_ICON_STYLES[platform.id].background}
                   >
-                    <rect x="3" y="3" width="18" height="18" rx="5" />
-                    <circle cx="12" cy="12" r="4" />
-                    <circle cx="17.5" cy="6.5" r="0.5" fill="white" />
-                  </svg>
-                </span>
-                <div>
-                  <div className="nm">Instagram</div>
-                  <div className="desc">Reels, carousels, stories</div>
+                    {PLATFORM_ICON_STYLES[platform.id].icon}
+                  </span>
+                  <div>
+                    <div className="nm">{platform.label}</div>
+                    <div className="desc">{platform.desc}</div>
+                  </div>
+                  <span className="tick">
+                    <svg viewBox="0 0 16 12">
+                      <path
+                        d="M1 6 L6 11 L15 1"
+                        stroke="white"
+                        strokeWidth="2.4"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
                 </div>
-                <span className="tick">
-                  <svg viewBox="0 0 16 12">
-                    <path
-                      d="M1 6 L6 11 L15 1"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-              </div>
-              <div
-                className={`pcard ${platforms.includes("tiktok") ? "on" : ""}`}
-                onClick={() => togglePlatform("tiktok")}
-              >
-                <span className="icon" style={{ background: "#0a0b10" }}>
-                  <svg viewBox="0 0 20 22" width="14" height="14" fill="white">
-                    <path d="M14.5 1c.4 1.8 1.5 3.4 3 4.4 1.1.7 2.5 1.1 3.9 1.1V11c-1.6 0-3.2-.4-4.6-1.1-.6-.3-1.2-.7-1.7-1.1v6.6c0 4.1-3.4 7.5-7.5 7.5-1.6 0-3.1-.5-4.3-1.4-1.9-1.4-3.2-3.7-3.2-6.2 0-4.1 3.4-7.5 7.5-7.5.4 0 .9 0 1.3.1v4.4c-.4-.1-.8-.2-1.3-.2-1.7 0-3.1 1.4-3.1 3.1s1.4 3.2 3.2 3.2 3.2-1.4 3.2-3.1V1h3.6z" />
-                  </svg>
-                </span>
-                <div>
-                  <div className="nm">TikTok</div>
-                  <div className="desc">Short-form, trending</div>
-                </div>
-                <span className="tick">
-                  <svg viewBox="0 0 16 12">
-                    <path
-                      d="M1 6 L6 11 L15 1"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-              </div>
-              <div
-                className={`pcard ${platforms.includes("youtube") ? "on" : ""}`}
-                onClick={() => togglePlatform("youtube")}
-              >
-                <span className="icon" style={{ background: "#ff0033" }}>
-                  <svg viewBox="0 0 24 18" width="16" height="12" fill="white">
-                    <path d="M23.5 3.5a3 3 0 0 0-2.1-2.1C19.5 1 12 1 12 1s-7.5 0-9.4.4A3 3 0 0 0 .5 3.5C.1 5.4.1 9 .1 9s0 3.6.4 5.5a3 3 0 0 0 2.1 2.1C4.5 17 12 17 12 17s7.5 0 9.4-.4a3 3 0 0 0 2.1-2.1c.4-1.9.4-5.5.4-5.5s0-3.6-.4-5.5zM9.5 12.5v-7L15.5 9l-6 3.5z" />
-                  </svg>
-                </span>
-                <div>
-                  <div className="nm">YouTube</div>
-                  <div className="desc">Long-form, Shorts</div>
-                </div>
-                <span className="tick">
-                  <svg viewBox="0 0 16 12">
-                    <path
-                      d="M1 6 L6 11 L15 1"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-              </div>
-              <div
-                className={`pcard ${platforms.includes("facebook") ? "on" : ""}`}
-                onClick={() => togglePlatform("facebook")}
-              >
-                <span className="icon" style={{ background: "#1877f2" }}>
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="white">
-                    <path d="M14 9V7c0-1 .5-2 2-2h2V1h-3c-3 0-5 2-5 5v3H7v4h3v9h4v-9h3l1-4h-4z" />
-                  </svg>
-                </span>
-                <div>
-                  <div className="nm">Facebook</div>
-                  <div className="desc">Reels, communities</div>
-                </div>
-                <span className="tick">
-                  <svg viewBox="0 0 16 12">
-                    <path
-                      d="M1 6 L6 11 L15 1"
-                      stroke="white"
-                      strokeWidth="2.4"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-              </div>
+              ))}
             </div>
 
             <div className="budget-box">
@@ -537,8 +429,8 @@ export default function OnboardingStepper() {
                 <input
                   type="range"
                   id="brange"
-                  min="500"
-                  max="50000"
+                  min={BUDGET_MIN}
+                  max={BUDGET_MAX}
                   step="500"
                   value={budget}
                   onChange={handleBudgetChange}

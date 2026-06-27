@@ -6,13 +6,14 @@ import {
   BUDGET_MAX,
   BUDGET_MIN,
   BUDGET_STEP,
+  CAMPAIGN_GOAL_OPTIONS,
+  CATEGORY_OPTIONS,
   COMPANY_SIZE_OPTIONS,
   COUNTRY_OPTIONS,
   DEFAULT_MONTHLY_BUDGET,
-  GOAL_OPTIONS,
-  INDUSTRY_OPTIONS,
   PLATFORM_OPTIONS,
   budgetSliderPercent,
+  normalizeCategory,
 } from "@/lib/brandProfile";
 
 export default function BrandForm() {
@@ -22,7 +23,7 @@ export default function BrandForm() {
     null
   );
   const [brandName, setBrandName] = useState("");
-  const [industry, setIndustry] = useState<string>(INDUSTRY_OPTIONS[0]);
+  const [industry, setIndustry] = useState<string>(CATEGORY_OPTIONS[1]);
   const [companySize, setCompanySize] = useState<string>(COMPANY_SIZE_OPTIONS[1]);
   const [country, setCountry] = useState<string>(COUNTRY_OPTIONS[1]);
   const [goals, setGoals] = useState<string[]>([]);
@@ -35,7 +36,7 @@ export default function BrandForm() {
       .then((profile) => {
         if (cancelled) return;
         setBrandName(profile.brand_name);
-        if (profile.industry) setIndustry(profile.industry);
+        if (profile.industry) setIndustry(normalizeCategory(profile.industry));
         if (profile.company_size) setCompanySize(profile.company_size);
         if (profile.country) setCountry(profile.country);
         setGoals(profile.goals ?? []);
@@ -75,7 +76,7 @@ export default function BrandForm() {
     try {
       await submitOnboarding({
         brand_name: brandName.trim() || "Untitled brand",
-        industry,
+        industry: normalizeCategory(industry),
         company_size: companySize,
         country,
         goals,
@@ -107,7 +108,10 @@ export default function BrandForm() {
   return (
     <section className="card" id="brand">
       <h2>Brand</h2>
-      <p className="desc">Used to seed match scoring across all your briefs.</p>
+      <p className="desc">
+        Used to seed new briefs. Goals you select here are sent to match scoring when you
+        create a campaign.
+      </p>
       <form onSubmit={onSubmit}>
         <div className="row">
           <div className="field">
@@ -121,7 +125,7 @@ export default function BrandForm() {
           <div className="field">
             <label>Industry</label>
             <select value={industry} onChange={(e) => setIndustry(e.target.value)}>
-              {INDUSTRY_OPTIONS.map((opt) => (
+              {CATEGORY_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>
                   {opt}
                 </option>
@@ -158,10 +162,11 @@ export default function BrandForm() {
         <div className="brand-section">
           <h3>Campaign goals</h3>
           <p className="brand-section-desc">
-            Prioritise creators with proven outcomes against these goals.
+            Defaults for new briefs. All selected goals are included in campaign match
+            scoring.
           </p>
           <div className="brand-chips">
-            {GOAL_OPTIONS.map((goal) => (
+            {CAMPAIGN_GOAL_OPTIONS.map((goal) => (
               <button
                 key={goal.id}
                 type="button"

@@ -3,7 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createCampaign, getOnboarding } from '@/lib/api';
-import { briefDefaultsFromBrandProfile } from '@/lib/brandProfile';
+import {
+  CAMPAIGN_GOAL_OPTIONS,
+  CATEGORY_OPTIONS,
+  briefDefaultsFromBrandProfile,
+} from '@/lib/brandProfile';
 import { buildBriefSnapshot } from '@/lib/campaignPayload';
 import { useToast } from '@/components/ui/ToastProvider';
 
@@ -17,9 +21,9 @@ export default function BriefForm() {
   const [brief, setBrief] = useState({
     brand: '',
     product: '',
-    category: 'Outdoor & Activewear',
+    category: CATEGORY_OPTIONS[1] as string,
     campaign: '',
-    goal: '',
+    goals: [] as string[],
     ages: [] as string[],
     gender: 'All',
     lang: 'English',
@@ -43,7 +47,7 @@ export default function BriefForm() {
           ...prev,
           brand: defaults.brand || prev.brand,
           category: defaults.category || prev.category,
-          goal: defaults.goal || prev.goal,
+          goals: defaults.goals.length ? defaults.goals : prev.goals,
           platforms: defaults.platforms.length ? defaults.platforms : prev.platforms,
           budgetMax: defaults.budgetMax,
           budgetMin: Math.min(prev.budgetMin, defaults.budgetMax),
@@ -59,6 +63,15 @@ export default function BriefForm() {
   }, []);
 
   const [tagInput, setTagInput] = useState('');
+
+  const toggleGoal = (goalLabel: string) => {
+    setBrief(prev => ({
+      ...prev,
+      goals: prev.goals.includes(goalLabel)
+        ? prev.goals.filter(g => g !== goalLabel)
+        : [...prev.goals, goalLabel],
+    }));
+  };
 
   // Handle chips
   const toggleChip = (group: 'ages' | 'locs', val: string) => {
@@ -156,7 +169,7 @@ export default function BriefForm() {
             brand: brief.brand,
             product: brief.product,
             category: brief.category,
-            goal: brief.goal,
+            goals: brief.goals,
             ages: brief.ages,
             gender: brief.gender,
             locations: brief.locs,
@@ -216,16 +229,9 @@ export default function BriefForm() {
                 <label>Product Category <span className="req">*</span></label>
                 <div className="select-wrap">
                   <select className="select" value={brief.category} onChange={e => setBrief({...brief, category: e.target.value})}>
-                    <option>Fashion & Apparel</option>
-                    <option>Outdoor & Activewear</option>
-                    <option>Beauty & Skincare</option>
-                    <option>Food & Beverage</option>
-                    <option>Tech & Gadgets</option>
-                    <option>Health & Wellness</option>
-                    <option>Travel & Hospitality</option>
-                    <option>Home & Lifestyle</option>
-                    <option>Gaming & Entertainment</option>
-                    <option>Finance & Fintech</option>
+                    {CATEGORY_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -238,20 +244,17 @@ export default function BriefForm() {
 
           {/* Goal */}
           <section className="section">
-            <div className="section-head"><span className="num">2</span><h2>Campaign goal</h2><span className="desc">Pick the primary outcome.</span></div>
-            <div className="goal-grid">
-              {[
-                { id: 'Brand Awareness', icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" opacity="0.6"/><circle cx="12" cy="12" r="11" opacity="0.3"/></svg>, desc: 'Maximize reach & impressions', class: 'goal-1' },
-                { id: 'Product Launch', icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 13l8-9 8 9-8 7-8-7z"/><path d="M9 16l3-3 3 3"/></svg>, desc: 'Drive buzz on a new drop', class: 'goal-2' },
-                { id: 'Sales Conversion', icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M3 17l5-5 4 4 8-8"/><path d="M16 8h4v4"/></svg>, desc: 'Track clicks & purchases', class: 'goal-3' },
-                { id: 'Event Promotion', icon: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>, desc: 'Fill seats & RSVPs', class: 'goal-4' },
-              ].map(g => (
-                <label key={g.id} className={`goal ${g.class}`}>
-                  <input type="radio" name="goal" value={g.id} checked={brief.goal === g.id} onChange={e => setBrief({...brief, goal: e.target.value})} />
-                  <span className="ico">{g.icon}</span>
-                  <div className="t">{g.id}</div>
-                  <div className="d">{g.desc}</div>
-                </label>
+            <div className="section-head"><span className="num">2</span><h2>Campaign goals</h2><span className="desc">Pick all outcomes that apply.</span></div>
+            <div className="chips">
+              {CAMPAIGN_GOAL_OPTIONS.map((goal) => (
+                <span
+                  key={goal.id}
+                  className={`chip ${brief.goals.includes(goal.label) ? 'on' : ''}`}
+                  onClick={() => toggleGoal(goal.label)}
+                  title={goal.description}
+                >
+                  {goal.label}
+                </span>
               ))}
             </div>
           </section>
@@ -421,7 +424,9 @@ export default function BriefForm() {
           <div className="row"><span className="k">Brand</span><span className="v">{brief.brand || '—'}</span></div>
           <div className="row"><span className="k">Product</span><span className="v">{brief.product || '—'}</span></div>
           <div className="row"><span className="k">Category</span><span className="v">{brief.category || '—'}</span></div>
-          <div className="row"><span className="k">Goal</span><span className="v">{brief.goal || '—'}</span></div>
+          <div className="row"><span className="k">Goals</span><span className="v stack">
+            {brief.goals.length ? brief.goals.map(g => <span key={g} className="pill">{g}</span>) : <span style={{ color: 'var(--muted-soft)', fontStyle: 'italic' }}>none</span>}
+          </span></div>
           <div className="row"><span className="k">Ages</span><span className="v stack">
             {brief.ages.length ? brief.ages.map(a => <span key={a} className="pill">{a}</span>) : <span style={{ color: 'var(--muted-soft)', fontStyle: 'italic' }}>none</span>}
           </span></div>

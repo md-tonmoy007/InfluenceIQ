@@ -4,7 +4,7 @@ export type BriefQuery = {
   brand: string;
   product: string;
   category: string;
-  goal: string;
+  goals: string[];
   ages: string[];
   gender: string;
   locs: string[];
@@ -34,7 +34,7 @@ export const parseBriefSearchParams = (searchParams: SearchParamInput): BriefQue
   const brand = readParam(searchParams, "brand") || briefDefaults.brand;
   const product = readParam(searchParams, "product") || briefDefaults.product;
   const category = readParam(searchParams, "category") || briefDefaults.category;
-  const goal = readParam(searchParams, "goal") || briefDefaults.goal;
+  const goals = parseList(readParam(searchParams, "goals"), briefDefaults.goals);
   const ages = parseList(readParam(searchParams, "ages"), briefDefaults.ages);
   const gender = readParam(searchParams, "gender") || briefDefaults.gender;
   const locs = parseList(readParam(searchParams, "locs"), briefDefaults.locs);
@@ -49,7 +49,7 @@ export const parseBriefSearchParams = (searchParams: SearchParamInput): BriefQue
     brand,
     product,
     category,
-    goal,
+    goals,
     ages,
     gender,
     locs,
@@ -64,7 +64,7 @@ export const buildBriefSearchParams = (brief: BriefQuery) => {
   params.set("brand", brief.brand);
   params.set("product", brief.product);
   params.set("category", brief.category);
-  params.set("goal", brief.goal);
+  params.set("goals", brief.goals.join(","));
   params.set("ages", brief.ages.join(","));
   params.set("gender", brief.gender);
   params.set("locs", brief.locs.join(","));

@@ -2,7 +2,7 @@ export type CampaignBriefPayload = {
   brand: string;
   product: string;
   category: string;
-  goal: string;
+  goals: string[];
   ages: string[];
   gender: string;
   locations: string[];

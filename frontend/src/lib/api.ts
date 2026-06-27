@@ -1,4 +1,5 @@
 import type { CampaignBriefPayload } from "@/types/campaign";
+import { joinCampaignGoals } from "@/lib/brandProfile";
 import type { InfluencerRecommendation } from "@/types/influencer";
 import {
   getAccessToken,
@@ -520,7 +521,7 @@ export const createCampaign = async (
   const body: Record<string, unknown> = {
     product: brief.product,
     industry: brief.category,
-    goals: [brief.goal, brief.notes].filter(Boolean).join("\n\n") || null,
+    goals: joinCampaignGoals(brief.goals, brief.notes),
     target_audience: targetAudience || null,
     preferred_platforms: brief.platforms.length ? brief.platforms : null,
     budget_range: brief.budget || null,

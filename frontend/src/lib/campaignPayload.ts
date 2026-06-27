@@ -18,7 +18,7 @@ export const buildCampaignPayloadFromQuery = (query: string): CampaignBriefPaylo
     brand: "Discover Search",
     product: normalizedQuery.slice(0, 120) || "Creator search",
     category: "General",
-    goal: normalizedQuery || "Find relevant creators",
+    goals: normalizedQuery ? [normalizedQuery] : ["Find relevant creators"],
     ages: [],
     gender: "All",
     locations: [],
@@ -34,7 +34,7 @@ export type BriefFormPayload = {
   brand: string;
   product: string;
   category: string;
-  goal: string;
+  goals: string[];
   ages: string[];
   gender: string;
   lang: string;
@@ -57,7 +57,8 @@ export const buildBriefSnapshot = (brief: BriefFormPayload): Record<string, unkn
   return {
     brand_name: brief.brand,
     campaign_name: brief.campaign || brief.product,
-    goal: brief.goal,
+    goals: brief.goals,
+    goal: brief.goals.join(", "),
     ages: brief.ages,
     gender: brief.gender,
     language: brief.lang,

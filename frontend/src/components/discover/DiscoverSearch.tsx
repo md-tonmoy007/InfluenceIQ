@@ -28,7 +28,8 @@ export default function DiscoverSearch() {
         briefSnapshot: {
           brand_name: brief.brand,
           campaign_name: trimmed.slice(0, 120),
-          goal: brief.goal,
+          goals: brief.goals,
+          goal: brief.goals.join(", "),
           ages: brief.ages,
           gender: brief.gender,
           language: "English",

@@ -66,8 +66,12 @@ const statusLabel = (status: string): { label: string; className: string } => {
 };
 
 const goalTag = (campaign: CampaignListItem): string | null => {
-  if (campaign.brief_snapshot && typeof campaign.brief_snapshot.goal === "string") {
-    return campaign.brief_snapshot.goal;
+  const snapshot = campaign.brief_snapshot;
+  if (snapshot && Array.isArray(snapshot.goals) && snapshot.goals.length) {
+    return (snapshot.goals as string[]).join(", ");
+  }
+  if (snapshot && typeof snapshot.goal === "string" && snapshot.goal) {
+    return snapshot.goal;
   }
   if (campaign.search_query) return "Search";
   return null;

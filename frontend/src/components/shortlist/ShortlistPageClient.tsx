@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { parseBriefSearchParams } from '@/lib/briefQuery';
+import { parseCampaignGoals } from '@/lib/brandProfile';
 import {
   getCampaign,
   getCampaignInfluencers,
@@ -245,11 +246,21 @@ export default function ShortlistPageClient() {
 
   const liveBrief = useMemo(() => {
     const payload = campaign?.payload ?? {};
+    const snapshot = (payload.brief_snapshot ?? {}) as Record<string, unknown>;
+    const snapshotGoals = Array.isArray(snapshot.goals)
+      ? (snapshot.goals as string[])
+      : null;
+    const goal =
+      (snapshotGoals?.length ? snapshotGoals.join(', ') : null) ??
+      (typeof snapshot.goal === 'string' && snapshot.goal ? snapshot.goal : null) ??
+      (campaign?.goal ? parseCampaignGoals(campaign.goal).join(', ') || campaign.goal : null) ??
+      (fallbackBrief.goals.length ? fallbackBrief.goals.join(', ') : '—');
+
     return {
       brand: campaign?.brand ?? fallbackBrief.brand,
       product: campaign?.product ?? fallbackBrief.product,
       category: campaign?.category ?? fallbackBrief.category,
-      goal: campaign?.goal ?? fallbackBrief.goal,
+      goal,
       ages: Array.isArray(payload.ages) ? (payload.ages as string[]) : fallbackBrief.ages,
       gender: typeof payload.gender === 'string' ? payload.gender : fallbackBrief.gender,
       locs: Array.isArray(payload.locations)
