@@ -171,6 +171,8 @@ Restarts matching on the same campaign id. Accepts terminal statuses (`completed
 
 If the campaign has shortlisted or contracted creators, quick rerun requires the `X-Confirm-Rerun: true` header; otherwise the API returns `409` with code `rerun_has_outreach`.
 
+For how rerun re-enters the Celery pipeline, cache behavior, and state diagram, see [pipeline-flow-architecture.md](./pipeline-flow-architecture.md#rerunning-a-campaign).
+
 `GET /api/campaigns/{id}/influencers`
 
 Returns ranked recommendations for a campaign. Results should be sortable and filterable by platform, niche, region, grade, and follower band.

@@ -1,11 +1,21 @@
 # InfluenceIQ — AI Pipeline Architecture
 
-This document captures the end-to-end influencer discovery and analysis pipeline as designed in the product architecture diagram. It covers two product flows:
+This document captures the **execution flow** for influencer discovery and analysis: phases, Celery tasks, queues, and data movement through the pipeline.
+
+It covers two product flows:
 
 1. **Normal search** — discover and rank influencers for a campaign brief.
 2. **Deep search** — perform comment-level AI analysis on a selected influencer and produce a report.
 
-For runtime topology, API contracts, and data models, see [architecture.md](./architecture.md).
+**How this doc relates to others**
+
+| Document | Scope |
+| --- | --- |
+| **[architecture.md](./architecture.md)** | System source of truth — REST/WebSocket contracts, campaign lifecycle (create, submit, **rerun**, cancel), data models |
+| **This doc** | What happens **once the pipeline is dispatched** — `generate_queries` through scoring and optional deep analysis |
+| [development.md](./development.md) | Local setup and day-to-day dev workflow |
+
+**Running a campaign** spans both layers: the API persists the brief and chooses *when* to start (or restart); this document describes *what runs* after `start_campaign` enqueues `generate_queries`.
 
 ---
 
@@ -81,8 +91,9 @@ sequenceDiagram
     participant Search as Search API
     participant Crawl as Scraper
 
-    Brand->>API: POST /api/campaigns (brief, weights, platforms)
-    API->>QA: generate_queries(campaign_id)
+    Brand->>API: POST /api/campaigns or POST /submit or POST /rerun
+    Note over API: Rerun clears campaign run artifacts first (see below)
+    API->>QA: start_campaign → generate_queries(campaign_id)
     QA->>Cache: read query / page cache
     QA-->>QA: plan queries<br/>e.g. "best influencer in Singapore for medical"
     loop each query
@@ -97,10 +108,24 @@ sequenceDiagram
 | Component | Role | Example |
 | --- | --- | --- |
 | **Build a campaign** | Capture brand brief, target audience, platforms, region, and scoring weights | Medical brand in Singapore, YouTube + Instagram |
+| **Pipeline dispatch** | Commit lifecycle state and enqueue the root task | `start_campaign` → `generate_queries.delay` |
 | **Query agent** | Generate campaign-specific search queries from the brief | `"best medical influencer Singapore site:youtube.com"` |
-| **Cache** | Avoid redundant LLM calls, search results, and page fetches | Redis URL cache, query dedup |
+| **Cache** | Avoid redundant LLM calls, search results, and page fetches | Redis URL cache (global), query dedup; campaign-scoped pipeline state |
 | **Search API** | Execute web search and return candidate URLs | Brave, OpenSerp |
 | **Scrape** | Fetch pages, extract readable content, discover social profile links | httpx fetch + content extraction (Firecrawl-style crawl in the target design) |
+
+### Pipeline entry points
+
+All normal-search runs converge on the same execution graph after dispatch:
+
+| Trigger | API | When to use |
+| --- | --- | --- |
+| **Create + start** | `POST /api/campaigns` (`start_pipeline=true`) | New brief, run immediately |
+| **Submit draft** | `POST /api/campaigns/{id}/submit` | Saved draft, first run |
+| **Quick rerun** | `POST /api/campaigns/{id}/rerun?start_pipeline=true` | Terminal campaign (`completed`, `failed`, `cancelled`, `partial`); same brief, fresh pipeline on same `campaign_id` |
+| **Edit & rerun** | `POST /api/campaigns/{id}/rerun?start_pipeline=false` then `PATCH` + `submit` | Change brief before the next run |
+
+Rerun does **not** create a new campaign row. It clears the previous run's outputs and re-enters at **Query generation** (see [Rerunning a campaign](#rerunning-a-campaign)).
 
 ### Data flow
 
@@ -272,16 +297,68 @@ The comment analysis AI produces explainable outputs per influencer:
 ```mermaid
 stateDiagram-v2
     [*] --> CampaignCreated: POST /api/campaigns
-    CampaignCreated --> QueryGeneration: generate_queries
+    CampaignCreated --> QueryGeneration: start_campaign → generate_queries
     QueryGeneration --> Searching: execute_search (per query)
     Searching --> Crawling: fetch_page (per URL)
     Crawling --> Extracting: extract_content → extract_influencers
-    Extracting --> Scoring: score_influencer (per candidate)
+    Extracting --> Enriching: enrich_influencer_platforms
+    Enriching --> Scoring: score_influencer (per candidate)
     Scoring --> Ranked: top-N recommendations
+    Ranked --> Terminal: completed / partial / failed / cancelled
+
+    Terminal --> QueryGeneration: POST /rerun (reset artifacts, start_pipeline=true)
+    Terminal --> DraftForEdit: POST /rerun (start_pipeline=false)
+    DraftForEdit --> QueryGeneration: PATCH brief + POST /submit
+
     Ranked --> DeepAnalysis: user selects influencer
     DeepAnalysis --> ReportReady: comment analysis complete
     ReportReady --> [*]
 ```
+
+Phase 1–2 (normal search) ends at **Terminal**. **Rerun** loops back to **QueryGeneration** on the same `campaign_id` after clearing run-scoped data. Phase 3 (deep analysis) remains user-triggered and is not started automatically by rerun.
+
+---
+
+## Rerunning a campaign
+
+Rerun replays the **same execution graph** as a first run. The lifecycle layer (`POST /rerun` in [architecture.md](./architecture.md)) handles reset and dispatch; the pipeline layer is unchanged after `generate_queries` starts.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant API as FastAPI
+    participant Reset as campaign_reset
+    participant Redis as Redis
+    participant Start as start_campaign
+    participant QA as generate_queries
+
+    User->>API: POST /api/campaigns/{id}/rerun
+    API->>Reset: clear_campaign_run_artifacts (Postgres)
+    Note over Reset: scores, crawl_sources, flags, snapshots, deep_analysis_runs
+    API->>Redis: clear pipeline_state, pipeline_events, event_id_counter
+    alt start_pipeline=true (quick rerun)
+        API->>Start: _dispatch_pipeline → start_campaign
+        Start->>QA: generate_queries.delay
+    else start_pipeline=false (edit & rerun)
+        API-->>User: status=draft (edit brief, then submit)
+    end
+```
+
+### What rerun clears vs preserves
+
+| Layer | Cleared on rerun | Preserved |
+| --- | --- | --- |
+| **Postgres (run artifacts)** | `crawl_sources`, `influencer_scores`, `brand_safety_flags`, `candidate_snapshots`, `deep_analysis_runs` | `campaigns` row (brief, weights), `campaign_contracts`, `saved_list_items`, global `influencers` |
+| **Redis (campaign-scoped)** | `pipeline_state:{id}`, `pipeline_events:{id}`, `event_id_counter:{id}` | — |
+| **Redis (global)** | — | URL/page cache (`url_cache:*`) — reruns may skip re-fetching unchanged pages |
+
+Clearing run artifacts is required: `refresh_campaign_status` derives completion from Postgres. Re-dispatching without deleting old scores and extracted sources can mark the campaign **completed** before new work finishes.
+
+Global URL cache is **intentionally kept** for faster reruns. If a bad run was caused by stale cached pages, operators may need cache eviction separately; that is not part of the default rerun path.
+
+### Outreach guard
+
+If the campaign has shortlisted or contracted creators, quick rerun (`start_pipeline=true`) returns `409 rerun_has_outreach` unless the client sends `X-Confirm-Rerun: true`. Contracts and saved-list items are kept; only match results are replaced.
 
 ---
 
@@ -305,6 +382,7 @@ flowchart LR
     subgraph score_q["scoring_queue"]
         EI["extract_influencers"]
         RI["resolve_identity"]
+        EN["enrich_influencer_platforms"]
         SI["score_influencer"]
     end
 
@@ -313,7 +391,8 @@ flowchart LR
     FP --> EC
     EC --> EI
     EI --> RI
-    RI --> SI
+    RI --> EN
+    EN --> SI
 ```
 
 | Diagram component | Celery task / module | Queue |
@@ -322,7 +401,9 @@ flowchart LR
 | Search API | `execute_search` | `scraping_queue` |
 | Scrape | `fetch_page`, `extract_content` | `scraping_queue` |
 | Extract agent | `extract_influencers`, `resolve_identity_cluster` | `scoring_queue` |
+| Platform enrichment | `enrich_influencer_platforms` | `scoring_queue` |
 | Scoring | `score_influencer` | `scoring_queue` |
+| Campaign rerun | `POST /rerun` → reset + `start_campaign` | API / orchestrator |
 | Comment analysis AI | `deep_analyze` *(planned)* | TBD |
 
 ---
@@ -332,6 +413,7 @@ flowchart LR
 | Phase | Component | Status |
 | --- | --- | --- |
 | 1 | Campaign intake | Implemented — `POST /api/campaigns` |
+| 1 | Campaign rerun | Implemented — `POST /api/campaigns/{id}/rerun` (see [Rerunning a campaign](#rerunning-a-campaign)) |
 | 1 | Query agent + cache | Implemented — deterministic queries + optional LLM; Redis cache |
 | 1 | Search API | Implemented — Brave / OpenSerp with fallback |
 | 1 | Scrape / crawl | Implemented — httpx fetch + content extraction |
