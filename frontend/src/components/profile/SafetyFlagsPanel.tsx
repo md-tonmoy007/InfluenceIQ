@@ -15,6 +15,17 @@ type SafetyFlagsPanelProps = {
   flags: SafetyFlag[];
 };
 
+const severityClass = (severity: string | null | undefined) => {
+  const normalized = (severity ?? "").toLowerCase();
+  if (normalized === "high" || normalized === "critical") {
+    return { avatar: "c-av-3", pill: "pill-neg" as const, glyph: "!" };
+  }
+  if (normalized === "medium") {
+    return { avatar: "c-av-2", pill: "pill-neu" as const, glyph: "?" };
+  }
+  return { avatar: "c-av-1", pill: "pill-neu" as const, glyph: "!" };
+};
+
 export default function SafetyFlagsPanel({ flags }: SafetyFlagsPanelProps) {
   return (
     <section className="panel">
@@ -29,32 +40,44 @@ export default function SafetyFlagsPanel({ flags }: SafetyFlagsPanelProps) {
 
       <div className="comments">
         {flags.length ? (
-          flags.map((flag) => (
-            <div className="comment" key={String(flag.flag_id ?? `${flag.risk_type}-${flag.reason}`)}>
-              <div>
-                <div className="who">
-                  {flag.risk_type ?? "Risk"} · {flag.severity ?? "review"}
+          flags.map((flag) => {
+            const tone = severityClass(flag.severity);
+            return (
+              <div className="comment" key={String(flag.flag_id ?? `${flag.risk_type}-${flag.reason}`)}>
+                <div className={`cav ${tone.avatar}`} aria-hidden="true">
+                  {tone.glyph}
                 </div>
-                <div className="txt">
-                  {flag.reason ?? flag.context_snippet ?? "Flagged content requires review."}
-                </div>
-                {flag.source_url ? (
-                  <div className="txt" style={{ marginTop: "6px" }}>
-                    Source: {flag.source_url}
+                <div className="body">
+                  <div className="who">
+                    {flag.risk_type ?? "Risk"} · {flag.severity ?? "review"}
                   </div>
-                ) : null}
+                  <div className="txt">
+                    {flag.reason ?? flag.context_snippet ?? "Flagged content requires review."}
+                  </div>
+                  {flag.source_url ? (
+                    <div className="txt source-link">
+                      <a href={flag.source_url} target="_blank" rel="noopener noreferrer">
+                        {flag.source_url}
+                      </a>
+                    </div>
+                  ) : null}
+                </div>
+                <span className={`pill ${tone.pill}`}>{flag.detection_method ?? "rule"}</span>
               </div>
-              <span className="pill pill-neu">{flag.detection_method ?? "rule"}</span>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="comment">
-            <div>
+            <div className="cav c-av-2" aria-hidden="true">
+              ✓
+            </div>
+            <div className="body">
               <div className="who">Clean profile</div>
               <div className="txt">
                 No deterministic brand-safety flags were attached to this creator.
               </div>
             </div>
+            <span className="pill pill-pos">Clear</span>
           </div>
         )}
       </div>

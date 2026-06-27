@@ -47,6 +47,14 @@ const platformLinks = (platforms: Record<string, unknown>) =>
     .filter((value): value is string => typeof value === "string" && value.length > 0)
     .slice(0, 3);
 
+const citationHost = (url: string): string => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "External source";
+  }
+};
+
 export default function LiveProfilePageClient({
   campaignId,
   influencerId,
@@ -377,20 +385,35 @@ export default function LiveProfilePageClient({
             </div>
             <div className="comments">
               {viewModel.citations.length ? (
-                viewModel.citations.map((citation) => (
+                viewModel.citations.map((citation, index) => (
                   <div className="comment" key={citation}>
-                    <div>
-                      <div className="who">{citation}</div>
-                      <div className="txt">Source used in campaign scoring provenance.</div>
+                    <div className={`cav c-av-${(index % 3) + 1}`} aria-hidden="true">
+                      ↗
+                    </div>
+                    <div className="body">
+                      <div className="who">{citationHost(citation)}</div>
+                      <div className="txt source-link">
+                        <a href={citation} target="_blank" rel="noopener noreferrer">
+                          {citation}
+                        </a>
+                      </div>
+                      <div className="txt muted-note">
+                        Source used in campaign scoring provenance.
+                      </div>
                     </div>
                     <span className="pill pill-neu">Source</span>
                   </div>
                 ))
               ) : (
                 <div className="comment">
-                  <div>
+                  <div className="cav c-av-1" aria-hidden="true">
+                    —
+                  </div>
+                  <div className="body">
                     <div className="who">No citations recorded</div>
-                    <div className="txt">The backend did not return supporting source URLs for this profile.</div>
+                    <div className="txt">
+                      The backend did not return supporting source URLs for this profile.
+                    </div>
                   </div>
                 </div>
               )}
