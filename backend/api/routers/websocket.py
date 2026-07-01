@@ -145,7 +145,8 @@ async def websocket_campaign_stream(
 
     try:
         # ----------------------------------------------------------------
-        # Step 1: Replay missed events
+        # Step 1: Replay missed events — sent directly to avoid overflowing
+        # the bounded live-event queue (which is only needed post-replay).
         # ----------------------------------------------------------------
         if last_event_id is not None:
             try:
@@ -159,21 +160,18 @@ async def websocket_campaign_stream(
                 finally:
                     await async_redis.close()
                 for event in missed_events:
-                    if not await _enqueue_safely(event):
-                        closed_due_to_overflow = True
-                        break
+                    try:
+                        await websocket.send_json(event)
+                    except (WebSocketDisconnect, asyncio.CancelledError):
+                        log.info("Client disconnected during replay")
+                        return
                 log.info(
                     "Replayed events successfully", count=len(missed_events)
                 )
+            except (WebSocketDisconnect, asyncio.CancelledError):
+                return
             except Exception as e:
                 log.error("Failed to replay missed events", error=str(e))
-
-        if closed_due_to_overflow:
-            log.warning("Closing due to overflow during replay")
-            await websocket.close(
-                code=1008, reason=CLOSE_REASON_SLOW_CONSUMER
-            )
-            return
 
         # ----------------------------------------------------------------
         # Step 2: Subscribe to Redis pub/sub

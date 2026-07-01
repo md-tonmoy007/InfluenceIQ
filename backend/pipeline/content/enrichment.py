@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.core.database import models
@@ -104,10 +105,13 @@ def persist_platform_profile(
     """Upsert a platform profile and its posts/comments."""
     now = datetime.now(UTC)
     account_id = str((profile.raw or {}).get("channel_id") or profile.handle or profile.url)
+    # Look up by (platform, profile_url) — matches the unique constraint.
+    # A profile URL belongs to one canonical row regardless of which influencer
+    # triggered the fetch, so we update the existing row rather than creating a
+    # duplicate that would violate uq_platform_profiles_platform_url.
     row = (
         session.query(models.PlatformProfile)
         .filter(
-            models.PlatformProfile.influencer_id == influencer_id,
             models.PlatformProfile.platform == profile.platform,
             models.PlatformProfile.profile_url == profile.url,
         )
@@ -126,9 +130,9 @@ def persist_platform_profile(
     row.handle = profile.handle
     row.display_name = profile.name
     row.bio = profile.bio
-    row.followers = profile.followers
-    row.following = profile.following
-    row.avg_engagement = profile.average_engagement
+    row.followers = _clamp_int(profile.followers)
+    row.following = _clamp_int(profile.following)
+    row.avg_engagement = _clamp_int(profile.average_engagement)
     row.verified = bool(profile.verified)
     row.fetch_provider = profile.provider
     row.fetch_status = "partial" if profile.error else "ok"
@@ -209,18 +213,61 @@ def persist_platform_profile(
     return row
 
 
-def enrich_influencer_platforms(
+_GARBAGE_URL_FRAGMENTS = (
+    "/intent/tweet",
+    "/intent/retweet",
+    "/intent/like",
+    "/share?",
+    "/sharer/",
+    "addthis.com",
+    "pinterest.com/pin/create",
+    "reddit.com/submit",
+    "linkedin.com/shareArticle",
+    "t.me/share",
+    "youtube.com/watch",   # video page, not a channel
+    "youtu.be/",           # shortened video link
+    "youtube.com/shorts/", # YouTube Shorts
+)
+
+
+def _is_garbage_url(url: str) -> bool:
+    """Return True for share-button / intent URLs that are not real profiles."""
+    lower = url.lower()
+    return any(fragment in lower for fragment in _GARBAGE_URL_FRAGMENTS)
+
+
+def collect_platform_urls_for_influencer(
     session: Session,
     influencer_id: UUID,
-    *,
     crawl_sources: list[models.CrawlSource] | None = None,
+) -> list[str]:
+    """Return non-garbage platform URLs for an influencer (brief DB read)."""
+    influencer = session.get(models.Influencer, influencer_id)
+    if influencer is None:
+        return []
+    urls = collect_platform_urls(influencer, crawl_sources)
+    return [u for u in urls if not _is_garbage_url(u)]
+
+
+def fetch_profiles_for_urls(urls: list[str]) -> list[tuple[str, PlatformProfile | None]]:
+    """Fetch platform profiles via HTTP — call this OUTSIDE any DB session."""
+    results = []
+    for url in urls:
+        profile = fetch_platform_profile_data(url)
+        results.append((url, profile))
+    return results
+
+
+def persist_enrichment(
+    session: Session,
+    influencer_id: UUID,
+    fetched: list[tuple[str, PlatformProfile | None]],
 ) -> dict[str, Any]:
-    """Fetch and persist all known platform profiles for an influencer."""
+    """Persist pre-fetched platform profiles and update the influencer row."""
     influencer = session.get(models.Influencer, influencer_id)
     if influencer is None:
         return {"status": "missing", "profiles": 0}
 
-    urls = collect_platform_urls(influencer, crawl_sources)
     enriched = 0
     failed = 0
     coverage: dict[str, str] = {}
@@ -228,22 +275,28 @@ def enrich_influencer_platforms(
     best_engagement = influencer.engagement_rate or 0.0
     primary_platform = influencer.primary_platform
 
-    for url in urls:
-        profile = fetch_platform_profile_data(url)
+    for url, profile in fetched:
         if profile is None:
             failed += 1
             coverage[url] = "unsupported"
             continue
-        persist_platform_profile(session, influencer_id, profile)
-        enriched += 1
-        coverage[url] = "partial" if profile.error else "ok"
+        try:
+            with session.begin_nested():
+                persist_platform_profile(session, influencer_id, profile)
+                session.flush()
+            enriched += 1
+            coverage[url] = "partial" if profile.error else "ok"
+        except (IntegrityError, DataError) as exc:
+            log.warning("persist_platform_profile: skipped url=%s influencer=%s reason=%s", url, influencer_id, exc.__class__.__name__)
+            coverage[url] = "duplicate" if isinstance(exc, IntegrityError) else "error"
+            continue
         if profile.followers and profile.followers > best_followers:
             best_followers = profile.followers
             primary_platform = profile.platform
         if profile.average_engagement:
             best_engagement = float(profile.average_engagement)
 
-    influencer.follower_count = best_followers or influencer.follower_count
+    influencer.follower_count = _clamp_int(best_followers) or influencer.follower_count
     influencer.engagement_rate = best_engagement or influencer.engagement_rate
     influencer.primary_platform = primary_platform or influencer.primary_platform
     influencer.updated_at = datetime.now(UTC)
@@ -254,6 +307,40 @@ def enrich_influencer_platforms(
         "failed": failed,
         "coverage": coverage,
     }
+
+
+def enrich_influencer_platforms(
+    session: Session,
+    influencer_id: UUID,
+    *,
+    crawl_sources: list[models.CrawlSource] | None = None,
+) -> dict[str, Any]:
+    """Fetch and persist all known platform profiles for an influencer.
+
+    Prefer calling collect_platform_urls_for_influencer + fetch_profiles_for_urls
+    + persist_enrichment separately from the task so HTTP requests don't hold
+    an open DB transaction.  This wrapper exists for callers that don't need
+    that separation.
+    """
+    influencer = session.get(models.Influencer, influencer_id)
+    if influencer is None:
+        return {"status": "missing", "profiles": 0}
+    urls = [u for u in collect_platform_urls(influencer, crawl_sources) if not _is_garbage_url(u)]
+    fetched = fetch_profiles_for_urls(urls)
+    return persist_enrichment(session, influencer_id, fetched)
+
+
+_PG_INT_MAX = 2_147_483_647
+
+
+def _clamp_int(value: Any) -> int | None:
+    """Convert to int and clamp to PostgreSQL INTEGER range."""
+    if value is None:
+        return None
+    try:
+        return min(int(value), _PG_INT_MAX)
+    except (TypeError, ValueError):
+        return None
 
 
 def _int_or_none(value: Any) -> int | None:

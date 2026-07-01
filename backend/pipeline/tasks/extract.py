@@ -8,6 +8,8 @@ import os
 import re
 from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
 
+from sqlalchemy.exc import IntegrityError
+
 from backend.core.celery.app import celery_app
 
 from backend.core.database import models
@@ -172,6 +174,13 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
             mentions = extract_influencer_mentions(content)
     except Exception as exc:
         log.exception("influencer extraction failed: %s", exc)
+        publish_event(
+            campaign_id,
+            "extract.failed",
+            crawl_source_id=crawl_source_id,
+            url=content.get("url"),
+            error=str(exc),
+        )
         return {"crawl_source_id": crawl_source_id, "status": "failed", "error": str(exc)}
 
     if not mentions:
@@ -206,16 +215,44 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
             if influencer is None:
                 influencer = pending_influencers.get(influencer_uuid)
             if influencer is None:
-                influencer = models.Influencer(
+                new_inf = models.Influencer(
                     id=influencer_uuid,
                     canonical_name=canonical.get("canonical_name") or mention.get("name") or "Unknown",
                     platforms=canonical.get("platforms") or {},
                     credentials=canonical.get("credentials") or [],
                     mentions=[mention],
                 )
-                session.add(influencer)
-                pending_influencers[influencer_uuid] = influencer
-                new_influencer_ids.append(str(influencer_uuid))
+                try:
+                    with session.begin_nested():
+                        session.add(new_inf)
+                        session.flush()
+                    influencer = new_inf
+                    pending_influencers[influencer_uuid] = influencer
+                    new_influencer_ids.append(str(influencer_uuid))
+                except IntegrityError:
+                    # Concurrent task inserted the same deterministic UUID — reload and merge
+                    session.expire_all()
+                    influencer = session.get(models.Influencer, influencer_uuid)
+                    if influencer is None:
+                        log.warning("extract_influencers: lost race on influencer %s, skipping", influencer_uuid)
+                        continue
+                    pending_influencers[influencer_uuid] = influencer
+                    existing_mentions = list(influencer.mentions or [])
+                    existing_mentions.append(mention)
+                    influencer.mentions = existing_mentions
+                    if canonical.get("platforms"):
+                        influencer.platforms = {**(influencer.platforms or {}), **canonical.get("platforms")}
+                    if canonical.get("credentials"):
+                        influencer.credentials = list(
+                            dict.fromkeys([*(influencer.credentials or []), *(canonical.get("credentials") or [])])
+                        )
+                    _persist_credentials(
+                        session,
+                        influencer_uuid,
+                        list(influencer.credentials or []),
+                        source_url=str(content.get("url") or crawl_source.url),
+                        crawl_source_id=crawl_source.id,
+                    )
             else:
                 existing_mentions = list(influencer.mentions or [])
                 existing_mentions.append(mention)
@@ -355,6 +392,7 @@ def resolve_identity_cluster(self, campaign_id: str) -> dict:
 
     merge_count = 0
     from backend.pipeline.identity.persistence import apply_merge
+    from sqlalchemy.exc import IntegrityError
 
     for merge_event in result.get("merge_events", []):
         try:
@@ -362,15 +400,20 @@ def resolve_identity_cluster(self, campaign_id: str) -> dict:
             merged_id = UUID(str(merge_event.get("merged_influencer_id")))
         except (TypeError, ValueError):
             continue
-        apply_merge(
-            session,
-            campaign_id=campaign_uuid,
-            canonical_id=canonical_id,
-            merged_id=merged_id,
-            confidence=float(merge_event.get("confidence", 0.85)),
-            merge_strategy=str(merge_event.get("strategy", "cluster")),
-            reason=str(merge_event.get("reason", "auto_merge")),
-        )
+        try:
+            with db_session() as merge_session:
+                apply_merge(
+                    merge_session,
+                    campaign_id=campaign_uuid,
+                    canonical_id=canonical_id,
+                    merged_id=merged_id,
+                    confidence=float(merge_event.get("confidence", 0.85)),
+                    merge_strategy=str(merge_event.get("strategy", "cluster")),
+                    reason=str(merge_event.get("reason", "auto_merge")),
+                )
+        except (IntegrityError, Exception) as exc:
+            log.warning("apply_merge skipped canonical=%s merged=%s: %s", canonical_id, merged_id, exc)
+            continue
         merge_count += 1
 
     ambiguous_pairs = result.get("ambiguous_pairs", [])
@@ -417,16 +460,6 @@ def resolve_identity_llm(self, campaign_id: str, candidate_a: dict, candidate_b:
     decision = resolve_candidates(candidate_a, candidate_b)
     requires_llm = bool(decision.get("requires_llm"))
     use_llm = requires_llm and _llm_enabled()
-    payload = {
-        "candidate_a": _candidate_preview(candidate_a),
-        "candidate_b": _candidate_preview(candidate_b),
-        "merge": decision.get("merge", False),
-        "confidence": decision.get("confidence"),
-        "reason": decision.get("reason"),
-        "llm_used": use_llm,
-    }
-    if use_llm:
-        payload["llm_note"] = "LLM endpoint not configured; deterministic verdict returned"
     publish_event(
         campaign_id,
         "identity.resolved",
@@ -441,6 +474,36 @@ def resolve_identity_llm(self, campaign_id: str, candidate_a: dict, candidate_b:
             llm_note="LLM endpoint not configured; deterministic verdict returned" if use_llm else None,
         ).to_payload(),
     )
+
+    # Apply the merge if the decision is to merge (this was previously missing).
+    if decision.get("merge"):
+        canonical_id_str = candidate_a.get("influencer_id")
+        merged_id_str = candidate_b.get("influencer_id")
+        if canonical_id_str and merged_id_str and canonical_id_str != merged_id_str:
+            try:
+                canonical_uuid = UUID(str(canonical_id_str))
+                merged_uuid = UUID(str(merged_id_str))
+            except (TypeError, ValueError):
+                canonical_uuid = merged_uuid = None
+            if canonical_uuid and merged_uuid:
+                from backend.pipeline.identity.persistence import apply_merge
+                try:
+                    with db_session() as merge_session:
+                        apply_merge(
+                            merge_session,
+                            campaign_id=UUID(campaign_id),
+                            canonical_id=canonical_uuid,
+                            merged_id=merged_uuid,
+                            confidence=float(decision.get("confidence", 0.85)),
+                            merge_strategy=str(decision.get("strategy", "llm")),
+                            reason=str(decision.get("reason", "llm_resolution")),
+                        )
+                except Exception as exc:
+                    log.warning(
+                        "resolve_identity_llm apply_merge failed canonical=%s merged=%s: %s",
+                        canonical_uuid, merged_uuid, exc,
+                    )
+
     return decision
 
 

@@ -71,6 +71,25 @@ def apply_merge(
     session.query(models.PlatformProfile).filter(
         models.PlatformProfile.influencer_id == merged_id
     ).update({models.PlatformProfile.influencer_id: canonical_id}, synchronize_session=False)
+    # Find campaigns where the canonical already has a current score — the merged
+    # influencer's scores for those campaigns must be demoted first, or the bulk
+    # UPDATE would create a second (campaign_id, canonical_id, is_current=True)
+    # row and violate uq_influencer_scores_current.
+    canonical_scored_campaigns = {
+        row.campaign_id
+        for row in session.query(models.InfluencerScore.campaign_id)
+        .filter(
+            models.InfluencerScore.influencer_id == canonical_id,
+            models.InfluencerScore.is_current == True,  # noqa: E712
+        )
+        .all()
+    }
+    if canonical_scored_campaigns:
+        session.query(models.InfluencerScore).filter(
+            models.InfluencerScore.influencer_id == merged_id,
+            models.InfluencerScore.campaign_id.in_(canonical_scored_campaigns),
+        ).update({models.InfluencerScore.is_current: False}, synchronize_session=False)
+
     session.query(models.InfluencerScore).filter(
         models.InfluencerScore.influencer_id == merged_id
     ).update({models.InfluencerScore.influencer_id: canonical_id}, synchronize_session=False)

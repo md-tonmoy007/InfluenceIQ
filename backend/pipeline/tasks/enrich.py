@@ -7,7 +7,11 @@ from uuid import UUID
 
 from backend.core.celery.app import celery_app
 from backend.core.database import models
-from backend.pipeline.content.enrichment import enrich_influencer_platforms
+from backend.pipeline.content.enrichment import (
+    collect_platform_urls_for_influencer,
+    fetch_profiles_for_urls,
+    persist_enrichment,
+)
 from backend.pipeline.tasks._common import (
     db_session,
     publish_event,
@@ -28,6 +32,7 @@ def enrich_influencer_platforms_task(self, campaign_id: str, influencer_id: str)
     except (TypeError, ValueError):
         return {"status": "invalid_id", "influencer_id": influencer_id}
 
+    # Step 1: brief DB read — collect platform URLs, then close the session.
     with db_session() as session:
         campaign = session.get(models.Campaign, campaign_uuid)
         if campaign is None:
@@ -44,11 +49,14 @@ def enrich_influencer_platforms_task(self, campaign_id: str, influencer_id: str)
             )
             .all()
         )
-        result = enrich_influencer_platforms(
-            session,
-            influencer_uuid,
-            crawl_sources=crawl_sources,
-        )
+        urls = collect_platform_urls_for_influencer(session, influencer_uuid, crawl_sources)
+
+    # Step 2: HTTP fetches — no DB session open, so no transaction is held.
+    fetched = fetch_profiles_for_urls(urls)
+
+    # Step 3: persist results — brief DB write session.
+    with db_session() as session:
+        result = persist_enrichment(session, influencer_uuid, fetched)
         refresh_campaign_status(session, campaign_id)
 
     from backend.core.cache.pipeline_state import increment_pipeline_counter
