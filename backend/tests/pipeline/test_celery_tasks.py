@@ -58,9 +58,9 @@ celery_app.conf.task_store_eager_result = False
 
 
 class _FakeRedis:
-    """Inert Redis stub: every method is a MagicMock that returns 0 / {}."""
+    """Inert Redis stub: every method is a MagicMock that returns 0."""
     def __getattr__(self, name):
-        return MagicMock(return_value=None)
+        return MagicMock(return_value=0)
 
 
 _FAKE_REDIS = _FakeRedis()

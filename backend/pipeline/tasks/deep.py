@@ -552,10 +552,17 @@ def _build_citations(posts_analyzed: list[dict], external: dict) -> list[dict]:
             })
 
     if external.get("search_visibility"):
-        citations.append({
-            "source": "search_visibility",
-            "urls": [r.get("url") for r in external["search_visibility"].get("queries", {}).values() if r],
-        })
+        urls: list[str] = []
+        for result_list in external["search_visibility"].get("queries", {}).values():
+            if isinstance(result_list, list):
+                for item in result_list:
+                    if isinstance(item, dict) and item.get("url"):
+                        urls.append(item["url"])
+        if urls:
+            citations.append({
+                "source": "search_visibility",
+                "urls": urls,
+            })
 
     return citations
 
