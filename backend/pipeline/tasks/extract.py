@@ -88,7 +88,7 @@ def _llm_extract_handles(content: dict) -> list[dict] | None:
         prompt = _build_handle_extract_prompt(text, str(content.get("url") or ""))
         raw = _run_predict(
             llm_backend.predict_text(
-                prompt, max_tokens=2048, temperature=0.1, model=_query_model_override()
+                prompt, max_tokens=4096, temperature=0.1, model=_query_model_override()
             )
         )
         if not raw or str(raw).startswith("[stub:"):
@@ -99,13 +99,22 @@ def _llm_extract_handles(content: dict) -> list[dict] | None:
             items = json.loads(cleaned)
         except json.JSONDecodeError:
             # Output was truncated mid-JSON — salvage complete objects by
-            # closing the array and re-parsing up to the last full entry.
+            # finding the last complete '}' before closing the array.
             truncated = cleaned.rstrip().rstrip(",")
             try:
                 items = json.loads(truncated + "]")
             except json.JSONDecodeError:
-                log.warning("llm_extract_handles: could not recover truncated JSON for %s", content.get("url"))
-                return None
+                # Truncation mid-object: find the last complete object boundary.
+                last_brace = truncated.rfind("}")
+                if last_brace > 0:
+                    try:
+                        items = json.loads(truncated[: last_brace + 1] + "]")
+                    except json.JSONDecodeError:
+                        log.warning("llm_extract_handles: could not recover truncated JSON for %s", content.get("url"))
+                        return None
+                else:
+                    log.warning("llm_extract_handles: could not recover truncated JSON for %s", content.get("url"))
+                    return None
 
         if not isinstance(items, list):
             return None

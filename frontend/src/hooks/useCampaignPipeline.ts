@@ -33,22 +33,33 @@ export function useCampaignPipeline(campaignId: string | null) {
     let cancelled = false;
     let socket: WebSocket | null = null;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let wsConnected = false;
 
     const startPolling = () => {
       if (pollTimer) return;
       pollTimer = setInterval(() => {
+        if (wsConnected) return;
         void refresh();
       }, 2500);
     };
 
     try {
       socket = new WebSocket(getCampaignWebSocketUrl(campaignId, { lastEventId: lastEventIdRef.current }));
-      socket.onopen = () => setConnected(true);
+      socket.onopen = () => {
+        wsConnected = true;
+        setConnected(true);
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      };
       socket.onclose = () => {
+        wsConnected = false;
         setConnected(false);
         startPolling();
       };
       socket.onerror = () => {
+        wsConnected = false;
         setConnected(false);
         startPolling();
       };
@@ -64,9 +75,13 @@ export function useCampaignPipeline(campaignId: string | null) {
             lastEventIdRef.current = Math.max(lastEventIdRef.current, parsed.event_id);
           }
           if (parsed.type) {
-            setEvents((current) => [...current.slice(-19), { type: parsed.type, payload: parsed.payload }]);
+            const type = parsed.type;
+            const payload = parsed.payload;
+            setEvents((current) => [...current.slice(-19), { type, payload }]);
           }
-          void refresh();
+          if (parsed.type !== "heartbeat") {
+            void refresh();
+          }
         } catch {
           /* ignore malformed frames */
         }

@@ -31,16 +31,9 @@ The default Docker stack expects these exposed ports:
 - Postgres: `5434`
 - Redis: `6380`
 - Qdrant: `6335`
-- OpenSERP (optional search): `7000`
 - Flower: `5555`
 
-For local search without paid APIs, start OpenSERP:
-
-```bash
-docker compose up -d openserp
-```
-
-Set `OPENSERP_URL=http://openserp:7000` in `backend/.env` (see provider-configuration doc).
+For local search, set `SEARCH_PROVIDER_MODE=auto` in `backend/.env`. With no API keys configured, the pipeline falls back to synthetic discovery URLs.
 
 ## Start The Full Stack
 

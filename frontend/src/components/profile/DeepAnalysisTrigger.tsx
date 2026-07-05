@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { getDeepAnalysisStatus, getLatestDeepAnalysis, triggerDeepAnalysis } from "@/lib/api";
-import { reportHref } from "@/lib/routes";
+import { getLatestDeepAnalysis, triggerDeepAnalysis } from "@/lib/api";
+import { reportHref, reportRunHref } from "@/lib/routes";
 
 type DeepAnalysisTriggerProps = {
   influencerId: string;
@@ -33,65 +33,12 @@ export default function DeepAnalysisTrigger({
 }: DeepAnalysisTriggerProps) {
   const router = useRouter();
   const [status, setStatus] = useState<TriggerStatus>("idle");
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => () => stopPolling(), [stopPolling]);
 
   const navigateToReport = useCallback(
     (reportId: string) => {
-      stopPolling();
-      router.push(reportHref(influencerId, reportId));
+      router.push(reportHref(influencerId, reportId, campaignId));
     },
-    [influencerId, router, stopPolling]
-  );
-
-  const pollRun = useCallback(
-    async (runId: string) => {
-      const result = await getDeepAnalysisStatus(influencerId, runId);
-      const runStatus = String(result.status ?? "");
-
-      if (runStatus === "completed") {
-        const report = result.report as Record<string, unknown> | null | undefined;
-        const reportId = report ? String(report.report_id ?? "") : "";
-        if (reportId) {
-          navigateToReport(reportId);
-          return true;
-        }
-      }
-
-      if (runStatus === "failed") {
-        stopPolling();
-        setStatus("failed");
-        return true;
-      }
-
-      // Derive staged progress from the run status and provider_coverage
-      if (runStatus === "running") {
-        const coverage = (result.provider_coverage as Record<string, unknown> | null) ?? {};
-        const hasCoverage = Object.keys(coverage).length > 0;
-        const commentCount = Number(result.collected_comment_count ?? 0);
-
-        if (!hasCoverage) {
-          setStatus("social");
-        } else if (commentCount === 0) {
-          setStatus("comments");
-        } else {
-          // We don't get fine-grained stage info from the polling endpoint,
-          // so infer trending/synthesizing based on timing
-          setStatus("synthesizing");
-        }
-      }
-
-      return false;
-    },
-    [influencerId, navigateToReport, stopPolling]
+    [campaignId, influencerId, router]
   );
 
   const handleClick = async () => {
@@ -133,16 +80,8 @@ export default function DeepAnalysisTrigger({
       }
 
       setStatus("social");
-      if (await pollRun(runId)) {
-        return;
-      }
-
-      stopPolling();
-      pollRef.current = setInterval(() => {
-        void pollRun(runId);
-      }, 2500);
+      router.push(reportRunHref(influencerId, runId, campaignId));
     } catch {
-      stopPolling();
       setStatus("failed");
     }
   };
@@ -154,11 +93,6 @@ export default function DeepAnalysisTrigger({
     <button
       type="button"
       className={className}
-      style={
-        className === "row-cta"
-          ? { marginTop: "8px", background: "none", border: "none", cursor: "pointer", padding: 0 }
-          : undefined
-      }
       disabled={isRunning}
       onClick={() => void handleClick()}
     >

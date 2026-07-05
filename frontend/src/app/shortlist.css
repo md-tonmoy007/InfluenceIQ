@@ -107,15 +107,20 @@
 .shortlist-page .stats-col.is-pending > div{background:transparent}
 .shortlist-page .stats-col.is-pending .lbl{color:var(--muted-soft)}
 
-.shortlist-page .actions-col{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
-.shortlist-page .match-ring{position:relative;width:74px;height:74px;flex-shrink:0}
+.shortlist-page .actions-col{display:flex;flex-direction:column;gap:10px;align-items:stretch;width:180px}
+.shortlist-page .match-ring{position:relative;width:74px;height:74px;flex-shrink:0;align-self:flex-end}
 .shortlist-page .match-ring svg{transform:rotate(-90deg)}
 .shortlist-page .match-ring .val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:18px;letter-spacing:-0.01em}
 .shortlist-page .match-ring .val .pct{font-size:10px;color:var(--muted);font-weight:400;margin-top:-2px}
 .shortlist-page .match-ring .val.high{color:var(--good-ink)}
 .shortlist-page .match-ring .val.mid{color:var(--violet-ink)}
-.shortlist-page .row-cta{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);font-weight:500;background:var(--paper-2);border:1px solid var(--line);padding:6px 12px;border-radius:8px;cursor:pointer;transition:all .2s}
-.shortlist-page .row-cta:hover{background:#fff;border-color:color-mix(in oklab,var(--violet),white 70%);color:var(--violet-ink)}
+.shortlist-page .row-cta{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:38px;font-size:12.5px;color:var(--ink);font-weight:500;background:var(--paper-2);border:1px solid var(--line);padding:8px 12px;border-radius:10px;cursor:pointer;transition:all .2s;text-decoration:none}
+.shortlist-page .row-cta:hover{background:#fff;border-color:color-mix(in oklab,var(--violet),white 70%);color:var(--violet-ink);transform:translateY(-1px)}
+.shortlist-page .row-cta:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.shortlist-page .row-cta-primary{background:linear-gradient(135deg,var(--violet),color-mix(in oklab,var(--violet),var(--coral) 35%));border-color:transparent;color:#fff;box-shadow:0 10px 22px -16px color-mix(in oklab,var(--violet),black 25%)}
+.shortlist-page .row-cta-primary:hover{background:linear-gradient(135deg,color-mix(in oklab,var(--violet),black 8%),color-mix(in oklab,var(--coral),var(--violet) 50%));color:#fff;border-color:transparent}
+.shortlist-page .row-cta-contract{background:var(--violet-soft);border-color:color-mix(in oklab,var(--violet),white 75%);color:var(--violet-ink)}
+.shortlist-page .row-cta-contract:hover{background:color-mix(in oklab,var(--violet-soft),white 20%);border-color:color-mix(in oklab,var(--violet),white 62%);color:var(--violet-ink)}
 
   /* Brief summary sidebar */
 .shortlist-page .brief-side{background:#fff;border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;position:sticky;top:84px}

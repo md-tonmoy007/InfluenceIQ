@@ -140,7 +140,7 @@ def _collect_search_visibility(
     handle_variants: list[str],
 ) -> None:
     """Query configured search providers for popularity evidence."""
-    if not any([settings.BRAVE_SEARCH_API_KEY, settings.SERP_API_KEY, settings.OPENSERP_URL]):
+    if not any([settings.BRAVE_SEARCH_API_KEY, settings.SERP_API_KEY]):
         signals["_coverage"]["search_visibility"] = "unavailable"
         return
 

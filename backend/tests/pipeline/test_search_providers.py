@@ -1,4 +1,4 @@
-"""Tests for environment-aware search provider routing."""
+"""Tests for search provider routing."""
 
 from __future__ import annotations
 
@@ -23,60 +23,48 @@ from backend.pipeline.content.search_providers import search_web
 
 
 class SearchProviderRoutingTest(unittest.TestCase):
-    def test_auto_dev_prefers_openserp_over_brave(self) -> None:
+    def test_auto_prefers_brave(self) -> None:
         brave_results = [
             SearchResult(url="https://brave.example/a", title="Brave", snippet="b", relevance_score=80, provider="brave"),
-        ]
-        openserp_results = [
-            SearchResult(url="https://openserp.example/a", title="Open", snippet="o", relevance_score=70, provider="openserp"),
         ]
         with (
             patch("backend.pipeline.content.search_providers.settings.APP_ENV", "dev"),
             patch("backend.pipeline.content.search_providers.settings.SEARCH_PROVIDER_MODE", "auto"),
-            patch("backend.pipeline.content.search_providers.settings.OPENSERP_URL", "http://openserp:7000"),
             patch("backend.pipeline.content.search_providers.settings.BRAVE_SEARCH_API_KEY", "key"),
-            patch("backend.pipeline.content.search_providers._openserp_search", return_value=openserp_results),
             patch("backend.pipeline.content.search_providers._brave_search", return_value=brave_results),
         ):
             results = search_web("nutrition creators", limit=3)
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["provider"], "openserp")
+        self.assertEqual(results[0]["provider"], "brave")
 
-    def test_auto_production_prefers_brave_over_openserp(self) -> None:
-        brave_results = [
-            SearchResult(url="https://brave.example/a", title="Brave", snippet="b", relevance_score=80, provider="brave"),
-        ]
-        openserp_results = [
-            SearchResult(url="https://openserp.example/a", title="Open", snippet="o", relevance_score=70, provider="openserp"),
+    def test_failover_to_serpapi_when_brave_empty(self) -> None:
+        serp_results = [
+            SearchResult(url="https://serpapi.example/a", title="Serp", snippet="s", relevance_score=80, provider="serpapi"),
         ]
         with (
-            patch("backend.pipeline.content.search_providers.settings.APP_ENV", "production"),
             patch("backend.pipeline.content.search_providers.settings.SEARCH_PROVIDER_MODE", "auto"),
-            patch("backend.pipeline.content.search_providers.settings.OPENSERP_URL", "http://openserp:7000"),
             patch("backend.pipeline.content.search_providers.settings.BRAVE_SEARCH_API_KEY", "key"),
-            patch("backend.pipeline.content.search_providers._openserp_search", return_value=openserp_results),
-            patch("backend.pipeline.content.search_providers._brave_search", return_value=brave_results),
+            patch("backend.pipeline.content.search_providers.settings.SERP_API_KEY", "key"),
+            patch("backend.pipeline.content.search_providers._brave_search", return_value=[]),
+            patch("backend.pipeline.content.search_providers._serp_api_search", return_value=serp_results),
         ):
             results = search_web("nutrition creators", limit=3)
 
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["provider"], "brave")
+        self.assertEqual(results[0]["provider"], "serpapi")
 
-    def test_failover_to_next_provider_when_primary_empty(self) -> None:
-        brave_results = [
-            SearchResult(url="https://brave.example/a", title="Brave", snippet="b", relevance_score=80, provider="brave"),
+    def test_serpapi_explicit_mode_prefers_serpapi(self) -> None:
+        serp_results = [
+            SearchResult(url="https://serpapi.example/a", title="Serp", snippet="s", relevance_score=80, provider="serpapi"),
         ]
         with (
-            patch("backend.pipeline.content.search_providers.settings.SEARCH_PROVIDER_MODE", "openserp"),
-            patch("backend.pipeline.content.search_providers.settings.OPENSERP_URL", "http://openserp:7000"),
-            patch("backend.pipeline.content.search_providers.settings.BRAVE_SEARCH_API_KEY", "key"),
-            patch("backend.pipeline.content.search_providers._openserp_search", return_value=[]),
-            patch("backend.pipeline.content.search_providers._brave_search", return_value=brave_results),
+            patch("backend.pipeline.content.search_providers.settings.SEARCH_PROVIDER_MODE", "serpapi"),
+            patch("backend.pipeline.content.search_providers.settings.SERP_API_KEY", "key"),
+            patch("backend.pipeline.content.search_providers._serp_api_search", return_value=serp_results),
         ):
             results = search_web("nutrition creators", limit=3)
 
-        self.assertEqual(results[0]["provider"], "brave")
+        self.assertEqual(results[0]["provider"], "serpapi")
 
 
 if __name__ == "__main__":

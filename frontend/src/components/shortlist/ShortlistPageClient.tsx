@@ -551,6 +551,8 @@ export default function ShortlistPageClient() {
     };
   }, [campaignId, pipelineState]);
 
+  const wsConnectedRef = useRef(false);
+
   useEffect(() => {
     if (!campaignId) {
       return;
@@ -566,11 +568,11 @@ export default function ShortlistPageClient() {
     }
 
     const interval = window.setInterval(async () => {
+      if (wsConnectedRef.current) return;
       try {
         const nextState = await getCampaignState(campaignId);
         setPipelineState(nextState);
         setErrorMessage('');
-        setConnectionStatus(current => (current === 'connected' ? current : 'polling'));
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Campaign polling failed');
       }
@@ -594,12 +596,14 @@ export default function ShortlistPageClient() {
           getCampaignWebSocketUrl(campaignId, { lastEventId: lastEventIdRef.current })
         );
       } catch (error) {
+        wsConnectedRef.current = false;
         setConnectionStatus('polling');
         setErrorMessage(error instanceof Error ? error.message : 'Unable to open live updates');
         return;
       }
 
       socket.onopen = () => {
+        wsConnectedRef.current = true;
         setConnectionStatus('connected');
       };
 
@@ -626,11 +630,13 @@ export default function ShortlistPageClient() {
             setPipelineState(nextState);
           }
         } catch {
+          wsConnectedRef.current = false;
           setConnectionStatus('polling');
         }
       };
 
       socket.onclose = () => {
+        wsConnectedRef.current = false;
         setConnectionStatus('polling');
         if (!cancelled && pipelineState?.status !== 'completed' && pipelineState?.status !== 'failed') {
           reconnectTimer = window.setTimeout(openSocket, 1500);
@@ -638,6 +644,7 @@ export default function ShortlistPageClient() {
       };
 
       socket.onerror = () => {
+        wsConnectedRef.current = false;
         setConnectionStatus('polling');
       };
     };
@@ -646,12 +653,13 @@ export default function ShortlistPageClient() {
 
     return () => {
       cancelled = true;
+      wsConnectedRef.current = false;
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
       }
       socket?.close();
     };
-  }, [campaignId, pipelineState?.status]);
+  }, [campaignId]);
 
   const toggleSelection = (id: string) => {
     setSelectedIds(current =>
@@ -930,12 +938,12 @@ export default function ShortlistPageClient() {
                     <DeepAnalysisTrigger
                       influencerId={m.id}
                       campaignId={campaignId}
+                      className="row-cta row-cta-primary"
                     />
                     {!isContracted ? (
                       <button
                         type="button"
-                        className="row-cta"
-                        style={{ marginTop: '8px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        className="row-cta row-cta-contract"
                         disabled={markingContractId === m.id}
                         onClick={() => void handleMarkContracted(m.id)}
                       >

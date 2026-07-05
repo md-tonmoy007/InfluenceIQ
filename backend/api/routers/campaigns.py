@@ -902,6 +902,7 @@ def get_campaign_influencers(
         .filter(
             models.InfluencerScore.campaign_id == id,
             models.InfluencerScore.is_current.is_(True),
+            models.Influencer.is_canonical.is_(True),
         )
     )
 

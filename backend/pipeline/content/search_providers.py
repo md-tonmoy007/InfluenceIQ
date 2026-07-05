@@ -72,34 +72,6 @@ def _brave_search(query: str, limit: int) -> list[SearchResult]:
     ]
 
 
-def _openserp_search(query: str, limit: int) -> list[SearchResult]:
-    if not settings.OPENSERP_URL:
-        return []
-    base = settings.OPENSERP_URL.rstrip("/")
-    url = base if base.endswith("/search") else f"{base}/google/search"
-    headers = {"Authorization": f"Bearer {settings.OPENSERP_API_KEY}"} if settings.OPENSERP_API_KEY else {}
-    response = httpx.get(
-        url,
-        params={"text": query, "limit": limit},
-        headers=headers,
-        timeout=15,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    items = payload.get("organic_results") or payload.get("results") or []
-    return [
-        SearchResult(
-            url=str(item.get("link") or item.get("url") or ""),
-            title=str(item.get("title", "")),
-            snippet=str(item.get("snippet") or item.get("description") or ""),
-            relevance_score=max(35.0, 90.0 - index * 4),
-            provider="openserp",
-        )
-        for index, item in enumerate(items)
-        if item.get("link") or item.get("url")
-    ]
-
-
 def _fallback_search(query: str, limit: int) -> list[SearchResult]:
     slug = quote_plus(query)
     normalized = query.lower()
@@ -141,23 +113,16 @@ def _search_provider_order() -> list[SearchFn]:
     """Return configured search providers in priority order (failover chain)."""
     mode = settings.SEARCH_PROVIDER_MODE.strip().lower()
     brave = _brave_search
-    openserp = _openserp_search
     serpapi = _serp_api_search
 
     if mode == "brave":
-        return [brave, openserp, serpapi]
-    if mode == "openserp":
-        return [openserp, brave, serpapi]
+        return [brave, serpapi]
     if mode == "serpapi":
-        return [serpapi, brave, openserp]
+        return [serpapi, brave]
     if mode == "all":
-        return [serpapi, brave, openserp]
+        return [serpapi, brave]
 
-    # auto: dev prefers self-hosted OpenSERP; production prefers Brave
-    env = settings.APP_ENV.strip().lower()
-    if env in {"production", "prod", "staging"}:
-        return [brave, openserp, serpapi]
-    return [openserp, brave, serpapi]
+    return [brave, serpapi]
 
 
 def search_web(query: str, limit: int = 8) -> list[dict]:

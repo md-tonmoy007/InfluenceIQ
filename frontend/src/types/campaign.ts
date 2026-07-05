@@ -7,9 +7,9 @@ export type CampaignWeights = {
 };
 
 export const DEFAULT_CAMPAIGN_WEIGHTS: CampaignWeights = {
-  relevance: 0.2,
-  credibility: 0.2,
-  engagement: 0.15,
-  sentiment: 0.15,
-  brand_safety: 0.15,
+  relevance: 0.3,
+  credibility: 0.3,
+  engagement: 0.2,
+  sentiment: 0.1,
+  brand_safety: 0.1,
 };

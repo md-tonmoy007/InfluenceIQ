@@ -78,7 +78,6 @@ class Role4ScrapingContractTest(unittest.TestCase):
     def test_search_falls_back_to_real_discovery_targets_without_api_keys(self) -> None:
         with (
             patch("backend.pipeline.content.search_providers.settings.BRAVE_SEARCH_API_KEY", ""),
-            patch("backend.pipeline.content.search_providers.settings.OPENSERP_URL", ""),
         ):
             results = search_web("nutrition creators", limit=3)
 
