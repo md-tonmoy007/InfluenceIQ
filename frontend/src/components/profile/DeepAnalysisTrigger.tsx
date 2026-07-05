@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { getDeepAnalysisStatus, triggerDeepAnalysis } from "@/lib/api";
+import { getDeepAnalysisStatus, getLatestDeepAnalysis, triggerDeepAnalysis } from "@/lib/api";
 import { reportHref } from "@/lib/routes";
 
 type DeepAnalysisTriggerProps = {
@@ -13,7 +13,17 @@ type DeepAnalysisTriggerProps = {
   label?: string;
 };
 
-type TriggerStatus = "idle" | "starting" | "running" | "failed";
+type TriggerStatus = "idle" | "starting" | "social" | "comments" | "trends" | "synthesizing" | "failed";
+
+const STATUS_LABEL: Record<TriggerStatus, string> = {
+  idle: "Run deep analysis",
+  starting: "Starting…",
+  social: "Collecting posts…",
+  comments: "Collecting comments…",
+  trends: "Gathering trends…",
+  synthesizing: "Synthesizing…",
+  failed: "Retry deep analysis",
+};
 
 export default function DeepAnalysisTrigger({
   influencerId,
@@ -34,6 +44,14 @@ export default function DeepAnalysisTrigger({
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
+  const navigateToReport = useCallback(
+    (reportId: string) => {
+      stopPolling();
+      router.push(reportHref(influencerId, reportId));
+    },
+    [influencerId, router, stopPolling]
+  );
+
   const pollRun = useCallback(
     async (runId: string) => {
       const result = await getDeepAnalysisStatus(influencerId, runId);
@@ -43,8 +61,7 @@ export default function DeepAnalysisTrigger({
         const report = result.report as Record<string, unknown> | null | undefined;
         const reportId = report ? String(report.report_id ?? "") : "";
         if (reportId) {
-          stopPolling();
-          router.push(reportHref(influencerId, reportId));
+          navigateToReport(reportId);
           return true;
         }
       }
@@ -55,26 +72,67 @@ export default function DeepAnalysisTrigger({
         return true;
       }
 
+      // Derive staged progress from the run status and provider_coverage
+      if (runStatus === "running") {
+        const coverage = (result.provider_coverage as Record<string, unknown> | null) ?? {};
+        const hasCoverage = Object.keys(coverage).length > 0;
+        const commentCount = Number(result.collected_comment_count ?? 0);
+
+        if (!hasCoverage) {
+          setStatus("social");
+        } else if (commentCount === 0) {
+          setStatus("comments");
+        } else {
+          // We don't get fine-grained stage info from the polling endpoint,
+          // so infer trending/synthesizing based on timing
+          setStatus("synthesizing");
+        }
+      }
+
       return false;
     },
-    [influencerId, router, stopPolling]
+    [influencerId, navigateToReport, stopPolling]
   );
 
   const handleClick = async () => {
-    if (status === "starting" || status === "running") {
+    if (status !== "idle" && status !== "failed") {
       return;
     }
 
     try {
       setStatus("starting");
+
+      // Check for existing fresh report first
+      const latest = await getLatestDeepAnalysis(influencerId, campaignId);
+      if (latest.fresh) {
+        const report = latest.report as Record<string, unknown> | undefined;
+        const reportId = report ? String(report.report_id ?? "") : "";
+        if (reportId) {
+          navigateToReport(reportId);
+          return;
+        }
+      }
+
+      // No fresh report, start a new run
       const start = await triggerDeepAnalysis(influencerId, campaignId);
+
+      // If the backend returned a cached report inline
+      const inlineReport = start.report as Record<string, unknown> | null | undefined;
+      if (inlineReport) {
+        const reportId = String(inlineReport.report_id ?? "");
+        if (reportId) {
+          navigateToReport(reportId);
+          return;
+        }
+      }
+
       const runId = String(start.run_id ?? "");
       if (!runId) {
         setStatus("failed");
         return;
       }
 
-      setStatus("running");
+      setStatus("social");
       if (await pollRun(runId)) {
         return;
       }
@@ -89,14 +147,8 @@ export default function DeepAnalysisTrigger({
     }
   };
 
-  const buttonLabel =
-    status === "starting"
-      ? "Starting…"
-      : status === "running"
-        ? "Analyzing…"
-        : status === "failed"
-          ? "Retry deep analysis"
-          : label;
+  const buttonLabel = STATUS_LABEL[status] ?? label;
+  const isRunning = status !== "idle" && status !== "failed";
 
   return (
     <button
@@ -107,7 +159,7 @@ export default function DeepAnalysisTrigger({
           ? { marginTop: "8px", background: "none", border: "none", cursor: "pointer", padding: 0 }
           : undefined
       }
-      disabled={status === "starting" || status === "running"}
+      disabled={isRunning}
       onClick={() => void handleClick()}
     >
       {buttonLabel}

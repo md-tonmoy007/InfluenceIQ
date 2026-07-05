@@ -243,8 +243,18 @@ const eventLabel = (event: CampaignPipelineEvent) => {
       return `Fetched ${String(event.payload.url ?? 'page')}`;
     case 'platform.enriched':
       return 'Platform data enriched';
+    case 'deep_analysis.started':
+      return 'Deep analysis started';
+    case 'deep_analysis.social_collected':
+      return 'Social content collected';
+    case 'deep_analysis.comments_collected':
+      return 'Comments collected';
+    case 'deep_analysis.external_signals_collected':
+      return 'Trend signals gathered';
     case 'deep_analysis.report_ready':
       return 'Deep analysis report ready';
+    case 'deep_analysis.failed':
+      return 'Deep analysis failed';
     case 'score.calculated':
       return `Scored influencer ${String(event.payload.influencer_id ?? '')}`;
     case 'pipeline.completed':

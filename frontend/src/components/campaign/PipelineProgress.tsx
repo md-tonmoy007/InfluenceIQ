@@ -36,7 +36,11 @@ function eventLabel(type: string): string {
     "platform.enriched": "Platform data enriched",
     "score.calculated": "Score calculated",
     "deep_analysis.started": "Deep analysis started",
+    "deep_analysis.social_collected": "Social content collected",
+    "deep_analysis.comments_collected": "Comments collected",
+    "deep_analysis.external_signals_collected": "Trend signals gathered",
     "deep_analysis.report_ready": "Deep analysis report ready",
+    "deep_analysis.failed": "Deep analysis failed",
   };
   return labels[type] ?? type.replaceAll(".", " ");
 }
