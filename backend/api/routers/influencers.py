@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -193,6 +194,55 @@ def get_influencer_verifications(id: UUID, db: Session = Depends(get_db)) -> lis
     ]
 
 
+@router.get("/{id}/deep-analysis/latest", response_model=dict[str, Any])
+def get_latest_deep_analysis(
+    id: UUID,
+    campaign_id: UUID = Query(..., description="Campaign context"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return the latest fresh deep analysis report for an influencer in a campaign, or null."""
+    inf = db.query(models.Influencer).filter(models.Influencer.id == id).first()
+    if not inf:
+        raise HTTPException(status_code=404, detail="Influencer profile not found")
+
+    now = datetime.now(UTC)
+    run = (
+        db.query(models.DeepAnalysisRun)
+        .filter(
+            models.DeepAnalysisRun.influencer_id == id,
+            models.DeepAnalysisRun.campaign_id == campaign_id,
+            models.DeepAnalysisRun.status == "completed",
+            models.DeepAnalysisRun.cache_expires_at > now,
+        )
+        .order_by(models.DeepAnalysisRun.completed_at.desc())
+        .first()
+    )
+
+    if run is None:
+        return {"fresh": False, "report": None}
+
+    report = db.query(models.DeepAnalysisReport).filter(models.DeepAnalysisReport.run_id == run.id).first()
+    if report is None:
+        return {"fresh": False, "report": None}
+
+    return {
+        "fresh": True,
+        "report": {
+            "report_id": str(report.id),
+            "run_id": str(report.run_id),
+            "overall_grade": report.overall_grade,
+            "audience_sentiment": report.audience_sentiment,
+            "fake_engagement_risk": report.fake_engagement_risk,
+            "brand_safety_summary": report.brand_safety_summary,
+            "recommendation": report.recommendation,
+            "confidence": report.confidence,
+            "report_payload": report.report_payload,
+            "created_at": report.created_at,
+        },
+    }
+
+
 @router.post("/{id}/deep-analysis", response_model=dict[str, Any])
 def start_deep_analysis(
     id: UUID,
@@ -206,6 +256,38 @@ def start_deep_analysis(
     if not inf:
         raise HTTPException(status_code=404, detail="Influencer profile not found")
 
+    # Freshness check: return the existing recent report if still valid
+    now = datetime.now(UTC)
+    existing = (
+        db.query(models.DeepAnalysisRun)
+        .filter(
+            models.DeepAnalysisRun.influencer_id == id,
+            models.DeepAnalysisRun.campaign_id == campaign_id,
+            models.DeepAnalysisRun.status == "completed",
+            models.DeepAnalysisRun.cache_expires_at > now,
+        )
+        .order_by(models.DeepAnalysisRun.completed_at.desc())
+        .first()
+    )
+    if existing:
+        report = db.query(models.DeepAnalysisReport).filter(models.DeepAnalysisReport.run_id == existing.id).first()
+        if report:
+            return {
+                "run_id": str(existing.id),
+                "status": "completed",
+                "campaign_id": str(campaign_id),
+                "influencer_id": str(id),
+                "report": {
+                    "report_id": str(report.id),
+                    "overall_grade": report.overall_grade,
+                    "audience_sentiment": report.audience_sentiment,
+                    "fake_engagement_risk": report.fake_engagement_risk,
+                    "recommendation": report.recommendation,
+                    "confidence": report.confidence,
+                    "report_payload": report.report_payload,
+                },
+            }
+
     from uuid import uuid4
 
     run = models.DeepAnalysisRun(
@@ -214,6 +296,9 @@ def start_deep_analysis(
         influencer_id=id,
         status="queued",
         requested_comment_target=comment_target,
+        requested_post_limit=20,
+        requested_comment_limit=200,
+        report_version="v1",
     )
     db.add(run)
     db.commit()

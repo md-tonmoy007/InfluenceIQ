@@ -5,7 +5,7 @@ implementations satisfy the runtime-checkable protocol and that the pure
 helpers behave as documented.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from io import BytesIO
 from uuid import uuid4
 
@@ -48,7 +48,7 @@ def test_profile_dataclass_is_typed() -> None:
         username="alice",
         followers=10,
         following=2,
-        last_seen=datetime.utcnow(),
+        last_seen=datetime.now(UTC),
     )
     assert profile.platform == "x"
     assert profile.followers == 10

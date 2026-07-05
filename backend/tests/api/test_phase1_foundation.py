@@ -20,6 +20,7 @@ The four behaviours that matter for Phase 1:
 from __future__ import annotations
 
 import os
+import uuid
 import unittest
 from pathlib import Path
 
@@ -450,7 +451,7 @@ class GetCurrentUserSoftDeleteFilterTest(unittest.TestCase):
         self._engine = engine
 
     def _make_user(self, *, deleted: bool) -> str:
-        import uuid
+        import uuid as _uuid
         from datetime import UTC, datetime
 
         from backend.core.auth import hash_password
@@ -458,10 +459,10 @@ class GetCurrentUserSoftDeleteFilterTest(unittest.TestCase):
 
         session = self.Session()
         try:
-            user_id = str(uuid.uuid4())
+            user_id = _uuid.uuid4().hex
             user = User(
                 id=user_id,
-                email=f"{uuid.uuid4()}@example.com",
+                email=f"{_uuid.uuid4()}@example.com",
                 password_hash=hash_password("hunter22"),
                 name="Deleted Test",
                 company_name="Acme",
@@ -482,7 +483,7 @@ class GetCurrentUserSoftDeleteFilterTest(unittest.TestCase):
         db = self.Session()
         try:
             # Keep JWT subject as a string for the SQLite test table (String PK).
-            with patch("backend.core.auth.UUID", side_effect=lambda value: value):
+            with patch("backend.core.auth.UUID", side_effect=lambda value: uuid.UUID(value)):
                 user = get_current_user(
                     token=_mint_token(user_id),
                     db=db,
@@ -501,7 +502,7 @@ class GetCurrentUserSoftDeleteFilterTest(unittest.TestCase):
         user_id = self._make_user(deleted=True)
         db = self.Session()
         try:
-            with patch("backend.core.auth.UUID", side_effect=lambda value: value):
+            with patch("backend.core.auth.UUID", side_effect=lambda value: uuid.UUID(value)):
                 with self.assertRaises(HTTPException) as ctx:
                     get_current_user(
                         token=_mint_token(user_id),
