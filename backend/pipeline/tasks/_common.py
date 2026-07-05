@@ -142,6 +142,7 @@ def refresh_campaign_status(session: Session, campaign_id: str) -> None:
     """Derive a durable campaign lifecycle status from current DB state."""
     try:
         campaign = get_campaign(session, campaign_id)
+        previous_status = campaign.status
 
         total_sources = (
             session.query(models.CrawlSource)
@@ -209,12 +210,13 @@ def refresh_campaign_status(session: Session, campaign_id: str) -> None:
             campaign.status = "failed"
             campaign.failed_at = campaign.failed_at or datetime.utcnow()
             campaign.completed_at = None
-            emit_campaign_lifecycle_event(
-                campaign_id,
-                "campaign.failed",
-                status="failed",
-                reason=campaign.failure_reason or "All sources failed",
-            )
+            if previous_status != "failed":
+                emit_campaign_lifecycle_event(
+                    campaign_id,
+                    "campaign.failed",
+                    status="failed",
+                    reason=campaign.failure_reason or "All sources failed",
+                )
             return
 
         if failed_sources > 0:
@@ -224,13 +226,13 @@ def refresh_campaign_status(session: Session, campaign_id: str) -> None:
         campaign.completed_at = campaign.completed_at or datetime.utcnow()
         campaign.failed_at = None if campaign.status == "completed" else campaign.failed_at
 
-        if campaign.status == "completed":
+        if campaign.status == "completed" and previous_status != "completed":
             emit_campaign_lifecycle_event(
                 campaign_id,
                 "campaign.completed",
                 status="completed",
             )
-        elif campaign.status == "partial":
+        elif campaign.status == "partial" and previous_status != "partial":
             emit_campaign_lifecycle_event(
                 campaign_id,
                 "campaign.partial",

@@ -33,6 +33,7 @@ from backend.core.cache.pipeline_state import (
 from backend.core.cache.campaign_cache import clear_campaign_pipeline_cache
 from backend.core.database import models
 from backend.core.database.session import get_db
+from backend.pipeline.tasks._common import refresh_campaign_status
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -741,6 +742,10 @@ def get_campaign_state(
     events it has not yet seen.
     """
     db_campaign = _get_owned_campaign(db, id, current_user)
+    if isinstance(db, Session):
+        refresh_campaign_status(db, str(id))
+        db.flush()
+        db.refresh(db_campaign)
     payload = get_campaign_state_payload(db_campaign, str(id))
     payload["last_event_id"] = _get_last_event_id(str(id))
     return payload
