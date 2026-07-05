@@ -115,10 +115,15 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
             "negative_reasons": result.negative_reasons,
             "candidate_snapshot_id": str(snapshot_id),
         }
+        session.add(score_row)
         if existing_current is not None:
+            # superseded_by has no ORM relationship() (self-FK on a plain
+            # column), so the unit of work has no dependency edge telling it
+            # to insert score_row before this update — without the explicit
+            # flush the UPDATE can be emitted first and violate the FK.
+            session.flush()
             existing_current.is_current = False
             existing_current.superseded_by = score_row.id
-        session.add(score_row)
         refresh_campaign_status(session, campaign_id)
         final_score = float(score_row.final_score or 0.0)
         score_run_id = score_row.id

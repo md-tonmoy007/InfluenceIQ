@@ -6,7 +6,7 @@ import logging
 from datetime import UTC, datetime
 
 from backend.core.celery.app import celery_app
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from backend.core.database import models
 from backend.pipeline.content.content_extractor import extract_role4_content
@@ -21,6 +21,7 @@ from backend.pipeline.tasks._common import (
     mark_campaign_failed,
     publish_event,
     refresh_campaign_status,
+    sanitize_text,
     set_phase,
 )
 
@@ -60,17 +61,22 @@ def fetch_page(self, campaign_id: str, crawl_source_id: str) -> dict:
             _mark_failed(campaign_id, crawl_source_id, msg)
             return {"crawl_source_id": crawl_source_id, "status": "failed", "error": msg}
 
-    with db_session() as session:
-        source = session.get(models.CrawlSource, crawl_source_id)
-        if source is None:
-            return {"crawl_source_id": crawl_source_id, "status": "missing"}
-        source.status = "scraped"
-        source.html = html
-        source.error_message = error
-        if title_hint and not source.title:
-            source.title = title_hint
-        source.fetched_at = datetime.now(UTC)
-        refresh_campaign_status(session, campaign_id)
+    try:
+        with db_session() as session:
+            source = session.get(models.CrawlSource, crawl_source_id)
+            if source is None:
+                return {"crawl_source_id": crawl_source_id, "status": "missing"}
+            source.status = "scraped"
+            source.html = sanitize_text(html)
+            source.error_message = error
+            if title_hint and not source.title:
+                source.title = title_hint
+            source.fetched_at = datetime.now(UTC)
+            refresh_campaign_status(session, campaign_id)
+    except SQLAlchemyError as exc:
+        log.exception("Failed to persist fetched page for %s: %s", crawl_source_id, exc)
+        _mark_failed(campaign_id, crawl_source_id, str(exc))
+        return {"crawl_source_id": crawl_source_id, "status": "failed", "error": str(exc)}
 
     publish_event(
         campaign_id,
@@ -100,18 +106,23 @@ def extract_content(self, campaign_id: str, crawl_source_id: str, page: dict) ->
         _mark_failed(campaign_id, crawl_source_id, f"extract_content: {exc}")
         return {"crawl_source_id": crawl_source_id, "status": "failed", "error": str(exc)}
 
-    with db_session() as session:
-        source = session.get(models.CrawlSource, crawl_source_id)
-        if source is None:
-            return {"crawl_source_id": crawl_source_id, "status": "missing"}
-        source.title = content.get("title") or source.title
-        source.content = content.get("content", "")
-        source.status = "extracted"
-        if source.html is None:
-            source.html = page.get("html", "")
-        if not source.relevance_score:
-            source.relevance_score = content.get("metrics", {}).get("average_engagement")
-        refresh_campaign_status(session, campaign_id)
+    try:
+        with db_session() as session:
+            source = session.get(models.CrawlSource, crawl_source_id)
+            if source is None:
+                return {"crawl_source_id": crawl_source_id, "status": "missing"}
+            source.title = content.get("title") or source.title
+            source.content = sanitize_text(content.get("content", ""))
+            source.status = "extracted"
+            if source.html is None:
+                source.html = sanitize_text(page.get("html", ""))
+            if not source.relevance_score:
+                source.relevance_score = content.get("metrics", {}).get("average_engagement")
+            refresh_campaign_status(session, campaign_id)
+    except SQLAlchemyError as exc:
+        log.exception("Failed to persist extracted content for %s: %s", crawl_source_id, exc)
+        _mark_failed(campaign_id, crawl_source_id, f"extract_content: {exc}")
+        return {"crawl_source_id": crawl_source_id, "status": "failed", "error": str(exc)}
 
     publish_event(
         campaign_id,

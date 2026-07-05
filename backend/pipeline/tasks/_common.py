@@ -48,6 +48,19 @@ def db_session() -> Iterator[Session]:
 SessionLocal = _get_session_local
 
 
+def sanitize_text(value: str | None) -> str | None:
+    """Strip NUL bytes, which Postgres text/varchar columns cannot store.
+
+    Fetched pages are sometimes binary (PDFs, images misdetected as HTML)
+    decoded as text; without this, the embedded ``\\x00`` bytes fail the
+    commit with a ``DataError`` that leaves the row stuck at its prior
+    status forever (nothing marks it failed or retries it).
+    """
+    if value is None:
+        return None
+    return value.replace("\x00", "")
+
+
 def get_campaign(session: Session, campaign_id: str) -> models.Campaign:
     """Load a campaign by stringified UUID, raising ValueError if absent."""
     try:
@@ -249,5 +262,6 @@ __all__ = [
     "mark_campaign_running",
     "publish_event",
     "refresh_campaign_status",
+    "sanitize_text",
     "set_phase",
 ]

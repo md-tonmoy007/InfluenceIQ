@@ -119,6 +119,38 @@ def _ensure_platform_coverage(queries: list[str],
     return result
 
 
+def _primary_locations(payload: dict[str, Any], limit: int = 2) -> list[str]:
+    """Return up to *limit* cleaned, title-cased location names."""
+    raw = payload.get("locations") or []
+    cleaned = [str(loc).strip() for loc in raw if str(loc).strip()]
+    return [loc.title() if loc.islower() or loc.isupper() else loc for loc in cleaned[:limit]]
+
+
+def _top_query(
+    niche: str,
+    *,
+    location: str | None = None,
+    product: str | None = None,
+    qualifier: str | None = None,
+) -> str:
+    """Build one query from the canonical 'top ... in ... for ... , ...' template.
+
+    Always starts with "top". `product` is only omitted when the caller
+    passes ``None`` / empty — callers must not drop it just because a
+    location, audience, or goal is also being expressed.
+    """
+    subject = f"{niche} influencers" if niche else "influencers"
+    parts = [f"top {subject}"]
+    if location:
+        parts.append(f"in {location}")
+    if product:
+        parts.append(f"for {product}")
+    query = " ".join(parts)
+    if qualifier:
+        query = f"{query}, {qualifier}"
+    return query
+
+
 def _build_query_set(payload: dict[str, Any]) -> list[str]:
     """Expand a campaign payload into 3-5 web-search queries."""
     product = (payload.get("product") or "").strip()
@@ -126,20 +158,22 @@ def _build_query_set(payload: dict[str, Any]) -> list[str]:
     goals = (payload.get("goals") or "").strip()
     audience = (payload.get("target_audience") or "").strip()
     platforms = payload.get("preferred_platforms") or []
-    locations = payload.get("locations") or []
+    locations = _primary_locations(payload)
 
     queries: list[str] = []
-    location_suffix = f" {' '.join(locations[:2])}".strip() if locations else ""
-    if product and niche:
-        queries.append(f"{product} {niche} influencers{location_suffix}".strip())
-    if niche:
-        queries.append(f"top {niche} creators{location_suffix}".strip())
-    if product:
-        queries.append(f"{product} reviews and recommendations{location_suffix}".strip())
-    if audience and niche:
-        queries.append(f"{niche} creators for {audience}{location_suffix}".strip())
-    if goals and niche:
-        queries.append(f"{niche} influencers {goals}{location_suffix}".strip())
+    if locations:
+        for location in locations:
+            queries.append(_top_query(niche, location=location, product=product))
+    else:
+        queries.append(_top_query(niche, product=product))
+
+    if audience:
+        queries.append(_top_query(niche, product=product, qualifier=f"for {audience}"))
+    if goals:
+        queries.append(_top_query(niche, product=product, qualifier=goals))
+    if product and not niche:
+        queries.append(_top_query("", product=product, qualifier="reviews and recommendations"))
+
     if not queries:
         queries.append("trusted creator recommendations")
 
@@ -209,6 +243,8 @@ def _build_llm_query_prompt(payload: dict[str, Any]) -> str:
     audience = payload.get("target_audience", "").strip()
     platforms = payload.get("preferred_platforms", [])
     platform_str = ", ".join(platforms) if platforms else "any"
+    locations = _primary_locations(payload)
+    location_str = ", ".join(locations) if locations else "(not specified)"
 
     return (
         "You are a campaign search-query planner. Generate 3-5 "
@@ -219,7 +255,22 @@ def _build_llm_query_prompt(payload: dict[str, Any]) -> str:
         f"Niche: {niche or '(not specified)'}\n"
         f"Goals: {goals or '(not specified)'}\n"
         f"Target audience: {audience or '(not specified)'}\n"
-        f"Preferred platforms: {platform_str}\n"
+        f"Target location(s): {location_str}\n"
+        f"Preferred platforms: {platform_str}\n\n"
+        "Query style rules (all mandatory):\n"
+        "- Every query MUST start with the word 'top'.\n"
+        "- If a product/service is given, EVERY query must name it — never "
+        "produce a query that mentions only the niche, audience, or goal "
+        "and drops the product/brand. The canonical shape is "
+        "'top {niche} influencers in {location} for {product}', omitting "
+        "the 'in {location}' clause only when no location is given.\n"
+        "- If a target location is given, most queries should include it "
+        "via 'in {location}'. If no target location is given, omit location "
+        "entirely — do not invent one.\n"
+        "- Use the audience/goals only as an added qualifier on top of the "
+        "product-bearing query (e.g. 'top {niche} influencers in {location} "
+        "for {product}, targeting {audience}'), never as a replacement for "
+        "the product/brand.\n"
     )
 
 

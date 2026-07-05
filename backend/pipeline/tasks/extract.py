@@ -174,6 +174,8 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
             mentions = extract_influencer_mentions(content)
     except Exception as exc:
         log.exception("influencer extraction failed: %s", exc)
+        with db_session() as session:
+            refresh_campaign_status(session, campaign_id)
         publish_event(
             campaign_id,
             "extract.failed",
@@ -184,6 +186,12 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
         return {"crawl_source_id": crawl_source_id, "status": "failed", "error": str(exc)}
 
     if not mentions:
+        # This can be the last outstanding source for the campaign (e.g. a
+        # PDF/page with no influencer mentions) — without refreshing status
+        # here, refresh_campaign_status is never called again and the
+        # campaign is stuck at "running" forever.
+        with db_session() as session:
+            refresh_campaign_status(session, campaign_id)
         publish_event(
             campaign_id,
             "influencers.none",

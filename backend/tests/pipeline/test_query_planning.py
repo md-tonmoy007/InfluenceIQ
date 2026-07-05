@@ -7,12 +7,15 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from backend.pipeline.tasks.search import (
+    _build_llm_query_prompt,
     _build_query_set,
     _ensure_platform_coverage,
     _generate_planned_queries,
     _llm_generate_queries,
     _normalize_tokens,
     _jaccard_similarity,
+    _primary_locations,
+    _top_query,
     dedupe_queries,
 )
 
@@ -42,7 +45,7 @@ def test_generate_queries_minimal_payload() -> None:
     """Fallback to a default query when almost no fields are provided."""
     queries = _build_query_set({"product": "", "niche": ""})
     assert len(queries) == 1
-    assert queries[0] == "trusted creator recommendations"
+    assert queries[0] == "top influencers"
 
 
 def test_generate_queries_deterministic_without_platforms() -> None:
@@ -50,6 +53,145 @@ def test_generate_queries_deterministic_without_platforms() -> None:
     payload = {"product": "tea", "niche": "wellness", "preferred_platforms": []}
     queries = _build_query_set(payload)
     assert all("youtube" not in q.lower() for q in queries)
+
+
+# ---------------------------------------------------------------------------
+# _primary_locations
+# ---------------------------------------------------------------------------
+
+
+def test_primary_locations_single() -> None:
+    locations = _primary_locations({"locations": ["singapore"]})
+    assert locations == ["Singapore"]
+
+
+def test_primary_locations_multiple_limited() -> None:
+    locations = _primary_locations({"locations": ["singapore", "Kuala Lumpur", "New York"]})
+    assert locations == ["Singapore", "Kuala Lumpur"]
+
+
+def test_primary_locations_empty() -> None:
+    assert _primary_locations({}) == []
+    assert _primary_locations({"locations": []}) == []
+    assert _primary_locations({"locations": ["", "  "]}) == []
+
+
+def test_primary_locations_mixed_case() -> None:
+    locations = _primary_locations({"locations": ["SINGAPORE", "new york", "Los Angeles"]})
+    assert locations == ["Singapore", "New York"]
+
+
+# ---------------------------------------------------------------------------
+# _top_query
+# ---------------------------------------------------------------------------
+
+
+def test_top_query_full() -> None:
+    assert _top_query("fitness", location="Singapore", product="protein powder") == (
+        "top fitness influencers in Singapore for protein powder"
+    )
+
+
+def test_top_query_no_location() -> None:
+    assert _top_query("fitness", product="protein powder") == (
+        "top fitness influencers for protein powder"
+    )
+
+
+def test_top_query_no_product() -> None:
+    assert _top_query("fitness", location="Singapore") == (
+        "top fitness influencers in Singapore"
+    )
+
+
+def test_top_query_no_niche() -> None:
+    assert _top_query("", product="tea") == "top influencers for tea"
+
+
+def test_top_query_with_qualifier() -> None:
+    assert _top_query("fitness", product="protein powder", qualifier="targeting men 25-40") == (
+        "top fitness influencers for protein powder, targeting men 25-40"
+    )
+
+
+# ---------------------------------------------------------------------------
+# _build_query_set — location-aware variants
+# ---------------------------------------------------------------------------
+
+
+def test_build_query_set_with_location_and_product() -> None:
+    payload = {
+        "product": "protein powder",
+        "niche": "fitness",
+        "locations": ["singapore"],
+    }
+    queries = _build_query_set(payload)
+    assert len(queries) >= 1
+    assert queries[0] == "top fitness influencers in Singapore for protein powder"
+
+
+def test_build_query_set_with_two_locations() -> None:
+    payload = {
+        "product": "protein powder",
+        "niche": "fitness",
+        "locations": ["singapore", "kuala lumpur"],
+    }
+    queries = _build_query_set(payload)
+    assert any("in Singapore" in q for q in queries)
+    assert any("in Kuala Lumpur" in q for q in queries)
+    assert not any("Singapore Kuala Lumpur" in q for q in queries)
+
+
+def test_build_query_set_no_location_no_in_clause() -> None:
+    payload = {"product": "tea", "niche": "wellness"}
+    queries = _build_query_set(payload)
+    assert not any(" in " in q for q in queries)
+
+
+def test_build_query_set_all_fields_start_with_top_and_product() -> None:
+    payload = {
+        "product": "protein powder",
+        "niche": "fitness",
+        "goals": "increase brand awareness",
+        "target_audience": "men 25-40",
+        "preferred_platforms": [],
+    }
+    queries = _build_query_set(payload)
+    assert len(queries) > 0
+    assert all(q.startswith("top ") for q in queries)
+    assert all("protein powder" in q for q in queries)
+
+
+def test_build_query_set_product_no_niche() -> None:
+    payload = {"product": "tea", "niche": "", "preferred_platforms": []}
+    queries = _build_query_set(payload)
+    assert len(queries) >= 2
+    assert any("tea" in q for q in queries)
+    assert any("reviews and recommendations" in q for q in queries)
+
+
+# ---------------------------------------------------------------------------
+# _build_llm_query_prompt
+# ---------------------------------------------------------------------------
+
+
+def test_build_llm_query_prompt_contains_location_and_rules() -> None:
+    payload = {
+        "product": "protein powder",
+        "niche": "fitness",
+        "locations": ["singapore"],
+    }
+    prompt = _build_llm_query_prompt(payload)
+    assert "Target location(s): Singapore" in prompt
+    assert "MUST start with the word 'top'" in prompt
+    assert "never produce a query that" in prompt
+    assert "drops the product/brand" in prompt
+
+
+def test_build_llm_query_prompt_no_location() -> None:
+    payload = {"product": "tea", "niche": "wellness"}
+    prompt = _build_llm_query_prompt(payload)
+    assert "Target location(s): (not specified)" in prompt
 
 
 # ---------------------------------------------------------------------------
