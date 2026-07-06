@@ -10,6 +10,10 @@ export type InfluencerRecommendation = {
   brandSafetyFlags: string[];
   citations: string[];
   rate: string;
+  deepAnalysisReady?: boolean;
+  deepAnalysisBlockReason?: string | null;
+  platformPostCount?: number;
+  platformCommentCount?: number;
   subScores: Record<string, number>;
   scorePayload: Record<string, unknown>;
   sourcePayload: Record<string, unknown>;

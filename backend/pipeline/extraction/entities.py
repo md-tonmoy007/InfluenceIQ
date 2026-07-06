@@ -31,6 +31,7 @@ _UI_TOKENS: frozenset[str] = frozenset({
     "trending", "search", "filter", "login", "signup", "register", "footer",
     "header", "sidebar", "advertisement", "sponsored", "promoted",
 })
+_GENERIC_TITLES: frozenset[str] = frozenset({"creator", "author", "speaker", "public figure"})
 
 
 def _is_ui_text(name: str) -> bool:
@@ -78,6 +79,36 @@ def _context_for(text: str, token: str, radius: int = 180) -> str:
     return re.sub(r"\s+", " ", text[start:end]).strip()
 
 
+def _platforms_for_mention(
+    *,
+    context: str,
+    handle: str,
+    page_platforms: dict[str, str],
+    total_names: int,
+    source_url: str,
+) -> dict[str, str]:
+    context_platforms = extract_social_urls(context, [], source_url)
+    if context_platforms:
+        return context_platforms
+
+    if handle:
+        handle_name = handle.removeprefix("@").casefold()
+        matched = {
+            platform: url
+            for platform, url in page_platforms.items()
+            if username_from_profile(url) == handle_name
+        }
+        if matched:
+            return matched
+
+    # Only trust page-level social links when the page appears to describe
+    # a single creator; directory pages often expose unrelated navigation links.
+    if total_names == 1:
+        return dict(page_platforms)
+
+    return {}
+
+
 def extract_influencer_mentions(page: dict) -> list[dict[str, Any]]:
     text, links = parse_page(page)
     source_url = str(page.get("url") or page.get("source_url") or "")
@@ -113,13 +144,21 @@ def extract_influencer_mentions(page: dict) -> list[dict[str, Any]]:
         credentials = extract_credentials(context)
         titles = extract_professional_titles(context)
         authority = extract_authority_mentions(context)
+        mention_platforms = _platforms_for_mention(
+            context=context,
+            handle=handle,
+            page_platforms=platforms,
+            total_names=len(names),
+            source_url=source_url,
+        )
+        strong_titles = [title for title in titles if title not in _GENERIC_TITLES]
 
         # Minimum signal gate: skip mentions with no handle, no credentials,
         # and no professional title — they are likely boilerplate noise.
-        if not handle and not credentials and not titles:
+        if not handle and not mention_platforms and not credentials and not strong_titles:
             continue
 
-        mention_platform = platform_for_url(next(iter(platforms.values()), "")) or ("instagram" if handle else "unknown")
+        mention_platform = platform_for_url(next(iter(mention_platforms.values()), "")) or ("instagram" if handle else "unknown")
 
         # Per-mention contact info is the intersection of the page's
         # contact lists with the mention's context window. When the
@@ -148,9 +187,9 @@ def extract_influencer_mentions(page: dict) -> list[dict[str, Any]]:
         mentions.append({
             "mention_id": str(uuid5(NAMESPACE_URL, f"{source_url}|{name}|{handle}")),
             "name": name, "handle": handle or None, "platform": mention_platform,
-            "profile_url": next(iter(platforms.values()), None),
-            "platforms": dict(platforms) if platforms else ({mention_platform: handle} if handle else {}),
-            "profile_urls": profile_urls(platforms), "credentials": credentials,
+            "profile_url": next(iter(mention_platforms.values()), None),
+            "platforms": dict(mention_platforms) if mention_platforms else ({mention_platform: handle} if handle else {}),
+            "profile_urls": profile_urls(mention_platforms), "credentials": credentials,
             "professional_titles": titles, "authority_mentions": authority,
             "emails": contact_dict["emails"],
             "phones": contact_dict["phones"],

@@ -59,7 +59,10 @@ class ExtractionTest(unittest.TestCase):
         self.assertGreaterEqual(len(mentions), 1)
         sarah = next(mention for mention in mentions if "Sarah Tan" in mention["name"])
         self.assertEqual(sarah["platforms"]["instagram"], "https://instagram.com/drsarahtan")
-        self.assertEqual(sarah["platforms"]["youtube"], "https://youtube.com/@drsarahtan")
+        self.assertEqual(
+            normalize_profile_url(sarah["platforms"]["youtube"]),
+            "https://youtube.com/@drsarahtan",
+        )
         self.assertIn("MD", sarah["credentials"])
         self.assertIn("Certified Nutritionist", sarah["credentials"])
         self.assertIn("nutritionist", sarah["professional_titles"])
@@ -76,6 +79,24 @@ class ExtractionTest(unittest.TestCase):
             "https://tiktok.com/@runwithjordan",
         )
         self.assertEqual(normalize_profile_url("twitter.com/AlexStone/"), "https://x.com/AlexStone")
+
+    def test_directory_boilerplate_does_not_borrow_page_level_social_links(self) -> None:
+        page = {
+            "url": "https://hypeauditor.com/top-instagram-all-india/",
+            "content": (
+                "Top 1000 Influencers on Instagram in India | HypeAuditor Instagram Ranking "
+                "[FREE ONLINE EVENT] Learn how top creators and brands will win social media in 2026 "
+                "at UNFILTERED Register for the summit Product Customers Resources Pricing "
+                "HYPEAUDITOR PLATFORM Manage creators."
+            ),
+            "social_links": [
+                "https://instagram.com/cristiano",
+                "https://x.com/hypeauditor",
+            ],
+        }
+
+        mentions = extract_influencer_mentions(page)
+        self.assertEqual(mentions, [])
 
 
 class IdentityTest(unittest.TestCase):

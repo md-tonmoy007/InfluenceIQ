@@ -924,7 +924,11 @@ export default function ShortlistPageClient() {
                     <DeepAnalysisTrigger
                       influencerId={m.id}
                       campaignId={campaignId}
-                      className="row-cta row-cta-primary"
+                      className="row-cta"
+                      viewClassName="row-cta"
+                      rerunClassName="row-cta row-cta-primary"
+                      deepAnalysisReady={m.deepAnalysisReady}
+                      deepAnalysisBlockReason={m.deepAnalysisBlockReason}
                     />
                     {!isContracted ? (
                       <button

@@ -116,7 +116,7 @@ function uriEncode(s: string): string {
 }
 
 function triggerUrl(influencerId: string, campaignId: string, commentTarget = 2000): string {
-  return `/api/influencers/${uriEncode(influencerId)}/deep-analysis?campaign_id=${uriEncode(campaignId)}&comment_target=${commentTarget}`;
+  return `/api/influencers/${uriEncode(influencerId)}/deep-analysis?campaign_id=${uriEncode(campaignId)}&comment_target=${commentTarget}&force=true`;
 }
 
 function latestUrl(influencerId: string, campaignId: string): string {
@@ -135,23 +135,23 @@ const infId = "abc";
 const cmpId = "def";
 const rId = "ghi";
 
-assertEqual(triggerUrl(infId, cmpId), "/api/influencers/abc/deep-analysis?campaign_id=def&comment_target=2000", "trigger URL includes comment_target");
+assertEqual(triggerUrl(infId, cmpId), "/api/influencers/abc/deep-analysis?campaign_id=def&comment_target=2000&force=true", "trigger URL includes force rerun flag");
 assertEqual(latestUrl(infId, cmpId), "/api/influencers/abc/deep-analysis/latest?campaign_id=def", "latest URL includes campaign_id");
 assertEqual(statusUrl(infId, rId), "/api/influencers/abc/deep-analysis/ghi", "status URL includes run_id");
 assertEqual(reportUrl(infId, rId), "/api/influencers/abc/reports/ghi", "report URL includes report_id");
 
 // ---------------------------------------------------------------------------
-// 6. Freshness check: should skip trigger when latest returns fresh=true
+// 6. Existing report state: show a view action when latest is fresh
 // ---------------------------------------------------------------------------
 
-function shouldSkipTrigger(latest: { fresh: boolean; report?: { report_id: string } | null }): boolean {
+function hasViewAction(latest: { fresh: boolean; report?: { report_id: string } | null }): boolean {
   return latest.fresh && !!(latest.report?.report_id ?? "");
 }
 
-assertTrue(shouldSkipTrigger({ fresh: true, report: { report_id: "r-1" } }), "fresh report with id skips trigger");
-assertFalse(shouldSkipTrigger({ fresh: false, report: { report_id: "r-1" } }), "stale report does not skip trigger");
-assertFalse(shouldSkipTrigger({ fresh: true }), "fresh without report id does not skip trigger");
-assertFalse(shouldSkipTrigger({ fresh: true, report: null }), "fresh with null report does not skip trigger");
+assertTrue(hasViewAction({ fresh: true, report: { report_id: "r-1" } }), "fresh report with id enables view action");
+assertFalse(hasViewAction({ fresh: false, report: { report_id: "r-1" } }), "stale report does not enable view action");
+assertFalse(hasViewAction({ fresh: true }), "fresh without report id does not enable view action");
+assertFalse(hasViewAction({ fresh: true, report: null }), "fresh with null report does not enable view action");
 
 // ---------------------------------------------------------------------------
 // 7. Report payload partial-data detection

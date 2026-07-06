@@ -248,6 +248,7 @@ def start_deep_analysis(
     id: UUID,
     campaign_id: UUID = Query(..., description="Campaign context for the deep analysis run"),
     comment_target: int = Query(default=2000, ge=100, le=10000),
+    force: bool = Query(default=False, description="Bypass fresh-report cache and start a new run"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -269,7 +270,7 @@ def start_deep_analysis(
         .order_by(models.DeepAnalysisRun.completed_at.desc())
         .first()
     )
-    if existing:
+    if existing and not force:
         report = db.query(models.DeepAnalysisReport).filter(models.DeepAnalysisReport.run_id == existing.id).first()
         if report:
             return {

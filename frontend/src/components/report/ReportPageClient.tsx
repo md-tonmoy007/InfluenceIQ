@@ -110,7 +110,7 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
 
         if (runStatus === "failed") {
           setLoadingStage("failed");
-          setError(String(result.error ?? "Deep analysis failed."));
+          setError(String(result.failure_reason ?? result.error ?? "Deep analysis failed."));
           return;
         }
 
