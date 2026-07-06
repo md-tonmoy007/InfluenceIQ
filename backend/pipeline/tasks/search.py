@@ -390,6 +390,7 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
 
     created_ids: list[str] = []
     rejected_urls: list[dict[str, str]] = []
+    total_sources = 0
     with db_session() as session:
         for result in accepted:
             url = result.get("url")
@@ -463,6 +464,11 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
                 session.rollback()
 
         refresh_campaign_status(session, campaign_id)
+        total_sources = (
+            session.query(models.CrawlSource)
+            .filter(models.CrawlSource.campaign_id == campaign_id)
+            .count()
+        )
 
     publish_event(
         campaign_id,
@@ -476,7 +482,7 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
             rejected=rejected_urls,
         ).to_payload(),
     )
-    set_phase(campaign_id, urls_discovered=len(created_ids))
+    set_phase(campaign_id, urls_discovered=total_sources)
 
     for crawl_source_id in created_ids:
         from backend.pipeline.tasks.crawl import fetch_page

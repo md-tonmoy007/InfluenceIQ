@@ -50,7 +50,9 @@ export function PipelineProgress({ state, events = [] }: PipelineProgressProps) 
   const discovered = Number(state?.urls_discovered ?? 0);
   const processed = Number(state?.urls_processed ?? state?.urls_scraped ?? 0);
   const scores = Number(state?.scores_computed ?? 0);
-  const progress = discovered > 0 ? Math.min(100, Math.round((processed / discovered) * 100)) : 0;
+  const enriched = Number(state?.platforms_enriched ?? 0);
+  const visibleTotal = Math.max(discovered, processed);
+  const progress = visibleTotal > 0 ? Math.min(100, Math.round((processed / visibleTotal) * 100)) : 0;
 
   return (
     <div className="pipeline-progress">
@@ -62,9 +64,9 @@ export function PipelineProgress({ state, events = [] }: PipelineProgressProps) 
         <div className="pipeline-progress__fill" style={{ width: `${progress}%` }} />
       </div>
       <div className="pipeline-progress__stats">
-        <span>{processed}/{discovered} sources</span>
-        <span>{scores} scores</span>
-        <span>{Number(state?.platforms_enriched ?? 0)} enriched</span>
+        <span title="Pages fetched or processed so far">{processed}{visibleTotal > 0 ? ` of ${visibleTotal}` : ""} pages processed</span>
+        <span title="Influencer matches scored so far">{scores} matches scored</span>
+        <span title="Creator profiles enriched with platform data">{enriched} profiles enriched</span>
       </div>
       {events.length > 0 ? (
         <ul className="pipeline-progress__events">
