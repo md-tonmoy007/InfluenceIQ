@@ -271,6 +271,11 @@ def _build_llm_query_prompt(payload: dict[str, Any]) -> str:
         "product-bearing query (e.g. 'top {niche} influencers in {location} "
         "for {product}, targeting {audience}'), never as a replacement for "
         "the product/brand.\n"
+        "- Not every query should carry the audience/goals qualifier — "
+        "produce a mix: some queries plain (product/location only) and, "
+        "when audience or goals is given, at least one query that adds it. "
+        "This diversity matters more than cramming every detail into every "
+        "query.\n"
     )
 
 

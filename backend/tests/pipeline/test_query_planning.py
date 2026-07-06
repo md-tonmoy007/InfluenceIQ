@@ -194,6 +194,14 @@ def test_build_llm_query_prompt_no_location() -> None:
     assert "Target location(s): (not specified)" in prompt
 
 
+def test_build_llm_query_prompt_requires_qualifier_mix() -> None:
+    """The prompt must tell the LLM to mix plain queries with qualified ones,
+    rather than stuffing audience/goals into every query."""
+    payload = {"product": "tea", "niche": "wellness", "target_audience": "adults"}
+    prompt = _build_llm_query_prompt(payload)
+    assert "Not every query should carry the audience/goals qualifier" in prompt
+
+
 # ---------------------------------------------------------------------------
 # dedupe_queries — near-duplicate removal
 # ---------------------------------------------------------------------------
