@@ -51,6 +51,7 @@ def deep_analyze(
 
     publish_event(campaign_id, "deep_analysis.started", run_id=run_id, influencer_id=influencer_id)
 
+    final_comment_count = 0
     try:
         with db_session() as session:
             run = session.get(models.DeepAnalysisRun, run_uuid)
@@ -110,6 +111,7 @@ def deep_analyze(
                 campaign_uuid,
                 influencer_uuid,
             )
+            final_comment_count = int(run.collected_comment_count or 0)
     except Exception as exc:
         log.exception("deep_analyze failed campaign_id=%s influencer_id=%s run_id=%s", campaign_id, influencer_id, run_id)
         with db_session() as session:
@@ -138,7 +140,7 @@ def deep_analyze(
         "status": "completed",
         "run_id": run_id,
         "report_id": report_id,
-        "comment_count": run.collected_comment_count,
+        "comment_count": final_comment_count,
     }
 
 
