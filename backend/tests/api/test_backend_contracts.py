@@ -258,12 +258,13 @@ class BackendContractsTest(unittest.TestCase):
             mention={"name": "Dr Test", "context": "quoted"},
         )
 
-        response = self.client.get(f"/api/campaigns/{campaign_id}/influencers")
+        response = self.client.get(f"/api/campaigns/{campaign_id}/influencers?limit=200")
         self.assertEqual(response.status_code, 200)
         body = response.json()
         # Phase 3: response is now {items, next_cursor, limit}; check items.
         self.assertEqual(len(body["items"]), 1)
         self.assertIsNone(body["next_cursor"])
+        self.assertEqual(body["limit"], 200)
         row = body["items"][0]
         self.assertEqual(row["risk_category"], "low")
         self.assertEqual(row["detection_category"], "trusted")

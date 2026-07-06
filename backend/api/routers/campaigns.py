@@ -843,7 +843,7 @@ def get_campaign_influencers(
     grade: str | None = Query(default=None, description="Filter by trust grade, e.g. 'A+', 'A'"),
     niche: str | None = Query(default=None, description="Filter by core niche"),
     location: str | None = Query(default=None, description="Filter by primary location"),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=20, ge=1, le=200),
     cursor: str | None = Query(
         default=None,
         description=(
