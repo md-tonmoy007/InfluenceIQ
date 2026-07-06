@@ -42,6 +42,38 @@ def normalize_profile_url(url: str) -> str:
     return urlunsplit(("https", host, path, query, ""))
 
 
+_PROFILE_PATH_PATTERNS: dict[str, re.Pattern[str]] = {
+    "tiktok": re.compile(r"^/@[\w.\-]{1,50}/?$"),
+    "youtube": re.compile(
+        r"^/(@[\w.\-]{1,50}|channel/[\w-]{1,64}|c/[\w.\-]{1,64}|user/[\w.\-]{1,64})/?$"
+    ),
+}
+
+_WWW_PREFIXED_HOSTS = {"tiktok.com", "youtube.com"}
+
+
+def is_profile_url(url: str) -> bool:
+    platform = platform_for_url(url)
+    if platform is None:
+        return False
+    pattern = _PROFILE_PATH_PATTERNS.get(platform)
+    if pattern is None:
+        return True
+    path = urlsplit(_ensure_scheme(url)).path or "/"
+    return bool(pattern.match(path))
+
+
+def canonical_profile_url(url: str) -> str | None:
+    if not is_profile_url(url):
+        return None
+    normalized = normalize_profile_url(url)
+    parts = urlsplit(normalized)
+    host = parts.netloc
+    if host in _WWW_PREFIXED_HOSTS:
+        host = f"www.{host}"
+    return urlunsplit(("https", host, parts.path, "", ""))
+
+
 def username_from_profile(value: str) -> str:
     raw = str(value or "").strip()
     if raw.startswith("@"):

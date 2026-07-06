@@ -11,14 +11,14 @@ from backend.pipeline.tasks.search import (
     _build_query_set,
     _ensure_platform_coverage,
     _generate_planned_queries,
+    _jaccard_similarity,
+    _llm_filter_urls,
     _llm_generate_queries,
     _normalize_tokens,
-    _jaccard_similarity,
     _primary_locations,
     _top_query,
     dedupe_queries,
 )
-
 
 # ---------------------------------------------------------------------------
 # _build_query_set — deterministic path
@@ -334,3 +334,128 @@ def test_normalize_tokens() -> None:
     """Token normalization works correctly."""
     assert _normalize_tokens("Hello World!") == {"hello", "world"}
     assert _normalize_tokens("") == set()
+
+
+# ---------------------------------------------------------------------------
+# _llm_filter_urls — fail-closed URL filtering
+# ---------------------------------------------------------------------------
+
+
+def _sample_results() -> list[dict]:
+    return [
+        {"url": "https://example.com/creator1", "title": "Creator 1", "snippet": "bio"},
+        {"url": "https://example.com/creator2", "title": "Creator 2", "snippet": "bio"},
+        {"url": "https://example.com/product", "title": "Buy now", "snippet": "shop"},
+    ]
+
+
+@patch("backend.pipeline.tasks.search._flag", return_value=False)
+def test_url_filter_flag_off_rejects_all(mock_flag: MagicMock) -> None:
+    """When the LLM flag is off, every result is rejected with `llm_disabled`."""
+    results = _sample_results()
+    accepted, rejected = _llm_filter_urls(results, {"description": "x"})
+    assert accepted == []
+    assert len(rejected) == len(results)
+    assert all(r["reason"] == "llm_disabled" for r in rejected)
+
+
+@patch("backend.pipeline.tasks.search._flag", return_value=True)
+def test_url_filter_registry_unavailable_rejects_all(mock_flag: MagicMock) -> None:
+    """When the registry has no usable LLM backend, reject with `llm_unavailable`."""
+    mock_registry = MagicMock()
+    mock_registry.resolve_name.return_value = "llm"
+    mock_registry.get.return_value = None
+
+    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
+        results = _sample_results()
+        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
+    assert accepted == []
+    assert len(rejected) == len(results)
+    assert all(r["reason"] == "llm_unavailable" for r in rejected)
+
+
+@patch("backend.pipeline.tasks.search._flag", return_value=True)
+def test_url_filter_predict_raises_rejects_all(mock_flag: MagicMock) -> None:
+    """When predict_text raises, reject everything with `llm_error`."""
+    mock_llm = MagicMock()
+    mock_llm.predict_text.side_effect = RuntimeError("boom")
+
+    mock_registry = MagicMock()
+    mock_registry.resolve_name.return_value = "llm"
+    mock_registry.get.return_value = mock_llm
+
+    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
+        results = _sample_results()
+        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
+    assert accepted == []
+    assert len(rejected) == len(results)
+    assert all(r["reason"] == "llm_error" for r in rejected)
+
+
+@patch("backend.pipeline.tasks.search._flag", return_value=True)
+def test_url_filter_stub_response_rejects_all(mock_flag: MagicMock) -> None:
+    """A stub or empty LLM response is treated as a failed call (`llm_error`)."""
+    mock_llm = MagicMock()
+    mock_llm.predict_text.return_value = "[stub: no backend configured]"
+
+    mock_registry = MagicMock()
+    mock_registry.resolve_name.return_value = "llm"
+    mock_registry.get.return_value = mock_llm
+
+    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
+        results = _sample_results()
+        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
+    assert accepted == []
+    assert all(r["reason"] == "llm_error" for r in rejected)
+
+
+@patch("backend.pipeline.tasks.search._flag", return_value=True)
+def test_url_filter_subsets_selection(mock_flag: MagicMock) -> None:
+    """A successful LLM call selects a subset; the rest are `not_selected`."""
+    selected = ["https://example.com/creator1", "https://example.com/creator2"]
+    mock_llm = MagicMock()
+    mock_llm.predict_text.return_value = '["https://example.com/creator1", "https://example.com/creator2"]'
+
+    mock_registry = MagicMock()
+    mock_registry.resolve_name.return_value = "llm"
+    mock_registry.get.return_value = mock_llm
+
+    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
+        results = _sample_results()
+        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
+
+    assert len(accepted) == 2
+    assert {r["url"] for r in accepted} == set(selected)
+    assert len(rejected) == 1
+    assert rejected[0]["url"] == "https://example.com/product"
+    assert rejected[0]["reason"] == "not_selected"
+
+
+@patch("backend.pipeline.tasks.search._flag", return_value=True)
+def test_url_filter_empty_selection_rejects_all(mock_flag: MagicMock) -> None:
+    """An empty LLM selection now rejects everything as `not_selected`.
+
+    This is the behavioral flip worth a dedicated regression: previously
+    an empty selection fell back to returning all results fail-open.
+    """
+    mock_llm = MagicMock()
+    mock_llm.predict_text.return_value = "[]"
+
+    mock_registry = MagicMock()
+    mock_registry.resolve_name.return_value = "llm"
+    mock_registry.get.return_value = mock_llm
+
+    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
+        results = _sample_results()
+        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
+
+    assert accepted == []
+    assert len(rejected) == len(results)
+    assert all(r["reason"] == "not_selected" for r in rejected)
+
+
+def test_url_filter_empty_input_returns_empty() -> None:
+    """An empty result list short-circuits cleanly."""
+    accepted, rejected = _llm_filter_urls([], {"description": "x"})
+    assert accepted == []
+    assert rejected == []

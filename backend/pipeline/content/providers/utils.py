@@ -13,7 +13,7 @@ def first_path_part(url: str) -> str:
 
 def handle_from_url(url: str) -> str:
     handle = first_path_part(url)
-    if handle in {"channel", "c", "user", "shorts", "watch", "results", "explore", "p"}:
+    if handle in {"channel", "c", "user", "shorts", "watch", "results", "explore", "p", "playlist", "embed", "live"}:
         parts = urlparse(url).path.strip("/").split("/")
         return unquote(parts[1]) if len(parts) > 1 else ""
     return handle.lstrip("@")

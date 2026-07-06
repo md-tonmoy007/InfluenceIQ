@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from backend.core.database import models
 from backend.pipeline.content.providers.base import PlatformProfile, fetch_platform_profile
 from backend.pipeline.content.providers.utils import handle_from_url
-from backend.pipeline.content.contracts import normalize_url, platform_for_url
+from backend.pipeline.content.contracts import normalize_url
+from backend.pipeline.extraction.handles import is_profile_url, platform_for_url
 
 log = logging.getLogger(__name__)
 
@@ -213,7 +214,7 @@ def persist_platform_profile(
     return row
 
 
-_GARBAGE_URL_FRAGMENTS = (
+_GENERIC_GARBAGE_FRAGMENTS = (
     "/intent/tweet",
     "/intent/retweet",
     "/intent/like",
@@ -224,16 +225,17 @@ _GARBAGE_URL_FRAGMENTS = (
     "reddit.com/submit",
     "linkedin.com/shareArticle",
     "t.me/share",
-    "youtube.com/watch",   # video page, not a channel
-    "youtu.be/",           # shortened video link
-    "youtube.com/shorts/", # YouTube Shorts
 )
 
 
 def _is_garbage_url(url: str) -> bool:
-    """Return True for share-button / intent URLs that are not real profiles."""
     lower = url.lower()
-    return any(fragment in lower for fragment in _GARBAGE_URL_FRAGMENTS)
+    if any(fragment in lower for fragment in _GENERIC_GARBAGE_FRAGMENTS):
+        return True
+    platform = platform_for_url(url)
+    if platform in {"tiktok", "youtube"}:
+        return not is_profile_url(url)
+    return False
 
 
 def collect_platform_urls_for_influencer(

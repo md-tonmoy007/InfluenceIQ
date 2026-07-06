@@ -219,6 +219,12 @@
   color: #4a4e5a;
   font-size: 11px;
 }
+.pdbg-url-item.rejected {
+  color: #6c6f7a;
+  text-decoration: line-through;
+  text-decoration-color: #2a2e3a;
+}
+.pdbg-url-item.rejected::before { content: '✕'; color: oklch(0.60 0.20 25); }
 .pdbg-badge {
   display: inline-block;
   font-size: 10px;

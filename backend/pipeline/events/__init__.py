@@ -26,7 +26,6 @@ from backend.pipeline.extraction.contact_info import (
 )
 from backend.pipeline.fusion.versioning import computed_at
 
-
 # ---------------------------------------------------------------------------
 # Query & Search events
 # ---------------------------------------------------------------------------
@@ -52,6 +51,7 @@ class SearchExecuted:
     index: int
     result_count: int
     crawl_source_ids: list[str]
+    rejected: list[dict[str, str]] = field(default_factory=list)
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -59,6 +59,7 @@ class SearchExecuted:
             "index": self.index,
             "result_count": self.result_count,
             "crawl_source_ids": list(self.crawl_source_ids),
+            "rejected": list(self.rejected),
         }
 
 

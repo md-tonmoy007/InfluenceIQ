@@ -10,9 +10,9 @@ import re
 from typing import Any
 from uuid import uuid4
 
-from backend.core.celery.app import celery_app
 from sqlalchemy.exc import SQLAlchemyError
 
+from backend.core.celery.app import celery_app
 from backend.core.database import models
 from backend.pipeline.content.search_providers import search_web
 from backend.pipeline.events import QueryGenerationCompleted, SearchExecuted, SearchFailed
@@ -164,7 +164,6 @@ def _llm_generate_queries(payload: dict[str, Any]) -> list[str] | None:
         return None
 
     try:
-        from backend.ml.contracts import TextInferenceRequest
         from backend.ml.models.registry import registry
 
         reg = registry()
@@ -253,14 +252,33 @@ def _build_url_filter_prompt(results: list[dict], payload: dict[str, Any]) -> st
     return "\n".join(lines)
 
 
-def _llm_filter_urls(results: list[dict], payload: dict[str, Any]) -> list[dict]:
-    """Use the LLM to keep only influencer-relevant URLs from search results.
+_REJECT_REASONS = {
+    "llm_disabled": "LLM filtering is off",
+    "llm_unavailable": "LLM backend unavailable",
+    "llm_error": "LLM call failed",
+    "not_selected": "Not selected by LLM as influencer-relevant",
+}
 
-    Falls back to returning all results when the LLM is disabled, unavailable,
-    returns an empty selection, or any error occurs.
+
+def _llm_filter_urls(
+    results: list[dict], payload: dict[str, Any]
+) -> tuple[list[dict], list[dict]]:
+    """Split *results* into (accepted, rejected) using the LLM relevance filter.
+
+    Fails **closed**: whenever the LLM path is off, unavailable, or errors,
+    every result is rejected rather than silently passed through to
+    extraction. Each rejected dict gains a ``"reason"`` key (see
+    :data:`_REJECT_REASONS`) so callers can persist/display *why*.
     """
-    if not _flag("AI_AGENT_LLM_QUERY_PLANNING") or not results:
-        return results
+    if not results:
+        return [], []
+
+    def _reject_all(reason: str) -> tuple[list[dict], list[dict]]:
+        return [], [{**r, "reason": reason} for r in results]
+
+    if not _flag("AI_AGENT_LLM_QUERY_PLANNING"):
+        return _reject_all("llm_disabled")
+
     try:
         from backend.ml.contracts import TextInferenceRequest  # noqa: F401
         from backend.ml.models.registry import registry
@@ -268,7 +286,7 @@ def _llm_filter_urls(results: list[dict], payload: dict[str, Any]) -> list[dict]
         reg = registry()
         llm_backend = reg.get(reg.resolve_name("llm"))
         if llm_backend is None or not hasattr(llm_backend, "predict_text"):
-            return results
+            return _reject_all("llm_unavailable")
 
         prompt = _build_url_filter_prompt(results, payload)
         text = _run_predict(
@@ -277,22 +295,23 @@ def _llm_filter_urls(results: list[dict], payload: dict[str, Any]) -> list[dict]
             )
         )
         if not text or text.startswith("[stub:"):
-            return results
+            return _reject_all("llm_error")
 
         import json
         selected_urls: set[str] = set(json.loads(_strip_code_fence(text)))
-        if not selected_urls:
-            return results
+    except Exception as exc:
+        log.warning("llm_filter_urls failed, rejecting all results: %s", exc)
+        return _reject_all("llm_error")
 
-        filtered = [r for r in results if r.get("url") in selected_urls]
-        log.info(
-            "llm_filter_urls kept=%d of total=%d",
-            len(filtered),
-            len(results),
-        )
-        return filtered if filtered else results
-    except Exception:
-        return results
+    accepted = [r for r in results if r.get("url") in selected_urls]
+    rejected = [
+        {**r, "reason": "not_selected"} for r in results if r.get("url") not in selected_urls
+    ]
+    log.info(
+        "llm_filter_urls accepted=%d rejected=%d of total=%d",
+        len(accepted), len(rejected), len(results),
+    )
+    return accepted, rejected
 
 
 @celery_app.task(name="backend.pipeline.tasks.search.generate_queries", bind=True, max_retries=2)
@@ -351,7 +370,7 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
         with db_session() as session:
             campaign = get_campaign(session, campaign_id)
             _payload = campaign_query_payload(campaign)
-        results = _llm_filter_urls(results, _payload)
+        accepted, rejected = _llm_filter_urls(results, _payload)
     except Exception as exc:
         log.exception("search_web failed campaign_id=%s query=%r: %s", campaign_id, query, exc)
         publish_event(
@@ -369,8 +388,9 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
         raise
 
     created_ids: list[str] = []
+    rejected_urls: list[dict[str, str]] = []
     with db_session() as session:
-        for result in results:
+        for result in accepted:
             url = result.get("url")
             if not url:
                 continue
@@ -409,6 +429,38 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
                 )
                 if existing is not None:
                     created_ids.append(str(existing.id))
+
+        for result in rejected:
+            url = result.get("url")
+            if not url:
+                continue
+            existing = (
+                session.query(models.CrawlSource)
+                .filter(
+                    models.CrawlSource.campaign_id == campaign_id,
+                    models.CrawlSource.url == url,
+                )
+                .first()
+            )
+            if existing is not None:
+                # Already tracked (e.g. another query already surfaced this URL).
+                continue
+            reason = result.get("reason", "llm_error")
+            try:
+                session.add(models.CrawlSource(
+                    id=uuid4(),
+                    campaign_id=campaign_id,
+                    url=url,
+                    title=result.get("title"),
+                    relevance_score=result.get("relevance_score"),
+                    status="rejected",
+                    error_message=reason,
+                ))
+                session.flush()
+                rejected_urls.append({"url": url, "reason": reason})
+            except SQLAlchemyError:
+                session.rollback()
+
         refresh_campaign_status(session, campaign_id)
 
     publish_event(
@@ -418,8 +470,9 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
             campaign_id=campaign_id,
             query=query,
             index=index,
-            result_count=len(results),
+            result_count=len(created_ids),
             crawl_source_ids=created_ids,
+            rejected=rejected_urls,
         ).to_payload(),
     )
     set_phase(campaign_id, urls_discovered=len(created_ids))
@@ -434,6 +487,7 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
         "query": query,
         "index": index,
         "crawl_source_ids": created_ids,
+        "rejected": rejected_urls,
     }
 
 

@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 
 from backend.core.database import models
+from backend.pipeline.extraction.handles import is_profile_url
 
 
 def build_influencer_candidate(
@@ -26,7 +27,7 @@ def build_influencer_candidate(
 
     mentions = list(influencer.mentions or [])
     platforms = dict(influencer.platforms or {})
-    profile_urls = [value for value in platforms.values() if isinstance(value, str)]
+    profile_urls = [value for value in platforms.values() if isinstance(value, str) and is_profile_url(value)]
     sources = _sources_summary(session, influencer_id, campaign_id)
     source_urls = [row["url"] for row in sources]
 

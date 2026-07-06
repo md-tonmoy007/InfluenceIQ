@@ -161,7 +161,7 @@ def refresh_campaign_status(session: Session, campaign_id: str) -> None:
             session.query(models.CrawlSource)
             .filter(
                 models.CrawlSource.campaign_id == campaign.id,
-                models.CrawlSource.status == "failed",
+                models.CrawlSource.status.in_(["failed", "rejected"]),
             )
             .count()
         )
@@ -198,7 +198,7 @@ def refresh_campaign_status(session: Session, campaign_id: str) -> None:
             campaign.status = "running"
             return
 
-        if influencer_count == 0:
+        if influencer_count == 0 and failed_sources != total_sources:
             campaign.status = "running"
             return
 
