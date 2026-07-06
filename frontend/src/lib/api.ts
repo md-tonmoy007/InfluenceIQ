@@ -1,5 +1,4 @@
 import type { CampaignBriefPayload } from "@/types/campaign";
-import { joinCampaignGoals } from "@/lib/brandProfile";
 import type { InfluencerRecommendation } from "@/types/influencer";
 import {
   getAccessToken,
@@ -12,8 +11,8 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 // Mirrors backend CampaignResponse (backend/api/schemas/campaign.py).
 type BackendCampaignResponse = {
   id: string;
-  product: string;
-  niche: string;
+  product: string | null;
+  niche: string | null;
   goals: string | null;
   target_audience: string | null;
   preferred_platforms: string[] | null;
@@ -106,8 +105,8 @@ export type CurrentUser = {
 export type CampaignSummary = {
   campaignId: string;
   brand: string;
-  product: string;
-  category: string;
+  product: string | null;
+  category: string | null;
   goal: string;
   status: string;
   createdAt: string;
@@ -193,8 +192,8 @@ export type WorkspaceStats = {
 export type WorkspaceRecentSearch = {
   campaign_id: string;
   label: string;
-  product: string;
-  niche: string;
+  product: string | null;
+  niche: string | null;
   goal: string | null;
   status: string;
   entry_point: string | null;
@@ -233,8 +232,8 @@ export type WorkspaceSummary = {
 
 export type CampaignListItem = {
   id: string;
-  product: string;
-  niche: string;
+  product: string | null;
+  niche: string | null;
   goals: string | null;
   status: string;
   campaign_name: string | null;
@@ -447,9 +446,10 @@ const mapCampaign = (response: BackendCampaign): CampaignSummary => {
   const { pipeline_state: state, ...campaign } = response;
   const snapshot = campaign.brief_snapshot ?? {};
   const brandName =
-    typeof snapshot.brand_name === "string" && snapshot.brand_name
-      ? snapshot.brand_name
-      : campaign.product;
+    (typeof snapshot.brand_name === "string" && snapshot.brand_name) ||
+    campaign.product ||
+    campaign.search_query ||
+    "Untitled campaign";
 
   return {
     campaignId: campaign.id,
@@ -547,8 +547,8 @@ export type CampaignCreateOptions = {
   entryPoint: "brief_form" | "discover_search" | "topbar_search";
   /** Display label for the workspace shell (briefs, dashboard). */
   campaignName?: string;
-  /** Raw search text, for topbar/discover searches. */
-  searchQuery?: string;
+  /** Raw text describing the campaign/product, drives influencer search. */
+  searchQuery: string;
   /** Typed brief form fields, persisted for UI display. */
   briefSnapshot?: Record<string, unknown> | null;
   /** When false, create a draft without starting the pipeline. */
@@ -563,10 +563,7 @@ export type CampaignCreateOptions = {
 };
 
 export type CampaignDraftUpdateBody = {
-  product?: string;
-  industry?: string;
-  goals?: string | null;
-  target_audience?: string | null;
+  search_query?: string;
   preferred_platforms?: string[] | null;
   budget_range?: string | null;
   campaign_name?: string | null;
@@ -577,21 +574,8 @@ const buildCampaignRequestBody = (
   brief: CampaignBriefPayload,
   options: CampaignCreateOptions
 ): Record<string, unknown> => {
-  const targetAudience = [
-    brief.ages.length ? `Ages: ${brief.ages.join(", ")}` : "",
-    brief.gender && brief.gender !== "All" ? `Gender: ${brief.gender}` : "",
-    brief.locations.length ? `Locations: ${brief.locations.join(", ")}` : "",
-    brief.tier && brief.tier !== "No Preference" ? `Tier: ${brief.tier}` : "",
-    brief.interests?.length ? `Interests: ${brief.interests.join(", ")}` : "",
-  ]
-    .filter(Boolean)
-    .join("; ");
-
   const body: Record<string, unknown> = {
-    product: brief.product,
-    industry: brief.category,
-    goals: joinCampaignGoals(brief.goals, brief.notes),
-    target_audience: targetAudience || null,
+    search_query: options.searchQuery,
     preferred_platforms: brief.platforms.length ? brief.platforms : null,
     budget_range: brief.budget || null,
     entry_point: options.entryPoint,
@@ -599,7 +583,6 @@ const buildCampaignRequestBody = (
   };
 
   if (options.campaignName) body.campaign_name = options.campaignName;
-  if (options.searchQuery) body.search_query = options.searchQuery;
   if (options.briefSnapshot) body.brief_snapshot = options.briefSnapshot;
   if (options.weights) body.weights = options.weights;
 
@@ -608,7 +591,7 @@ const buildCampaignRequestBody = (
 
 export const createCampaign = async (
   brief: CampaignBriefPayload,
-  options: CampaignCreateOptions = { entryPoint: "brief_form" }
+  options: CampaignCreateOptions
 ): Promise<{ campaignId: string; status: string }> => {
   const response = await requestJson<{ campaign_id: string; status: string }>(
     "/api/campaigns",
@@ -625,7 +608,7 @@ export const createCampaign = async (
 
 export const createCampaignDraft = async (
   brief: CampaignBriefPayload,
-  options: Omit<CampaignCreateOptions, "startPipeline"> = { entryPoint: "brief_form" }
+  options: Omit<CampaignCreateOptions, "startPipeline">
 ): Promise<{ campaignId: string; status: string }> =>
   createCampaign(brief, { ...options, startPipeline: false });
 

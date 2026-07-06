@@ -247,12 +247,8 @@ def _campaign_context(campaign: models.Campaign | None) -> dict:
     brief_snapshot = campaign.brief_snapshot or {}
     return {
         "campaign_id": str(campaign.id),
-        "product": campaign.product,
-        "category": campaign.niche,
-        "niche": campaign.niche,
-        "goal": campaign.goals or "",
+        "description": campaign.search_query or "",
         "interests": list(campaign.preferred_platforms or []),
-        "target_audience": campaign.target_audience or "",
         "locations": list(brief_snapshot.get("locations") or []),
         "positive_weights": positive_weights,
     }

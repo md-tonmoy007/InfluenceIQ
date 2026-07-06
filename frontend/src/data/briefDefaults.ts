@@ -1,10 +1,6 @@
 export type BriefDefaults = {
   brand: string;
-  product: string;
-  category: string;
-  goals: string[];
-  ages: string[];
-  gender: string;
+  description: string;
   locs: string[];
   platforms: string[];
   tier: string;
@@ -13,11 +9,7 @@ export type BriefDefaults = {
 
 export const briefDefaults: BriefDefaults = {
   brand: "Northwind Outdoor",
-  product: "SS26 Trail Capsule",
-  category: "Outdoor & Activewear",
-  goals: ["Product Launch"],
-  ages: ["18–24", "25–34"],
-  gender: "All",
+  description: "SS26 Trail Capsule, an outdoor & activewear product launch",
   locs: ["USA", "Canada"],
   platforms: ["Instagram", "YouTube"],
   tier: "Established",

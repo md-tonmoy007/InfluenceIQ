@@ -2,11 +2,7 @@ import { briefDefaults } from "../data/briefDefaults";
 
 export type BriefQuery = {
   brand: string;
-  product: string;
-  category: string;
-  goals: string[];
-  ages: string[];
-  gender: string;
+  description: string;
   locs: string[];
   platforms: string[];
   tier: string;
@@ -32,11 +28,7 @@ const parseList = (value: string, fallback: string[]) => {
 
 export const parseBriefSearchParams = (searchParams: SearchParamInput): BriefQuery => {
   const brand = readParam(searchParams, "brand") || briefDefaults.brand;
-  const product = readParam(searchParams, "product") || briefDefaults.product;
-  const category = readParam(searchParams, "category") || briefDefaults.category;
-  const goals = parseList(readParam(searchParams, "goals"), briefDefaults.goals);
-  const ages = parseList(readParam(searchParams, "ages"), briefDefaults.ages);
-  const gender = readParam(searchParams, "gender") || briefDefaults.gender;
+  const description = readParam(searchParams, "q") || briefDefaults.description;
   const locs = parseList(readParam(searchParams, "locs"), briefDefaults.locs);
   const platforms = parseList(
     readParam(searchParams, "platforms"),
@@ -47,11 +39,7 @@ export const parseBriefSearchParams = (searchParams: SearchParamInput): BriefQue
 
   return {
     brand,
-    product,
-    category,
-    goals,
-    ages,
-    gender,
+    description,
     locs,
     platforms,
     tier,
@@ -62,11 +50,7 @@ export const parseBriefSearchParams = (searchParams: SearchParamInput): BriefQue
 export const buildBriefSearchParams = (brief: BriefQuery) => {
   const params = new URLSearchParams();
   params.set("brand", brief.brand);
-  params.set("product", brief.product);
-  params.set("category", brief.category);
-  params.set("goals", brief.goals.join(","));
-  params.set("ages", brief.ages.join(","));
-  params.set("gender", brief.gender);
+  params.set("q", brief.description);
   params.set("locs", brief.locs.join(","));
   params.set("platforms", brief.platforms.join(","));
   params.set("tier", brief.tier);

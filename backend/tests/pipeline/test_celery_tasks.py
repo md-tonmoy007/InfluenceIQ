@@ -241,11 +241,9 @@ def _stub_get_campaign(session, campaign_id: str):
     """Return a fake campaign object the query builder can read."""
     fake = MagicMock()
     fake.id = campaign_id
-    fake.product = "Vegan Protein Powder"
-    fake.niche = "Fitness"
-    fake.goals = "Launch awareness"
-    fake.target_audience = "Gym Enthusiasts"
+    fake.search_query = "Vegan Protein Powder for fitness enthusiasts, launch awareness among gym enthusiasts"
     fake.preferred_platforms = ["instagram", "youtube"]
+    fake.brief_snapshot = {}
     return fake
 
 
@@ -254,14 +252,11 @@ class PipelineE2ETest(unittest.TestCase):
         from backend.pipeline.tasks.search import _build_query_set
 
         payload = {
-            "product": "Vegan Protein Powder",
-            "niche": "Fitness",
-            "goals": "Launch awareness",
-            "target_audience": "Gym Enthusiasts",
+            "description": "Vegan Protein Powder for fitness enthusiasts, launch awareness among gym enthusiasts",
             "preferred_platforms": ["instagram", "youtube"],
         }
         queries = _build_query_set(payload)
-        self.assertGreaterEqual(len(queries), 3)
+        self.assertGreaterEqual(len(queries), 1)
         for q in queries:
             self.assertIsInstance(q, str)
 

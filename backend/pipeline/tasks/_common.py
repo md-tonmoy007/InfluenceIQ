@@ -246,10 +246,7 @@ def campaign_query_payload(campaign: models.Campaign) -> dict:
     """Project the campaign ORM row into the query-generation input shape."""
     return {
         "campaign_id": str(campaign.id),
-        "product": campaign.product,
-        "niche": campaign.niche,
-        "goals": campaign.goals,
-        "target_audience": campaign.target_audience,
+        "description": campaign.search_query or "",
         "preferred_platforms": list(campaign.preferred_platforms or []),
         "locations": list((campaign.brief_snapshot or {}).get("locations") or []),
     }

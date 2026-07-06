@@ -57,10 +57,9 @@ class BriefSnapshot(BaseModel):
 
 class CampaignCreate(BaseModel):
     """Payload for submitting new brand influencer search campaigns."""
-    product: str = Field(..., min_length=1, max_length=255)
-    industry: str = Field(..., min_length=1, max_length=255, description="Campaign niche/vertical")
-    goals: str | None = Field(default=None, max_length=1000)
-    target_audience: str | None = Field(default=None, max_length=1000)
+    search_query: str = Field(
+        ..., min_length=1, description="Raw text describing the campaign/product, used to drive influencer search."
+    )
     preferred_platforms: list[str] | None = Field(default=None, description="e.g. ['instagram', 'youtube']")
     budget_range: str | None = Field(default=None, max_length=100)
     weights: CampaignWeights | None = Field(default=None)
@@ -71,9 +70,6 @@ class CampaignCreate(BaseModel):
     )
     campaign_name: str | None = Field(
         default=None, max_length=255, description="Display label for the workspace shell."
-    )
-    search_query: str | None = Field(
-        default=None, description="Raw text the user typed into a search bar (for topbar/discover searches)."
     )
     brief_snapshot: BriefSnapshot | None = Field(
         default=None, description="Typed brief form fields, persisted for UI display."
@@ -99,10 +95,7 @@ class CampaignCreate(BaseModel):
 
 class CampaignUpdate(BaseModel):
     """Payload for updating a draft campaign before submission."""
-    product: str | None = Field(default=None, min_length=1, max_length=255)
-    industry: str | None = Field(default=None, min_length=1, max_length=255)
-    goals: str | None = Field(default=None, max_length=1000)
-    target_audience: str | None = Field(default=None, max_length=1000)
+    search_query: str | None = Field(default=None, min_length=1)
     preferred_platforms: list[str] | None = Field(default=None)
     budget_range: str | None = Field(default=None, max_length=100)
     campaign_name: str | None = Field(default=None, max_length=255)
@@ -122,8 +115,8 @@ class CampaignResponse(BaseModel):
     brand_id: UUID | None = None
     org_id: UUID | None = None
     created_by: UUID | None = None
-    product: str
-    niche: str
+    product: str | None = None
+    niche: str | None = None
     goals: str | None = None
     target_audience: str | None = None
     preferred_platforms: list[str] | None = None

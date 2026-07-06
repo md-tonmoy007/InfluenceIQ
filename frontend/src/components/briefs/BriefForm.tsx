@@ -10,12 +10,7 @@ import {
   submitCampaign,
   updateCampaignDraft,
 } from '@/lib/api';
-import {
-  CAMPAIGN_GOAL_OPTIONS,
-  CATEGORY_OPTIONS,
-  briefDefaultsFromBrandProfile,
-  joinCampaignGoals,
-} from '@/lib/brandProfile';
+import { briefDefaultsFromBrandProfile } from '@/lib/brandProfile';
 import {
   buildBriefSnapshot,
   briefFormFromSnapshot,
@@ -25,27 +20,20 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { WeightSliders } from '@/components/briefs/WeightSliders';
 import CampaignBriefActions from '@/components/campaigns/CampaignBriefActions';
 import { canEditCampaignBrief } from '@/lib/campaignLifecycle';
-import { DEFAULT_CAMPAIGN_WEIGHTS, type CampaignWeights } from '@/types/campaign';
+import { DEFAULT_CAMPAIGN_WEIGHTS, type CampaignBriefPayload, type CampaignWeights } from '@/types/campaign';
 
-type FieldErrors = Partial<Record<'brand' | 'product' | 'goals' | 'platforms', string>>;
+type FieldErrors = Partial<Record<'brand' | 'description' | 'platforms', string>>;
 
 const emptyBrief = (): BriefFormPayload => ({
   brand: '',
-  product: '',
-  category: CATEGORY_OPTIONS[1] as string,
+  description: '',
   campaign: '',
-  goals: [],
-  ages: [],
-  gender: 'All',
-  lang: 'English',
   locs: [],
-  interests: [],
   budgetMin: 2500,
   budgetMax: 12000,
   currency: 'USD',
   platforms: [],
   tier: 'Established',
-  notes: '',
 });
 
 export default function BriefForm() {
@@ -77,15 +65,16 @@ export default function BriefForm() {
         .then((campaign) => {
           if (cancelled) return;
           const hydrated = briefFormFromSnapshot(campaign.briefSnapshot, {
+            searchQuery: campaign.searchQuery,
             product: campaign.product,
-            niche: campaign.category,
-            goals: campaign.goal,
             budget_range: campaign.budgetRange,
             campaign_name: campaign.campaignName,
           });
           setBrief(hydrated);
           setActiveCampaignStatus(campaign.status);
-          setActiveCampaignLabel(campaign.campaignName || campaign.product || 'Untitled campaign');
+          setActiveCampaignLabel(
+            campaign.campaignName || campaign.searchQuery || campaign.product || 'Untitled campaign'
+          );
           if (draftCampaignId) {
             setActiveDraftId(draftCampaignId);
           }
@@ -113,8 +102,6 @@ export default function BriefForm() {
         setBrief((prev) => ({
           ...prev,
           brand: defaults.brand || prev.brand,
-          category: defaults.category || prev.category,
-          goals: defaults.goals.length ? defaults.goals : prev.goals,
           platforms: defaults.platforms.length ? defaults.platforms : prev.platforms,
           budgetMax: defaults.budgetMax,
           budgetMin: Math.min(prev.budgetMin, defaults.budgetMax),
@@ -129,44 +116,18 @@ export default function BriefForm() {
     };
   }, [draftCampaignId, fromCampaignId, toast]);
 
-  const [tagInput, setTagInput] = useState('');
-
-  const toggleGoal = (goalLabel: string) => {
-    setBrief(prev => ({
-      ...prev,
-      goals: prev.goals.includes(goalLabel)
-        ? prev.goals.filter(g => g !== goalLabel)
-        : [...prev.goals, goalLabel],
-    }));
-  };
-
   // Handle chips
-  const toggleChip = (group: 'ages' | 'locs', val: string) => {
+  const toggleLocation = (val: string) => {
     setBrief(prev => ({
       ...prev,
-      [group]: prev[group].includes(val)
-        ? prev[group].filter(v => v !== val)
-        : [...prev[group], val]
+      locs: prev.locs.includes(val)
+        ? prev.locs.filter(v => v !== val)
+        : [...prev.locs, val]
     }));
   };
 
-  // Handle segmented
-  const setSegmented = (key: 'gender' | 'currency', val: string) => {
-    setBrief(prev => ({ ...prev, [key]: val }));
-  };
-
-  // Handle tags
-  const addTag = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && tagInput.trim()) {
-      e.preventDefault();
-      if (!brief.interests.includes(tagInput.trim())) {
-        setBrief(prev => ({ ...prev, interests: [...prev.interests, tagInput.trim()] }));
-      }
-      setTagInput('');
-    }
-  };
-  const removeTag = (tag: string) => {
-    setBrief(prev => ({ ...prev, interests: prev.interests.filter(t => t !== tag) }));
+  const setCurrency = (val: string) => {
+    setBrief(prev => ({ ...prev, currency: val }));
   };
 
   // Handle budget
@@ -202,47 +163,30 @@ export default function BriefForm() {
     }));
   };
 
-  const briefPayload = () => ({
+  const briefPayload = (): CampaignBriefPayload => ({
     brand: brief.brand,
-    product: brief.product,
-    category: brief.category,
-    goals: brief.goals,
-    ages: brief.ages,
-    gender: brief.gender,
+    description: brief.description,
     locations: brief.locs,
-    interests: brief.interests,
     platforms: brief.platforms.map((platform) => platform.toLowerCase()),
     tier: brief.tier,
     budget: getBudgetText(),
-    notes: brief.notes,
+    notes: brief.description,
   });
 
   const draftUpdateBody = () => ({
-    product: brief.product,
-    industry: brief.category,
-    goals: joinCampaignGoals(brief.goals, brief.notes),
-    target_audience: [
-      brief.ages.length ? `Ages: ${brief.ages.join(', ')}` : '',
-      brief.gender && brief.gender !== 'All' ? `Gender: ${brief.gender}` : '',
-      brief.locs.length ? `Locations: ${brief.locs.join(', ')}` : '',
-      brief.tier && brief.tier !== 'No Preference' ? `Tier: ${brief.tier}` : '',
-      brief.interests.length ? `Interests: ${brief.interests.join(', ')}` : '',
-    ]
-      .filter(Boolean)
-      .join('; ') || null,
+    search_query: brief.description,
     preferred_platforms: brief.platforms.length
       ? brief.platforms.map((platform) => platform.toLowerCase())
       : null,
     budget_range: getBudgetText(),
-    campaign_name: brief.campaign || brief.product,
+    campaign_name: brief.campaign || brief.description.slice(0, 120),
     brief_snapshot: buildBriefSnapshot(brief),
   });
 
   const validateBrief = (): boolean => {
     const errors: FieldErrors = {};
     if (!brief.brand.trim()) errors.brand = 'Brand name is required.';
-    if (!brief.product.trim()) errors.product = 'Product name is required.';
-    if (!brief.goals.length) errors.goals = 'Select at least one campaign goal.';
+    if (!brief.description.trim()) errors.description = 'Describe your campaign.';
     if (!brief.platforms.length) errors.platforms = 'Select at least one platform.';
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -250,19 +194,19 @@ export default function BriefForm() {
 
   const friendlyError = (error: unknown) => {
     if (error instanceof Error && error.message.includes('409')) {
-      return 'A campaign with this product and category already exists.';
+      return 'A conflicting campaign already exists. Try again or use a different Idempotency-Key.';
     }
     return error instanceof Error ? error.message : 'Unable to save campaign right now.';
   };
 
   const handleSaveDraft = async () => {
     if (savingDraft || loading) return;
-    if (!brief.brand.trim() || !brief.product.trim()) {
+    if (!brief.brand.trim() || !brief.description.trim()) {
       setFieldErrors({
         brand: !brief.brand.trim() ? 'Brand name is required.' : undefined,
-        product: !brief.product.trim() ? 'Product name is required.' : undefined,
+        description: !brief.description.trim() ? 'Describe your campaign.' : undefined,
       });
-      toast('Brand and product are required to save a draft.', { type: 'error' });
+      toast('Brand and campaign description are required to save a draft.', { type: 'error' });
       return;
     }
 
@@ -274,7 +218,8 @@ export default function BriefForm() {
       } else {
         const created = await createCampaignDraft(briefPayload(), {
           entryPoint: 'brief_form',
-          campaignName: brief.campaign || brief.product,
+          campaignName: brief.campaign || brief.description.slice(0, 120),
+          searchQuery: brief.description,
           briefSnapshot: buildBriefSnapshot(brief),
         });
         setActiveDraftId(created.campaignId);
@@ -324,7 +269,8 @@ export default function BriefForm() {
         }
         return createCampaign(briefPayload(), {
           entryPoint: 'brief_form',
-          campaignName: brief.campaign || brief.product,
+          campaignName: brief.campaign || brief.description.slice(0, 120),
+          searchQuery: brief.description,
           briefSnapshot: buildBriefSnapshot(brief),
           weights,
         });
@@ -373,7 +319,7 @@ export default function BriefForm() {
         <form className="form-card" onSubmit={(e) => e.preventDefault()}>
           {/* Brand */}
           <section className="section">
-            <div className="section-head"><span className="num">1</span><h2>Brand & product</h2><span className="desc">The basics about what you&apos;re promoting.</span></div>
+            <div className="section-head"><span className="num">1</span><h2>Brand & campaign</h2><span className="desc">The basics about what you&apos;re promoting.</span></div>
             <div className="grid-2">
               <div className="field">
                 <label>Brand Name <span className="req">*</span></label>
@@ -381,82 +327,26 @@ export default function BriefForm() {
                 {fieldErrors.brand ? <span className="hint" style={{ color: 'var(--coral)' }}>{fieldErrors.brand}</span> : null}
               </div>
               <div className="field">
-                <label>Product / Service Name <span className="req">*</span></label>
-                <input className="input" placeholder="e.g. SS26 Trail Capsule" value={brief.product} onChange={e => setBrief({...brief, product: e.target.value})} />
-                {fieldErrors.product ? <span className="hint" style={{ color: 'var(--coral)' }}>{fieldErrors.product}</span> : null}
-              </div>
-              <div className="field">
-                <label>Product Category <span className="req">*</span></label>
-                <div className="select-wrap">
-                  <select className="select" value={brief.category} onChange={e => setBrief({...brief, category: e.target.value})}>
-                    {CATEGORY_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="field">
                 <label>Campaign Name <span className="hint">(internal)</span></label>
                 <input className="input" placeholder="e.g. SS26 trail launch — May" value={brief.campaign} onChange={e => setBrief({...brief, campaign: e.target.value})} />
               </div>
             </div>
+            <div className="field">
+              <label>Describe your campaign <span className="req">*</span></label>
+              <textarea
+                className="textarea"
+                placeholder="e.g. SS26 Trail Capsule, an outdoor & activewear product launch. Looking for hiking and trail-running creators to drive awareness."
+                value={brief.description}
+                onChange={e => setBrief({...brief, description: e.target.value})}
+              />
+              {fieldErrors.description ? <span className="hint" style={{ color: 'var(--coral)' }}>{fieldErrors.description}</span> : null}
+            </div>
           </section>
 
-          {/* Goal */}
           <section className="section">
-            <div className="section-head"><span className="num">2</span><h2>Campaign goals</h2><span className="desc">Pick all outcomes that apply.</span></div>
-            <div className="chips">
-              {CAMPAIGN_GOAL_OPTIONS.map((goal) => (
-                <span
-                  key={goal.id}
-                  className={`chip ${brief.goals.includes(goal.label) ? 'on' : ''}`}
-                  onClick={() => toggleGoal(goal.label)}
-                  title={goal.description}
-                >
-                  {goal.label}
-                </span>
-              ))}
-            </div>
-            {fieldErrors.goals ? <span className="hint" style={{ color: 'var(--coral)' }}>{fieldErrors.goals}</span> : null}
-          </section>
-          <section className="section">
-            <div className="section-head"><span className="num">3</span><h2>Target audience</h2><span className="desc">Who you want to reach.</span></div>
+            <div className="section-head"><span className="num">2</span><h2>Target locations</h2><span className="desc">Where your audience is.</span></div>
 
-            <div className="field" style={{ marginBottom: '18px' }}>
-              <label>Age Range <span className="hint">(select all that apply)</span></label>
-              <div className="chips">
-                {['13–17', '18–24', '25–34', '35–44', '45–54', '55+'].map(age => (
-                  <span key={age} className={`chip ${brief.ages.includes(age) ? 'on' : ''}`} onClick={() => toggleChip('ages', age)}>{age}</span>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid-2" style={{ marginBottom: '18px' }}>
-              <div className="field">
-                <label>Gender</label>
-                <div className="seg">
-                  {['All', 'Female', 'Male', 'Other'].map(g => (
-                    <button key={g} type="button" className={brief.gender === g ? 'on' : ''} onClick={() => setSegmented('gender', g)}>{g}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="field">
-                <label>Primary Language</label>
-                <div className="select-wrap">
-                  <select className="select" value={brief.lang} onChange={e => setBrief({...brief, lang: e.target.value})}>
-                    <option>English</option>
-                    <option>Bengali</option>
-                    <option>Hindi</option>
-                    <option>Spanish</option>
-                    <option>French</option>
-                    <option>German</option>
-                    <option>Japanese</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="field" style={{ marginBottom: '18px' }}>
+            <div className="field">
               <label>Audience Location <span className="hint">(multi-select)</span></label>
               <div className="chips">
                 {[
@@ -469,25 +359,15 @@ export default function BriefForm() {
                   { id: 'Germany', flag: '🇩🇪' },
                   { id: 'Global', flag: '🌍' }
                 ].map(loc => (
-                  <span key={loc.id} className={`chip ${brief.locs.includes(loc.id) ? 'on' : ''}`} onClick={() => toggleChip('locs', loc.id)}>{loc.flag} {loc.id}</span>
+                  <span key={loc.id} className={`chip ${brief.locs.includes(loc.id) ? 'on' : ''}`} onClick={() => toggleLocation(loc.id)}>{loc.flag} {loc.id}</span>
                 ))}
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Audience Interests <span className="hint">(press Enter to add)</span></label>
-              <div className="tag-input">
-                {brief.interests.map(tag => (
-                  <span key={tag} className="tag-pill">{tag}<button type="button" onClick={() => removeTag(tag)}>×</button></span>
-                ))}
-                <input placeholder="Add interest…" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={addTag} />
               </div>
             </div>
           </section>
 
           {/* Budget */}
           <section className="section">
-            <div className="section-head"><span className="num">4</span><h2>Budget</h2><span className="desc">Total spend across creators.</span></div>
+            <div className="section-head"><span className="num">3</span><h2>Budget</h2><span className="desc">Total spend across creators.</span></div>
             <div className="budget-row">
               <div className="field budget-field-min">
                 <label>Min</label>
@@ -538,15 +418,15 @@ export default function BriefForm() {
             <div className="currency-row">
               <span className="lbl">Currency</span>
               <div className="seg">
-                <button type="button" className={brief.currency === 'USD' ? 'on' : ''} onClick={() => setSegmented('currency', 'USD')}>USD $</button>
-                <button type="button" className={brief.currency === 'BDT' ? 'on' : ''} onClick={() => setSegmented('currency', 'BDT')}>BDT ৳</button>
+                <button type="button" className={brief.currency === 'USD' ? 'on' : ''} onClick={() => setCurrency('USD')}>USD $</button>
+                <button type="button" className={brief.currency === 'BDT' ? 'on' : ''} onClick={() => setCurrency('BDT')}>BDT ৳</button>
               </div>
             </div>
           </section>
 
           {/* Platforms */}
           <section className="section">
-            <div className="section-head"><span className="num">5</span><h2>Preferred platforms</h2><span className="desc">Pick one or more.</span></div>
+            <div className="section-head"><span className="num">4</span><h2>Preferred platforms</h2><span className="desc">Pick one or more.</span></div>
             <div className="pf-grid">
               {[
                 { id: 'Instagram', meta: '1.2M creators', class: 'pf-ig', icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="0.5" fill="white"/></svg> },
@@ -566,13 +446,13 @@ export default function BriefForm() {
           </section>
 
           <section className="section">
-            <div className="section-head"><span className="num">5b</span><h2>Scoring weights</h2><span className="desc">Tune how much each trust signal matters.</span></div>
+            <div className="section-head"><span className="num">4b</span><h2>Scoring weights</h2><span className="desc">Tune how much each trust signal matters.</span></div>
             <WeightSliders value={weights} onChange={setWeights} />
           </section>
 
           {/* Tier */}
           <section className="section">
-            <div className="section-head"><span className="num">6</span><h2>Influencer tier</h2><span className="desc">Where you&apos;d like us to focus.</span></div>
+            <div className="section-head"><span className="num">5</span><h2>Influencer tier</h2><span className="desc">Where you&apos;d like us to focus.</span></div>
             <div className="tier-grid">
               {[
                 { id: 'Rising', range: '< 50K', style: { background: 'var(--cyan-soft)', color: 'var(--cyan-ink)' }, desc: 'Emerging voices, high engagement, low cost per post.' },
@@ -587,15 +467,6 @@ export default function BriefForm() {
                   <div className="desc">{t.desc}</div>
                 </label>
               ))}
-            </div>
-          </section>
-
-          {/* Notes */}
-          <section className="section">
-            <div className="section-head"><span className="num">7</span><h2>Additional notes</h2><span className="desc">Anything else our matching model should weigh.</span></div>
-            <div className="field">
-              <label>Notes for the matching engine</label>
-              <textarea className="textarea" placeholder="e.g. Prefer creators who hike or trail run. Avoid heavy fashion-vlog content. Pacific Northwest a strong plus." value={brief.notes} onChange={e => setBrief({...brief, notes: e.target.value})} />
             </div>
           </section>
 
@@ -626,15 +497,7 @@ export default function BriefForm() {
         <aside className="preview">
           <h4>Brief preview</h4>
           <div className="row"><span className="k">Brand</span><span className="v">{brief.brand || '—'}</span></div>
-          <div className="row"><span className="k">Product</span><span className="v">{brief.product || '—'}</span></div>
-          <div className="row"><span className="k">Category</span><span className="v">{brief.category || '—'}</span></div>
-          <div className="row"><span className="k">Goals</span><span className="v stack">
-            {brief.goals.length ? brief.goals.map(g => <span key={g} className="pill">{g}</span>) : <span style={{ color: 'var(--muted-soft)', fontStyle: 'italic' }}>none</span>}
-          </span></div>
-          <div className="row"><span className="k">Ages</span><span className="v stack">
-            {brief.ages.length ? brief.ages.map(a => <span key={a} className="pill">{a}</span>) : <span style={{ color: 'var(--muted-soft)', fontStyle: 'italic' }}>none</span>}
-          </span></div>
-          <div className="row"><span className="k">Gender</span><span className="v">{brief.gender}</span></div>
+          <div className="row"><span className="k">Description</span><span className="v">{brief.description || '—'}</span></div>
           <div className="row"><span className="k">Locations</span><span className="v stack">
             {brief.locs.length ? brief.locs.map(l => <span key={l} className="pill">{l}</span>) : <span style={{ color: 'var(--muted-soft)', fontStyle: 'italic' }}>none</span>}
           </span></div>
@@ -665,7 +528,7 @@ export default function BriefForm() {
               <CampaignBriefActions
                 campaignId={activeDraftId}
                 status={activeCampaignStatus}
-                label={activeCampaignLabel || brief.product || 'this campaign'}
+                label={activeCampaignLabel || brief.description || 'this campaign'}
                 showEdit={false}
               />
             </div>

@@ -169,10 +169,7 @@ class BackendContractsTest(unittest.TestCase):
 
     def test_create_campaign_initializes_state_and_starts_pipeline(self):
         payload = {
-            "product": "Protein Powder",
-            "industry": "fitness",
-            "goals": "awareness",
-            "target_audience": "athletes",
+            "search_query": "Protein Powder for fitness athletes, increase awareness",
             "preferred_platforms": ["youtube"],
             "budget_range": "$1000-$2000",
         }
@@ -187,7 +184,7 @@ class BackendContractsTest(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["status"], "running")
         self.assertEqual(body["pipeline_state"]["phase"], "initializing")
-        self.assertEqual(self.session.campaign.product, "Protein Powder")
+        self.assertEqual(self.session.campaign.search_query, "Protein Powder for fitness athletes, increase awareness")
         self.assertEqual(self.session.campaign.status, "running")
         self.assertIsNotNone(self.session.campaign.started_at)
         init_state.assert_called_once()

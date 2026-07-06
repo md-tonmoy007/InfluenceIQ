@@ -29,7 +29,7 @@ from backend.pipeline.fusion.versioning import MODEL_VERSION, computed_at
 
 def relevance_score(candidate: dict[str, Any], campaign: dict[str, Any] | None = None) -> float:
     campaign = campaign or {}
-    campaign_text = " ".join(str(value) for value in [campaign.get("category", ""), campaign.get("goal", ""), *(campaign.get("interests") or [])])
+    campaign_text = " ".join(str(value) for value in [campaign.get("description", ""), *(campaign.get("interests") or [])])
     candidate_text = " ".join(str(value) for value in [candidate.get("context", ""), candidate.get("bio", ""), *(candidate.get("tags") or [])])
     terms = {term for term in re.findall(r"[a-z0-9]+", campaign_text.casefold()) if len(term) > 2}
     if not terms: return score(candidate.get("relevance_score", candidate.get("relevance", 0)))

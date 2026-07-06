@@ -362,11 +362,7 @@ export default function ShortlistPageClient() {
     if (campaignId && loadingCampaign) {
       return {
         brand: '…',
-        product: '…',
-        category: '…',
-        goal: '…',
-        ages: [] as string[],
-        gender: '…',
+        description: '…',
         locs: [] as string[],
         platforms: [] as string[],
         tier: '…',
@@ -376,19 +372,14 @@ export default function ShortlistPageClient() {
 
     if (campaign) {
       const parsed = parseBriefSnapshot(campaign.briefSnapshot, {
+        searchQuery: campaign.searchQuery,
         product: campaign.product,
-        niche: campaign.category,
-        goals: campaign.goal,
         budget_range: campaign.budgetRange,
         preferred_platforms: campaign.preferredPlatforms,
       });
       return {
         brand: parsed.brand,
-        product: parsed.product,
-        category: parsed.category,
-        goal: parsed.goals.join(', ') || '—',
-        ages: parsed.ages,
-        gender: parsed.gender,
+        description: parsed.description,
         locs: parsed.locs,
         platforms: parsed.platforms,
         tier: parsed.tier,
@@ -398,11 +389,7 @@ export default function ShortlistPageClient() {
 
     return {
       brand: fallbackBrief.brand,
-      product: fallbackBrief.product,
-      category: fallbackBrief.category,
-      goal: fallbackBrief.goals.join(', ') || '—',
-      ages: fallbackBrief.ages,
-      gender: fallbackBrief.gender,
+      description: fallbackBrief.description,
       locs: fallbackBrief.locs,
       platforms: fallbackBrief.platforms,
       tier: fallbackBrief.tier,
@@ -817,8 +804,7 @@ export default function ShortlistPageClient() {
         <div>
           <h1>Top matches for <span className="accent">{liveBrief.brand}&apos;s</span> campaign</h1>
           <p className="page-sub">
-            <span className="pill">{liveBrief.product}</span>
-            <span className="pill">{liveBrief.goal}</span>
+            <span className="pill">{liveBrief.description}</span>
             <span className="pill">{liveBrief.platforms.join(' + ')}</span>
             <span className="pill">{liveBrief.tier}</span>
             <span className="pill">{liveBrief.budget}</span>
@@ -978,16 +964,7 @@ export default function ShortlistPageClient() {
           </div>
           <div className="body">
             <div className="row-k"><span className="k">Brand</span><span className="v">{liveBrief.brand}</span></div>
-            <div className="row-k"><span className="k">Product</span><span className="v">{liveBrief.product}</span></div>
-            <div className="row-k"><span className="k">Category</span><span className="v">{liveBrief.category}</span></div>
-            <div className="row-k"><span className="k">Goal</span><span className="v">{liveBrief.goal}</span></div>
-            <div className="row-k">
-              <span className="k">Ages</span>
-              <span className="v stack">
-                {liveBrief.ages.length ? liveBrief.ages.map(a => <span key={a} className="pill">{a}</span>) : <span style={{ color: 'var(--muted-soft)', fontStyle: 'italic' }}>none</span>}
-              </span>
-            </div>
-            <div className="row-k"><span className="k">Gender</span><span className="v">{liveBrief.gender}</span></div>
+            <div className="row-k"><span className="k">Description</span><span className="v">{liveBrief.description}</span></div>
             <div className="row-k">
               <span className="k">Locations</span>
               <span className="v stack">
@@ -1030,7 +1007,7 @@ export default function ShortlistPageClient() {
               <CampaignBriefActions
                 campaignId={campaignId}
                 status={campaign?.status ?? stateStatus}
-                label={campaign?.campaignName || campaign?.product || liveBrief.product}
+                label={campaign?.campaignName || campaign?.searchQuery || campaign?.product || liveBrief.description}
                 onRerunStart={clearRerunState}
               />
             </div>
@@ -1052,10 +1029,9 @@ export default function ShortlistPageClient() {
           </div>
           <div className="pdf-preview-body">
             <div className="pdf-sheet">
-              <h2>{liveBrief.product} · Creator Shortlist</h2>
+              <h2>{liveBrief.description} · Creator Shortlist</h2>
               <div className="meta">
                 <span><strong>Brand:</strong> {liveBrief.brand}</span>
-                <span><strong>Goal:</strong> {liveBrief.goal}</span>
                 <span><strong>Platforms:</strong> {liveBrief.platforms.join(' + ')}</span>
                 <span><strong>Exported:</strong> {today}</span>
                 <span className="pdf-pill">{chosenMatches.length} creators</span>

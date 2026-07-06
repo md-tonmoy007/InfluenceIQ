@@ -60,6 +60,12 @@ def seed_database(db: Session) -> dict[str, Any]:
             "Health-conscious women, ages 25-50, searching for clinical dermatological "
             "skin care routines and anti-aging advice."
         ),
+        search_query=(
+            "BioGlow Collagen Peptide, a clean grass-fed collagen supplement. Looking for "
+            "trusted medical professionals and beauty experts with credential-backed "
+            "credibility to reach health-conscious women ages 25-50 interested in clinical "
+            "dermatological skin care and anti-aging advice."
+        ),
         preferred_platforms=["instagram", "youtube"],
         budget_range="$10,000 - $25,000",
         weights={
@@ -88,6 +94,12 @@ def seed_database(db: Session) -> dict[str, Any]:
             "present them safely without triggering regulatory warning flags."
         ),
         target_audience="DeFi enthusiasts, retail yield farmers, crypto-native builders, ages 18-40.",
+        search_query=(
+            "Apex DeFi Protocol, a decentralized finance platform. Looking for financial "
+            "analysts, economists, and smart contract engineers who understand DeFi yields "
+            "and smart contract security, to reach DeFi enthusiasts, retail yield farmers, "
+            "and crypto-native builders ages 18-40, without triggering regulatory warning flags."
+        ),
         preferred_platforms=["twitter", "youtube", "linkedin"],
         budget_range="$50,000 - $100,000",
         weights={

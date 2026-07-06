@@ -152,14 +152,9 @@ def create_campaign(
 ) -> dict[str, Any]:
     """Create a campaign, initialize transient state, and dispatch the pipeline.
 
-    The endpoint is idempotent at two layers:
-
-    1. **HTTP** — an ``Idempotency-Key`` header caches the response in
-       Redis for 1 hour; the same key + same owner returns the cached
-       body instead of creating a second campaign.
-    2. **Database** — a ``UNIQUE(created_by, product, niche)`` constraint
-       rejects a duplicate natural key with HTTP 409, even if the
-       client forgot the header.
+    Idempotent via an ``Idempotency-Key`` header: the same key + same owner
+    returns the cached response (in Redis for 1 hour) instead of creating a
+    second campaign.
 
     ``current_user`` is optional so the demo seed path and unauthenticated
     ``POST`` calls still work; when present, the campaign is owned by
@@ -179,10 +174,6 @@ def create_campaign(
     is_draft = not campaign_data.start_pipeline
 
     db_campaign = models.Campaign(
-        product=campaign_data.product,
-        niche=campaign_data.industry,
-        goals=campaign_data.goals,
-        target_audience=campaign_data.target_audience,
         preferred_platforms=campaign_data.preferred_platforms,
         budget_range=campaign_data.budget_range,
         weights=campaign_data.weights.model_dump() if campaign_data.weights else None,
@@ -199,14 +190,7 @@ def create_campaign(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "A campaign with this product/niche already exists for this owner. "
-                "Use GET /api/campaigns/{id} to retrieve the existing campaign, "
-                "or send an Idempotency-Key header to retry safely."
-            ),
-        ) from exc
+        raise HTTPException(status_code=409, detail="Failed to create campaign due to a conflicting record.") from exc
     db.refresh(db_campaign)
 
     if is_draft:
@@ -374,14 +358,8 @@ def update_campaign(
             detail="Only draft campaigns can be updated.",
         )
 
-    if payload.product is not None:
-        db_campaign.product = payload.product
-    if payload.industry is not None:
-        db_campaign.niche = payload.industry
-    if payload.goals is not None:
-        db_campaign.goals = payload.goals
-    if payload.target_audience is not None:
-        db_campaign.target_audience = payload.target_audience
+    if payload.search_query is not None:
+        db_campaign.search_query = payload.search_query
     if payload.preferred_platforms is not None:
         db_campaign.preferred_platforms = payload.preferred_platforms
     if payload.budget_range is not None:
@@ -396,10 +374,7 @@ def update_campaign(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="A campaign with this product/niche already exists for this owner.",
-        ) from exc
+        raise HTTPException(status_code=409, detail="Failed to update campaign due to a conflicting record.") from exc
     db.refresh(db_campaign)
     return _enrich_campaign(db, db_campaign, user=current_user)
 
@@ -553,19 +528,11 @@ def duplicate_campaign(
     source = _get_owned_campaign(db, id, current_user)
 
     copy_suffix = " (copy)"
-    new_product = source.product
-    if len(new_product) + len(copy_suffix) <= 255:
-        new_product = f"{new_product}{copy_suffix}"
-
     campaign_name = source.campaign_name
     if campaign_name and len(campaign_name) + len(copy_suffix) <= 255:
         campaign_name = f"{campaign_name}{copy_suffix}"
 
     db_campaign = models.Campaign(
-        product=new_product,
-        niche=source.niche,
-        goals=source.goals,
-        target_audience=source.target_audience,
         preferred_platforms=source.preferred_platforms,
         budget_range=source.budget_range,
         weights=source.weights,
@@ -582,10 +549,7 @@ def duplicate_campaign(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="A campaign with this product/niche already exists for this owner.",
-        ) from exc
+        raise HTTPException(status_code=409, detail="Failed to duplicate campaign due to a conflicting record.") from exc
     db.refresh(db_campaign)
 
     response = _enrich_campaign(db, db_campaign, user=current_user)

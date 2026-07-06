@@ -338,7 +338,7 @@ export default function LiveProfilePageClient({
               </div>
               <div className="item">
                 <span className="lab">Campaign</span>
-                <span>{campaign?.product ?? (campaignId ? "Linked campaign" : "Not linked")}</span>
+                <span>{campaign?.searchQuery ?? campaign?.product ?? (campaignId ? "Linked campaign" : "Not linked")}</span>
               </div>
             </div>
 

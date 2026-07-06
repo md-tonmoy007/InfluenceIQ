@@ -50,8 +50,7 @@ class BriefSnapshotGoalsTest(unittest.TestCase):
         from backend.api.schemas.campaign import CampaignCreate
 
         payload = CampaignCreate(
-            product="Trail pack",
-            industry="outdoor",
+            search_query="Trail pack for outdoor enthusiasts",
             start_pipeline=False,
         )
         self.assertFalse(payload.start_pipeline)
@@ -176,8 +175,7 @@ class CampaignBriefRouterTest(unittest.TestCase):
             response = self.client.post(
                 "/api/campaigns",
                 json={
-                    "product": "Draft product",
-                    "industry": "beauty",
+                    "search_query": "Draft product for beauty enthusiasts",
                     "start_pipeline": False,
                 },
             )

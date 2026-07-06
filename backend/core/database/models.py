@@ -107,8 +107,8 @@ class Campaign(Base):
     brand_id = Column(UUID(as_uuid=True), ForeignKey("brands.id"), nullable=True)
     org_id = Column(UUID(as_uuid=True), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    product = Column(String, nullable=False)
-    niche = Column(String, nullable=False)
+    product = Column(String, nullable=True)
+    niche = Column(String, nullable=True)
     goals = Column(Text, nullable=True)
     target_audience = Column(Text, nullable=True)
     preferred_platforms = Column(JSONB, nullable=True)
@@ -134,15 +134,6 @@ class Campaign(Base):
     brand_safety_flags = relationship("BrandSafetyFlag", back_populates="campaign", cascade="all, delete-orphan")
     saved_list_items = relationship("SavedListItem", back_populates="campaign")
     contracts = relationship("CampaignContract", back_populates="campaign", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        UniqueConstraint(
-            "created_by",
-            "product",
-            "niche",
-            name="uq_campaigns_owner_product_niche",
-        ),
-    )
 
 
 class Influencer(Base):

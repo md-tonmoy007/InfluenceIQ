@@ -72,9 +72,11 @@ const searchStatus = (status: string): { label: string; className: string } => {
 };
 
 const searchTitle = (row: WorkspaceSummary["recent_searches"][number]): string => {
-  const product = row.product?.trim();
-  if (product) return product;
-  return row.label?.trim() || "Untitled search";
+  // `label` is computed server-side (workspace.py) preferring search_query,
+  // so it's already the best display string; `product` is a legacy fallback.
+  const label = row.label?.trim();
+  if (label) return label;
+  return row.product?.trim() || "Untitled search";
 };
 
 const searchSubtitle = (row: WorkspaceSummary["recent_searches"][number]): string | null => {
@@ -309,7 +311,9 @@ function DashboardContent() {
                       <p className="search-sub">{subtitle}</p>
                     ) : null}
                     <div className="search-meta">
-                      <span className="tag violet">{categoryOf(row.niche)}</span>
+                      {row.niche ? (
+                        <span className="tag violet">{categoryOf(row.niche)}</span>
+                      ) : null}
                       <span className="tag">{platformLabel(row.entry_point)}</span>
                       <span className="dot" aria-hidden="true" />
                       <span>{formatTimeAgo(row.created_at)}</span>

@@ -188,7 +188,7 @@ class CampaignsRouterDispatchTest(unittest.TestCase):
         ):
             result = campaigns_router.create_campaign(
                 campaign_data=CampaignCreate(
-                    product="P", industry="N", goals=None, target_audience=None,
+                    search_query="P for N",
                     preferred_platforms=None, budget_range=None, weights=None,
                 ),
                 db=session,

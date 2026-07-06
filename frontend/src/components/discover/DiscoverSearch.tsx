@@ -25,7 +25,7 @@ export default function DiscoverSearch() {
       const campaignName = trimmed.slice(0, 120);
       const campaign = await createCampaign(brief, {
         entryPoint: "discover_search",
-        searchQuery: trimmed,
+        searchQuery: brief.description,
         campaignName,
         briefSnapshot: buildDiscoverBriefSnapshot(brief, campaignName),
       });

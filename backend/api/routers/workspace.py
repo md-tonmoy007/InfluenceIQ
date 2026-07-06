@@ -255,7 +255,7 @@ def workspace_activity(
             {
                 "kind": "campaign",
                 "id": str(campaign.id),
-                "label": campaign.campaign_name or campaign.product,
+                "label": campaign.campaign_name or campaign.search_query or campaign.product,
                 "niche": campaign.niche,
                 "status": campaign.status,
                 "entry_point": campaign.entry_point,

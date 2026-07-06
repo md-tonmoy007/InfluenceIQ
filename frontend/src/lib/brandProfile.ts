@@ -124,22 +124,6 @@ export const normalizeCategory = (value: string): string => {
 export const budgetSliderPercent = (budget: number): number =>
   ((budget - BUDGET_MIN) / (BUDGET_MAX - BUDGET_MIN)) * 100;
 
-export const joinCampaignGoals = (goals: string[], notes?: string): string | null => {
-  const parts = [...goals, notes?.trim()].filter(Boolean) as string[];
-  return parts.length ? parts.join("\n\n") : null;
-};
-
-export const parseCampaignGoals = (value: string | null | undefined): string[] => {
-  if (!value?.trim()) return [];
-  return value
-    .split("\n\n")
-    .map((part) => part.trim())
-    .filter(Boolean);
-};
-
-export const formatGoalsDisplay = (goals: string[]): string =>
-  goals.length ? goals.join(", ") : "—";
-
 export const briefDefaultsFromBrandProfile = (
   profile: BrandProfile
 ): {

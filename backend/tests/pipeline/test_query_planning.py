@@ -26,33 +26,22 @@ from backend.pipeline.tasks.search import (
 
 
 def test_generate_queries_deterministic() -> None:
-    """Deterministic path produces 3–5 queries for a typical campaign."""
+    """Deterministic path produces a query mentioning the description."""
     payload = {
-        "product": "protein powder",
-        "niche": "fitness",
-        "goals": "increase brand awareness",
-        "target_audience": "men 25-40",
+        "description": "Protein powder for fitness enthusiasts, increase brand awareness among men 25-40",
         "preferred_platforms": ["youtube", "instagram"],
     }
     queries = _build_query_set(payload)
-    assert 3 <= len(queries) <= 5
+    assert 1 <= len(queries) <= 5
     assert all(isinstance(q, str) and q for q in queries)
-    assert any("protein powder" in q for q in queries)
-    assert any("fitness" in q for q in queries)
+    assert any("protein powder" in q.lower() for q in queries)
 
 
 def test_generate_queries_minimal_payload() -> None:
-    """Fallback to a default query when almost no fields are provided."""
-    queries = _build_query_set({"product": "", "niche": ""})
+    """Fallback to a bare query when no description is provided."""
+    queries = _build_query_set({"description": ""})
     assert len(queries) == 1
     assert queries[0] == "top influencers"
-
-
-def test_generate_queries_deterministic_without_platforms() -> None:
-    """No platform tagging when preferred_platforms is empty."""
-    payload = {"product": "tea", "niche": "wellness", "preferred_platforms": []}
-    queries = _build_query_set(payload)
-    assert all("youtube" not in q.lower() for q in queries)
 
 
 # ---------------------------------------------------------------------------
@@ -87,31 +76,21 @@ def test_primary_locations_mixed_case() -> None:
 
 
 def test_top_query_full() -> None:
-    assert _top_query("fitness", location="Singapore", product="protein powder") == (
-        "top fitness influencers in Singapore for protein powder"
+    assert _top_query("protein powder for fitness", location="Singapore") == (
+        "top influencers in Singapore for protein powder for fitness"
     )
 
 
 def test_top_query_no_location() -> None:
-    assert _top_query("fitness", product="protein powder") == (
-        "top fitness influencers for protein powder"
-    )
+    assert _top_query("protein powder") == "top influencers for protein powder"
 
 
-def test_top_query_no_product() -> None:
-    assert _top_query("fitness", location="Singapore") == (
-        "top fitness influencers in Singapore"
-    )
+def test_top_query_no_description() -> None:
+    assert _top_query("", location="Singapore") == "top influencers in Singapore"
 
 
-def test_top_query_no_niche() -> None:
-    assert _top_query("", product="tea") == "top influencers for tea"
-
-
-def test_top_query_with_qualifier() -> None:
-    assert _top_query("fitness", product="protein powder", qualifier="targeting men 25-40") == (
-        "top fitness influencers for protein powder, targeting men 25-40"
-    )
+def test_top_query_empty() -> None:
+    assert _top_query("") == "top influencers"
 
 
 # ---------------------------------------------------------------------------
@@ -119,21 +98,19 @@ def test_top_query_with_qualifier() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_build_query_set_with_location_and_product() -> None:
+def test_build_query_set_with_location() -> None:
     payload = {
-        "product": "protein powder",
-        "niche": "fitness",
+        "description": "protein powder for fitness enthusiasts",
         "locations": ["singapore"],
     }
     queries = _build_query_set(payload)
     assert len(queries) >= 1
-    assert queries[0] == "top fitness influencers in Singapore for protein powder"
+    assert queries[0] == "top influencers in Singapore for protein powder for fitness enthusiasts"
 
 
 def test_build_query_set_with_two_locations() -> None:
     payload = {
-        "product": "protein powder",
-        "niche": "fitness",
+        "description": "protein powder for fitness enthusiasts",
         "locations": ["singapore", "kuala lumpur"],
     }
     queries = _build_query_set(payload)
@@ -143,17 +120,14 @@ def test_build_query_set_with_two_locations() -> None:
 
 
 def test_build_query_set_no_location_no_in_clause() -> None:
-    payload = {"product": "tea", "niche": "wellness"}
+    payload = {"description": "tea for wellness"}
     queries = _build_query_set(payload)
     assert not any(" in " in q for q in queries)
 
 
-def test_build_query_set_all_fields_start_with_top_and_product() -> None:
+def test_build_query_set_all_start_with_top_and_carry_description() -> None:
     payload = {
-        "product": "protein powder",
-        "niche": "fitness",
-        "goals": "increase brand awareness",
-        "target_audience": "men 25-40",
+        "description": "protein powder, increase brand awareness among men 25-40",
         "preferred_platforms": [],
     }
     queries = _build_query_set(payload)
@@ -162,44 +136,31 @@ def test_build_query_set_all_fields_start_with_top_and_product() -> None:
     assert all("protein powder" in q for q in queries)
 
 
-def test_build_query_set_product_no_niche() -> None:
-    payload = {"product": "tea", "niche": "", "preferred_platforms": []}
-    queries = _build_query_set(payload)
-    assert len(queries) >= 2
-    assert any("tea" in q for q in queries)
-    assert any("reviews and recommendations" in q for q in queries)
-
-
 # ---------------------------------------------------------------------------
 # _build_llm_query_prompt
 # ---------------------------------------------------------------------------
 
 
-def test_build_llm_query_prompt_contains_location_and_rules() -> None:
+def test_build_llm_query_prompt_contains_description_and_location() -> None:
     payload = {
-        "product": "protein powder",
-        "niche": "fitness",
+        "description": "protein powder for fitness enthusiasts",
         "locations": ["singapore"],
     }
     prompt = _build_llm_query_prompt(payload)
+    assert "Campaign: protein powder for fitness enthusiasts" in prompt
     assert "Target location(s): Singapore" in prompt
-    assert "MUST start with the word 'top'" in prompt
-    assert "never produce a query that" in prompt
-    assert "drops the product/brand" in prompt
+    assert "start with the word 'top'" in prompt
 
 
 def test_build_llm_query_prompt_no_location() -> None:
-    payload = {"product": "tea", "niche": "wellness"}
+    payload = {"description": "tea for wellness"}
     prompt = _build_llm_query_prompt(payload)
     assert "Target location(s): (not specified)" in prompt
 
 
-def test_build_llm_query_prompt_requires_qualifier_mix() -> None:
-    """The prompt must tell the LLM to mix plain queries with qualified ones,
-    rather than stuffing audience/goals into every query."""
-    payload = {"product": "tea", "niche": "wellness", "target_audience": "adults"}
-    prompt = _build_llm_query_prompt(payload)
-    assert "Not every query should carry the audience/goals qualifier" in prompt
+def test_build_llm_query_prompt_no_description() -> None:
+    prompt = _build_llm_query_prompt({})
+    assert "Campaign: (not specified)" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -287,10 +248,7 @@ def test_platform_coverage_multiple_platforms() -> None:
 def test_planned_queries_fallback_to_deterministic() -> None:
     """When the LLM flag is off, fall back to deterministic path."""
     payload = {
-        "product": "protein powder",
-        "niche": "fitness",
-        "goals": "awareness",
-        "target_audience": "men",
+        "description": "protein powder, increase awareness with men",
         "preferred_platforms": [],
     }
     queries = _generate_planned_queries(payload)
@@ -300,7 +258,7 @@ def test_planned_queries_fallback_to_deterministic() -> None:
 
 def test_planned_queries_applies_dedup() -> None:
     """The combined path applies dedup after generation."""
-    payload = {"product": "tea", "niche": "wellness", "preferred_platforms": []}
+    payload = {"description": "tea for wellness", "preferred_platforms": []}
     queries = _generate_planned_queries(payload)
     # Verify no near-duplicates exist
     for i, a in enumerate(queries):
@@ -311,10 +269,7 @@ def test_planned_queries_applies_dedup() -> None:
 def test_planned_queries_prefers_platforms() -> None:
     """Every preferred platform appears in at least one query."""
     payload = {
-        "product": "yoga mat",
-        "niche": "yoga",
-        "goals": "brand launch",
-        "target_audience": "women 20-35",
+        "description": "yoga mat, brand launch targeting women 20-35",
         "preferred_platforms": ["youtube", "instagram", "tiktok"],
     }
     queries = _generate_planned_queries(payload)
@@ -327,10 +282,8 @@ def test_planned_queries_prefers_platforms() -> None:
 def test_planned_queries_max_five() -> None:
     """No more than 5 queries are returned."""
     payload = {
-        "product": "protein powder",
-        "niche": "fitness",
-        "goals": "increase brand awareness among young athletes",
-        "target_audience": "athletes 18-30",
+        "description": "protein powder, increase brand awareness among young athletes 18-30",
+        "locations": ["singapore", "kuala lumpur"],
         "preferred_platforms": ["youtube", "instagram", "tiktok", "twitter"],
     }
     queries = _generate_planned_queries(payload)
@@ -353,7 +306,7 @@ def test_llm_path_success(mock_flag: MagicMock) -> None:
     mock_registry.get.return_value = mock_llm
 
     with patch("backend.ml.models.registry.registry", return_value=mock_registry):
-        payload = {"product": "protein powder", "niche": "vegan fitness"}
+        payload = {"description": "vegan protein powder for fitness"}
         queries = _llm_generate_queries(payload)
         assert queries is not None
         assert len(queries) >= 3
@@ -364,7 +317,7 @@ def test_llm_path_success(mock_flag: MagicMock) -> None:
 def test_llm_path_fallback_on_error(mock_flag: MagicMock) -> None:
     """When the LLM path raises, return None so the caller falls back."""
     with patch("backend.ml.models.registry.registry", side_effect=Exception("connection failed")):
-        payload = {"product": "tea", "niche": "wellness"}
+        payload = {"description": "tea for wellness"}
         queries = _llm_generate_queries(payload)
         assert queries is None
 
@@ -372,7 +325,7 @@ def test_llm_path_fallback_on_error(mock_flag: MagicMock) -> None:
 @patch("backend.pipeline.tasks.search._flag", return_value=False)
 def test_llm_path_flag_off(mock_flag: MagicMock) -> None:
     """When the flag is off, return None without attempting import."""
-    queries = _llm_generate_queries({"product": "x", "niche": "y"})
+    queries = _llm_generate_queries({"description": "x"})
     assert queries is None
     mock_flag.assert_called_once_with("AI_AGENT_LLM_QUERY_PLANNING")
 

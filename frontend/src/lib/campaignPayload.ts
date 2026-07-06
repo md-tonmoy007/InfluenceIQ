@@ -1,6 +1,5 @@
 import type { BriefQuery } from "@/lib/briefQuery";
 import { briefDefaults } from "@/data/briefDefaults";
-import { parseCampaignGoals } from "@/lib/brandProfile";
 import type { CampaignBriefPayload } from "@/types/campaign";
 
 const PLATFORM_KEYWORDS: Array<{ keyword: string; value: string }> = [
@@ -15,46 +14,62 @@ const titleize = (value: string) =>
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+// A currency amount like "$2k", "2,000 USD", "500 dollars".
+const CURRENCY_AMOUNT =
+  "[$₹€£¥]\\s?\\d[\\d,.]*\\s?[kKmM]?" +
+  "|\\d[\\d,.]*\\s?[kKmM]?\\s?(?:usd|dollars?|bucks|inr|rupees?|eur|euros?|gbp|pounds?)";
+const AMOUNT_RANGE = `(?:${CURRENCY_AMOUNT})(?:\\s*(?:-|to|–)\\s*(?:${CURRENCY_AMOUNT}))?`;
+// Matches "$2k budget", "2k dollar budget", "with a $500-$2000 budget",
+// and "budget of $10,000" in either order around the word "budget".
+const BUDGET_PHRASE = new RegExp(
+  `\\s*(?:,|with a|on a|for a|of|at)?\\s*${AMOUNT_RANGE}\\s*budget\\b` +
+    `|\\bbudget\\s*(?:of|:)?\\s*${AMOUNT_RANGE}`,
+  "gi"
+);
+
+/**
+ * Search engines can't be queried for "influencers under $X budget" — there's
+ * no such index. Strip budget/monetary phrases out of free text before it
+ * becomes the campaign's searchable `description`. Budget itself is still
+ * captured separately via the structured `budget` field.
+ */
+export const stripBudgetMentions = (text: string): string =>
+  text
+    .replace(BUDGET_PHRASE, "")
+    .replace(/^(?:for|and|with|of)\s+/i, "")
+    .replace(/\s*,\s*$/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
 export const buildCampaignPayloadFromQuery = (query: string): CampaignBriefPayload => {
   const normalizedQuery = query.trim();
   const lowered = normalizedQuery.toLowerCase();
   const platforms = PLATFORM_KEYWORDS.filter(({ keyword }) => lowered.includes(keyword)).map(
     ({ value }) => value
   );
+  const description = stripBudgetMentions(normalizedQuery) || normalizedQuery;
 
   return {
     brand: "Discover Search",
-    product: normalizedQuery.slice(0, 120) || "Creator search",
-    category: "General",
-    goals: normalizedQuery ? [normalizedQuery] : ["Find relevant creators"],
-    ages: [],
-    gender: "All",
+    description,
     locations: [],
     platforms: platforms.length ? platforms : ["youtube", "tiktok"],
     tier: "No Preference",
     budget: "Flexible",
     notes: normalizedQuery,
-    query: normalizedQuery,
   };
 };
 
 export type BriefFormPayload = {
   brand: string;
-  product: string;
-  category: string;
-  goals: string[];
-  ages: string[];
-  gender: string;
-  lang: string;
+  description: string;
+  campaign: string;
   locs: string[];
-  interests: string[];
   budgetMin: number;
   budgetMax: number;
   currency: string;
   platforms: string[];
   tier: string;
-  notes: string;
-  campaign: string;
 };
 
 export const buildBriefSnapshot = (brief: BriefFormPayload): Record<string, unknown> => {
@@ -64,21 +79,15 @@ export const buildBriefSnapshot = (brief: BriefFormPayload): Record<string, unkn
 
   return {
     brand_name: brief.brand,
-    campaign_name: brief.campaign || brief.product,
-    goals: brief.goals,
-    goal: brief.goals.join(", "),
-    ages: brief.ages,
-    gender: brief.gender,
-    language: brief.lang,
+    campaign_name: brief.campaign || brief.description.slice(0, 120),
     locations: brief.locs,
-    interests: brief.interests,
     platforms: brief.platforms.map((platform) => platform.toLowerCase()),
     tier: brief.tier,
     budget_text: budgetText,
     budget_min: brief.budgetMin,
     budget_max: brief.budgetMax,
     currency: brief.currency,
-    notes: brief.notes,
+    notes: brief.description,
   };
 };
 
@@ -88,39 +97,23 @@ export const buildDiscoverBriefSnapshot = (
 ): Record<string, unknown> => ({
   brand_name: brief.brand,
   campaign_name: campaignName,
-  goals: brief.goals,
-  goal: brief.goals.join(", "),
-  ages: brief.ages,
-  gender: brief.gender,
-  language: "English",
   locations: brief.locations,
-  interests: brief.interests ?? [],
   platforms: brief.platforms,
   tier: brief.tier,
   budget_text: brief.budget,
-  notes: brief.notes ?? "",
+  notes: brief.notes,
 });
 
 export const parseBriefSnapshot = (
   snapshot: Record<string, unknown> | null | undefined,
   campaign?: {
-    product?: string;
-    niche?: string;
-    goals?: string | null;
+    searchQuery?: string | null;
+    product?: string | null;
     budget_range?: string | null;
     preferred_platforms?: string[] | null;
   }
 ): BriefQuery => {
   const snap = snapshot ?? {};
-  const snapshotGoals = Array.isArray(snap.goals) ? (snap.goals as string[]) : null;
-  const goals =
-    (snapshotGoals?.length ? snapshotGoals : null) ??
-    (typeof snap.goal === "string" && snap.goal
-      ? parseCampaignGoals(snap.goal).length
-        ? parseCampaignGoals(snap.goal)
-        : snap.goal.split(",").map((part) => part.trim()).filter(Boolean)
-      : null) ??
-    (campaign?.goals ? parseCampaignGoals(campaign.goals) : briefDefaults.goals);
 
   const locs = Array.isArray(snap.locations)
     ? (snap.locations as string[])
@@ -134,11 +127,7 @@ export const parseBriefSnapshot = (
     brand:
       (typeof snap.brand_name === "string" && snap.brand_name) ||
       briefDefaults.brand,
-    product: campaign?.product || briefDefaults.product,
-    category: campaign?.niche || briefDefaults.category,
-    goals,
-    ages: Array.isArray(snap.ages) ? (snap.ages as string[]) : briefDefaults.ages,
-    gender: typeof snap.gender === "string" ? snap.gender : briefDefaults.gender,
+    description: campaign?.searchQuery || campaign?.product || briefDefaults.description,
     locs,
     platforms: rawPlatforms.map((platform) => titleize(String(platform))),
     tier: typeof snap.tier === "string" ? snap.tier : briefDefaults.tier,
@@ -173,18 +162,16 @@ const parseBudgetFromText = (
 export const briefFormFromSnapshot = (
   snapshot: Record<string, unknown> | null | undefined,
   campaign: {
-    product: string;
-    niche: string;
-    goals?: string | null;
+    searchQuery?: string | null;
+    product?: string | null;
     budget_range?: string | null;
     campaign_name?: string | null;
   }
 ): BriefFormPayload => {
   const snap = snapshot ?? {};
   const parsed = parseBriefSnapshot(snapshot, {
+    searchQuery: campaign.searchQuery,
     product: campaign.product,
-    niche: campaign.niche,
-    goals: campaign.goals,
     budget_range: campaign.budget_range,
   });
 
@@ -204,18 +191,12 @@ export const briefFormFromSnapshot = (
 
   return {
     brand: parsed.brand,
-    product: campaign.product,
-    category: campaign.niche,
+    description: parsed.description,
     campaign:
       (typeof snap.campaign_name === "string" && snap.campaign_name) ||
       campaign.campaign_name ||
       "",
-    goals: parsed.goals,
-    ages: parsed.ages,
-    gender: parsed.gender,
-    lang: typeof snap.language === "string" ? snap.language : "English",
     locs: parsed.locs,
-    interests: Array.isArray(snap.interests) ? (snap.interests as string[]) : [],
     budgetMin: budget.budgetMin,
     budgetMax: budget.budgetMax,
     currency: budget.currency,
@@ -223,6 +204,5 @@ export const briefFormFromSnapshot = (
       ? (snap.platforms as string[]).map((p) => titleize(p))
       : parsed.platforms,
     tier: parsed.tier,
-    notes: typeof snap.notes === "string" ? snap.notes : "",
   };
 };

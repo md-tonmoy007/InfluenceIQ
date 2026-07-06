@@ -204,7 +204,7 @@ function BriefsContent() {
             const goal = goalTag(campaign);
             const status = statusLabel(campaign.status);
             const label =
-              campaign.campaign_name || campaign.product || "Untitled campaign";
+              campaign.campaign_name || campaign.search_query || campaign.product || "Untitled campaign";
             const initial = label.trim()[0]?.toUpperCase() ?? "C";
             const isLive =
               campaign.status === "running" || campaign.status === "pending";
@@ -235,10 +235,14 @@ function BriefsContent() {
                     <span className={`b-status ${status.className}`}>{status.label}</span>
                   </div>
                   <div className="b-meta">
-                    <span>
-                      <strong>{campaign.niche || "General"}</strong>
-                    </span>
-                    <span className="dot"></span>
+                    {campaign.niche ? (
+                      <>
+                        <span>
+                          <strong>{campaign.niche}</strong>
+                        </span>
+                        <span className="dot"></span>
+                      </>
+                    ) : null}
                     {goal ? <span>{goal}</span> : null}
                     {goal ? <span className="dot"></span> : null}
                     <span>{platformList(campaign)}</span>

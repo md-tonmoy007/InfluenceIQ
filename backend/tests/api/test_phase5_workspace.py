@@ -50,22 +50,18 @@ class CampaignCreateSchemaTest(unittest.TestCase):
         from backend.api.schemas.campaign import CampaignCreate
 
         payload = CampaignCreate(
-            product="Skincare line",
-            industry="beauty",
+            search_query="Skincare line for beauty enthusiasts",
             entry_point="brief_form",
             campaign_name="Spring skincare launch",
         )
         self.assertEqual(payload.entry_point, "brief_form")
         self.assertEqual(payload.campaign_name, "Spring skincare launch")
-        self.assertIsNone(payload.search_query)
         self.assertIsNone(payload.brief_snapshot)
 
     def test_accepts_topbar_search_entry_point_with_query(self) -> None:
         from backend.api.schemas.campaign import CampaignCreate
 
         payload = CampaignCreate(
-            product="Skincare line",
-            industry="beauty",
             entry_point="topbar_search",
             search_query="sustainable skincare brands US",
         )
@@ -79,15 +75,14 @@ class CampaignCreateSchemaTest(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             CampaignCreate(
-                product="Skincare",
-                industry="beauty",
+                search_query="Skincare for beauty enthusiasts",
                 entry_point="magic_button",
             )
 
     def test_default_entry_point_is_brief_form(self) -> None:
         from backend.api.schemas.campaign import CampaignCreate
 
-        payload = CampaignCreate(product="x", industry="y")
+        payload = CampaignCreate(search_query="x")
         self.assertEqual(payload.entry_point, "brief_form")
 
     def test_brief_snapshot_round_trip(self) -> None:
@@ -109,8 +104,7 @@ class CampaignCreateSchemaTest(unittest.TestCase):
             notes="Outdoor brand.",
         )
         payload = CampaignCreate(
-            product="trail capsule",
-            industry="outdoor",
+            search_query="trail capsule for outdoor enthusiasts",
             brief_snapshot=snapshot,
         )
         dumped = payload.brief_snapshot.model_dump(exclude_none=True)

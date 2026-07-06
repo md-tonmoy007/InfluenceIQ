@@ -185,7 +185,7 @@ class AnalysisTest(unittest.TestCase):
                 "average_engagement": 5_000,
                 "data_source_count": 4,
             },
-            {"category": "Outdoor fitness", "interests": ["trail", "running"]},
+            {"description": "Outdoor fitness", "interests": ["trail", "running"]},
         )
 
         self.assertEqual(
