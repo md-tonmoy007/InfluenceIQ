@@ -800,6 +800,14 @@ export const getDeepAnalysisReport = async (
     `/api/influencers/${encodeURIComponent(influencerId)}/reports/${encodeURIComponent(reportId)}`
   );
 
+export const getLatestDeepAnalysis = async (
+  influencerId: string,
+  campaignId: string
+): Promise<Record<string, unknown>> =>
+  requestJson<Record<string, unknown>>(
+    `/api/influencers/${encodeURIComponent(influencerId)}/deep-analysis/latest?campaign_id=${encodeURIComponent(campaignId)}`
+  );
+
 export const getCampaignInfluencers = async (
   campaignId: string,
   params?: URLSearchParams

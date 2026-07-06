@@ -1,3 +1,4 @@
+from backend.pipeline.identity.canonical import canonicalize_candidate
 from backend.pipeline.identity.resolver import resolve_candidates, resolve_identity_clusters
 
 
@@ -12,6 +13,22 @@ def test_url_hash_and_fuzzy_merges() -> None:
         {"name": "Dr Sarah Tan", "platforms": {"youtube": "@sarahtan"}},
     )
     assert fuzzy["merge"] and fuzzy["confidence"] >= 0.90
+
+
+def test_canonicalize_candidate_prefers_profile_identity_over_name() -> None:
+    first = canonicalize_candidate({
+        "name": "How Do",
+        "handle": "@srazimofficial",
+        "platform": "youtube",
+        "platforms": {"youtube": "https://youtube.com/@srazimofficial"},
+    })
+    second = canonicalize_candidate({
+        "name": "Which Payment Platform",
+        "handle": "@srazimofficial",
+        "platform": "youtube",
+        "platforms": {"youtube": "https://youtube.com/@srazimofficial/"},
+    })
+    assert first["influencer_id"] == second["influencer_id"]
 
 
 def test_ambiguous_handoff_and_merge_event() -> None:

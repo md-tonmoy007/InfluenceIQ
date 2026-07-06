@@ -177,13 +177,7 @@ def _build_query_set(payload: dict[str, Any]) -> list[str]:
     if not queries:
         queries.append("trusted creator recommendations")
 
-    tagged: list[str] = []
-    for query in queries[:5]:
-        if platforms and "youtube" in platforms and "youtube" not in query.casefold():
-            tagged.append(f"{query} youtube")
-        else:
-            tagged.append(query)
-    return tagged
+    return queries[:5]
 
 
 def _llm_generate_queries(payload: dict[str, Any]) -> list[str] | None:

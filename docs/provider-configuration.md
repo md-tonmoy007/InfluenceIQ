@@ -6,7 +6,7 @@ How InfluenceIQ chooses external services for **web search** (discovery) and **p
 
 | Stage | Job | Config namespace | Code |
 | --- | --- | --- | --- |
-| **Search** | Find candidate URLs from the campaign brief | `SEARCH_PROVIDER_MODE`, `BRAVE_*`, `OPENSERP_*` | `backend/pipeline/content/search_providers.py` |
+| **Search** | Find candidate URLs from the campaign brief | `SEARCH_PROVIDER_MODE`, `BRAVE_*` | `backend/pipeline/content/search_providers.py` |
 | **Fetch** | Pull profile data from a known URL | `APIFY_*`, `SCRAPE_DO_API` | `backend/pipeline/content/providers/`, `fetcher.py` |
 
 Search and fetch are independent. Brave is **not** a YouTube scraper — it only helps discover URLs.
@@ -19,38 +19,20 @@ Search and fetch are independent. Brave is **not** a YouTube scraper — it only
 
 | `APP_ENV` | Primary | Fallback chain |
 | --- | --- | --- |
-| `dev` | OpenSERP | → Brave → SerpAPI |
-| `production`, `staging`, `prod` | Brave | → OpenSERP → SerpAPI |
+| Any | Brave | → SerpAPI |
 
 Override with explicit modes:
 
 | Mode | Order |
 | --- | --- |
-| `brave` | Brave → OpenSERP → SerpAPI |
-| `openserp` | OpenSERP → Brave → SerpAPI |
-| `serpapi` | SerpAPI → Brave → OpenSERP |
+| `brave` | Brave → SerpAPI |
+| `serpapi` | SerpAPI → Brave |
 | `all` | Call every configured provider and merge results (legacy behavior) |
-
-### OpenSERP (self-hosted, free)
-
-```env
-OPENSERP_URL=http://openserp:7000   # docker-compose service name
-OPENSERP_API_KEY=                   # empty for OSS; key only for OpenSERP Cloud
-```
-
-Start the container:
-
-```bash
-docker compose up -d openserp
-```
-
-Host-only backend (no Docker network): use `http://localhost:7000`.
 
 ### Brave Search API
 
 ```env
 BRAVE_SEARCH_API_KEY=BSA...
-OPENSERP_URL=                       # leave empty in prod so Brave is the only search path
 ```
 
 Recommended for **judges / production** deploys. New accounts typically receive monthly credits (~1,000 searches); signup may require a card.
@@ -61,7 +43,7 @@ Recommended for **judges / production** deploys. New accounts typically receive 
 SERP_API_KEY=...
 ```
 
-Paid Google-shaped results; third priority in `auto` mode.
+Paid Google-shaped results; fallback in `auto` mode.
 
 ## Platform fetch providers
 
@@ -103,14 +85,11 @@ Used for Medium, Substack, and article roundup pages when plain `httpx` is block
 ```env
 APP_ENV=dev
 SEARCH_PROVIDER_MODE=auto
-OPENSERP_URL=http://openserp:7000
 BRAVE_SEARCH_API_KEY=
 APIFY_API_TOKEN=                    # optional; improves IG/TikTok/X depth
 ```
 
-```bash
-docker compose up -d openserp
-```
+With no API keys set, the pipeline falls back to synthetic discovery URLs.
 
 ### Hackathon / judges deployment
 
@@ -118,28 +97,16 @@ docker compose up -d openserp
 APP_ENV=production
 SEARCH_PROVIDER_MODE=auto
 BRAVE_SEARCH_API_KEY=your-key
-OPENSERP_URL=
 APIFY_API_TOKEN=your-token
 SCRAPE_DO_API=                      # optional, for article sources
 ```
 
-Set these in the **host environment** (Railway, Render, etc.) — do not copy a dev `.env` with `openserp` hostname.
-
-### Minimal free demo (no API keys)
-
-```env
-OPENSERP_URL=http://openserp:7000
-BRAVE_SEARCH_API_KEY=
-APIFY_API_TOKEN=
-```
-
-Pipeline still runs; Instagram/TikTok/X data will be thin. Prefer **YouTube-heavy** briefs for demos.
+Set these in the **host environment** (Railway, Render, etc.).
 
 ## Docker services
 
 | Service | Port | When needed |
 | --- | --- | --- |
-| `openserp` | `7000` | Local dev with `OPENSERP_URL=http://openserp:7000` |
 | `worker_scraping` | — | Restart after changing search/fetch env vars |
 
 ```bash

@@ -4,6 +4,7 @@ from copy import deepcopy
 from uuid import NAMESPACE_URL, uuid5
 
 from backend.pipeline.extraction.entities import normalize_name
+from backend.pipeline.extraction.handles import username_from_profile
 from backend.pipeline.identity.url_match import normalized_profile_urls
 
 
@@ -16,14 +17,36 @@ def _unique(values: list) -> list:
     return list(dict.fromkeys(value for value in values if value not in (None, "")))
 
 
+def _identity_key(candidate: dict, name: str) -> str:
+    profile_urls = sorted(normalized_profile_urls(candidate))
+    if profile_urls:
+        return f"profile:{profile_urls[0]}"
+
+    platform = str(candidate.get("platform") or "").strip().casefold()
+    handle = str(candidate.get("handle") or "").strip()
+    username = username_from_profile(handle)
+    if platform and username:
+        return f"handle:{platform}:{username}"
+
+    platforms = dict(candidate.get("platforms") or {})
+    for platform_name, value in sorted(platforms.items()):
+        username = username_from_profile(str(value))
+        if username:
+            return f"handle:{str(platform_name).casefold()}:{username}"
+
+    normalized_name = normalize_name(name) or name.strip().casefold()
+    return f"name:{normalized_name}"
+
+
 def canonicalize_candidate(candidate: dict, confidence: float | None = None) -> dict:
     name = _preferred_name(candidate)
     mention = {key: candidate.get(key) for key in ("mention_id", "name", "source_url", "context", "platform") if candidate.get(key) is not None}
     mentions = list(candidate.get("mentions") or []) or ([mention] if mention else [])
     source_urls = _unique([str(item.get("source_url", "")) for item in mentions] + [str(candidate.get("source_url") or "")])
+    identity_key = _identity_key(candidate, name)
     return {
         **deepcopy(candidate),
-        "influencer_id": str(candidate.get("influencer_id") or uuid5(NAMESPACE_URL, normalize_name(name) or name)),
+        "influencer_id": str(candidate.get("influencer_id") or uuid5(NAMESPACE_URL, identity_key)),
         "canonical_name": name,
         "platforms": dict(candidate.get("platforms") or {}),
         "profile_urls": sorted(normalized_profile_urls(candidate)),

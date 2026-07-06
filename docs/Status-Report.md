@@ -30,7 +30,7 @@ generate_queries
 | --- | --- | --- |
 | Campaign intake (`POST /api/campaigns`) | Done | Idempotency-Key + DB unique-key dedup, optional auth, dispatches pipeline post-commit |
 | Query generation | Done | Deterministic `_build_query_set` + dedup + platform coverage; optional LLM path behind `AI_AGENT_LLM_QUERY_PLANNING` with clean fallback |
-| Web search | Done | `SEARCH_PROVIDER_MODE=auto`: dev→OpenSERP, prod→Brave; failover to SerpAPI; synthetic fallback. See [provider-configuration.md](./provider-configuration.md) |
+| Web search | Done | `SEARCH_PROVIDER_MODE=auto`: Brave → SerpAPI; failover to SerpAPI; synthetic fallback. See [provider-configuration.md](./provider-configuration.md) |
 | Crawl / fetch | Done | Per-platform providers; Apify for IG/TikTok/X when `APIFY_API_TOKEN` set; scrape.do/httpx for articles; URL cache, circuit breaker |
 | Social providers | Improved | YouTube: channelId + RSS → posts. IG/TikTok/X: Apify path when token set (`apify_instagram`, `apify_tiktok`, `apify_x`); free meta/fallback otherwise |
 | Influencer extraction | Done | spaCy/regex entities, handles, credentials, contact info |

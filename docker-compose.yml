@@ -39,19 +39,6 @@ services:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
 
-  openserp:
-    image: karust/openserp:latest
-    command: serve -a 0.0.0.0 -p 7000
-    ports:
-      - "7000:7000"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:7000/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
-
   backend-core:
     build:
       context: .

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from backend.api.schemas.auth import (
@@ -216,9 +216,29 @@ def delete_me(
 
 
 @router.post("/refresh", response_model=RefreshResponse)
-def refresh(payload: RefreshRequest, response: Response) -> RefreshResponse:
-    """Exchange a valid refresh token for a new access token."""
-    payload_data = decode_token(payload.refresh_token)
+def refresh(
+    response: Response,
+    payload: RefreshRequest | None = None,
+    refresh_token: str | None = Cookie(default=None),
+) -> RefreshResponse:
+    """Exchange a valid refresh token for a new access token.
+
+    Accepts the refresh token from the JSON body, or falls back to
+    the ``refresh_token`` HttpOnly cookie so that a page reload does
+    not break token renewal.
+    """
+    token_value = (
+        payload.refresh_token
+        if payload and payload.refresh_token
+        else refresh_token
+    )
+    if not token_value:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token is required",
+        )
+
+    payload_data = decode_token(token_value)
 
     if payload_data.get("type") != "refresh":
         raise HTTPException(

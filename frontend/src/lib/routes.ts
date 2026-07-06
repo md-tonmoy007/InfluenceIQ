@@ -30,6 +30,14 @@ export function discoverHref(campaignId: string): string {
   return `/discover?campaignId=${encodeURIComponent(campaignId)}`;
 }
 
-export function reportHref(influencerId: string, reportId: string): string {
-  return `/report/${encodeURIComponent(influencerId)}?reportId=${encodeURIComponent(reportId)}`;
+export function reportHref(influencerId: string, reportId: string, campaignId?: string): string {
+  const params = new URLSearchParams({ reportId });
+  if (campaignId) params.set("campaignId", campaignId);
+  return `/report/${encodeURIComponent(influencerId)}?${params.toString()}`;
+}
+
+export function reportRunHref(influencerId: string, runId: string, campaignId?: string): string {
+  const params = new URLSearchParams({ runId });
+  if (campaignId) params.set("campaignId", campaignId);
+  return `/report/${encodeURIComponent(influencerId)}?${params.toString()}`;
 }

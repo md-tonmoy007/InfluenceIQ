@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from backend.api.main import app
 from backend.api.routers import campaigns as campaigns_router
 from backend.api.routers import websocket as websocket_router
+from backend.core.auth import get_current_user
 from backend.core.database import models
 from backend.core.database.session import get_db
 
@@ -149,11 +150,18 @@ class BackendContractsTest(unittest.TestCase):
         self.client = TestClient(app)
         app.dependency_overrides.clear()
         self.session = FakeSession()
+        self.user = models.User(
+            id=uuid.uuid4(),
+            email="contract@example.com",
+            password_hash="x",
+            name="Contract Test",
+        )
 
         def _override_get_db():
             yield self.session
 
         app.dependency_overrides[get_db] = _override_get_db
+        app.dependency_overrides[get_current_user] = lambda: self.user
 
     def tearDown(self):
         app.dependency_overrides.clear()

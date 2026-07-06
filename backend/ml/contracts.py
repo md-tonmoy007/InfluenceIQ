@@ -21,6 +21,8 @@ class TextInferenceRequest(BaseModel):
 
 
 class SemanticScore(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     subject_id: UUID
     semantic_score: float = Field(ge=0, le=1)
     spam_probability: float = Field(ge=0, le=1)
@@ -44,6 +46,8 @@ class BehaviorFeatures(BaseModel):
 
 
 class BehaviorScore(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     subject_id: UUID
     behavior_score: float = Field(ge=0, le=1)
     feature_contributions: dict[str, float]

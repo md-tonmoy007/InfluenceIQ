@@ -18,6 +18,26 @@ const FIELDS: Array<{ key: keyof CampaignWeights; label: string }> = [
 export function WeightSliders({ value, onChange }: WeightSlidersProps) {
   const total = FIELDS.reduce((sum, field) => sum + Number(value[field.key] ?? 0), 0);
 
+  const handleChange = (changed: keyof CampaignWeights, newVal: number) => {
+    const clamped = Math.max(0, Math.min(1, newVal));
+    const oldVal = Number(value[changed] ?? 0);
+    const delta = clamped - oldVal;
+
+    const remaining = FIELDS.reduce((sum, f) => sum + (f.key === changed ? 0 : Number(value[f.key] ?? 0)), 0);
+    if (remaining <= 0 && delta > 0) {
+      return;
+    }
+
+    const next: CampaignWeights = { ...value, [changed]: clamped };
+    for (const f of FIELDS) {
+      if (f.key !== changed && remaining > 0) {
+        const share = Number(value[f.key] ?? 0) / remaining;
+        next[f.key] = Math.max(0, Number(value[f.key] ?? 0) - delta * share);
+      }
+    }
+    onChange(next);
+  };
+
   return (
     <div className="weight-sliders">
       {FIELDS.map((field) => (
@@ -29,8 +49,7 @@ export function WeightSliders({ value, onChange }: WeightSlidersProps) {
             max={100}
             value={Math.round(Number(value[field.key] ?? 0) * 100)}
             onChange={(event) => {
-              const nextValue = Number(event.target.value) / 100;
-              onChange({ ...value, [field.key]: nextValue });
+              handleChange(field.key, Number(event.target.value) / 100);
             }}
           />
           <span>{Math.round(Number(value[field.key] ?? 0) * 100)}%</span>

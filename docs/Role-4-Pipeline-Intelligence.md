@@ -54,11 +54,11 @@ External I/O is split into **search** (find URLs) and **fetch** (scrape a known 
 
 | Layer | Responsibility | Key files |
 | --- | --- | --- |
-| Search | Failover chain: OpenSERP / Brave / SerpAPI + synthetic fallback | `content/search_providers.py` |
+| Search | Failover chain: Brave / SerpAPI + synthetic fallback | `content/search_providers.py` |
 | Platform fetch | YouTube RSS; Apify for IG/TikTok/X; scrape.do for articles | `content/providers/`, `content/fetcher.py` |
 | Apify runner | Shared actor sync client | `content/providers/apify_client.py` |
 
-`SEARCH_PROVIDER_MODE=auto` uses OpenSERP in `dev` and Brave in `production`/`staging`.
+`SEARCH_PROVIDER_MODE=auto` prefers Brave with SerpAPI as fallback.
 
 ## Key Workflows
 

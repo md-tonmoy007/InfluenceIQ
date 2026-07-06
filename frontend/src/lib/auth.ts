@@ -33,18 +33,23 @@ const apiUrl = (path: string) =>
   `${(API_BASE_URL ?? "").replace(/\/$/, "")}${path}`;
 
 /**
- * Attempt to refresh the access token using the stored refresh token.
- * Returns the new access token string, or null if refresh fails.
+ * Attempt to refresh the access token.
+ *
+ * Tries the in-memory refresh token first (if available), then falls
+ * back to the ``refresh_token`` HttpOnly cookie so that a page reload
+ * does not break token renewal.
+ *
+ * Returns the new access token string on success, or null on failure.
  */
 export async function refreshAccessToken(): Promise<string | null> {
-  const rt = refreshToken;
-  if (!rt) return null;
-
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const body = refreshToken ? JSON.stringify({ refresh_token: refreshToken }) : undefined;
+
     const response = await fetch(apiUrl("/api/auth/refresh"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: rt }),
+      headers,
+      body,
       credentials: "include",
     });
 

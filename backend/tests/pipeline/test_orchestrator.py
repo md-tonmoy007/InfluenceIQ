@@ -30,10 +30,15 @@ class StartCampaignDispatchTest(unittest.TestCase):
         from backend.pipeline.tasks import orchestrator
 
         fake_async_result = SimpleNamespace(id="task-uuid-1")
-        with patch(
-            "backend.pipeline.tasks.search.generate_queries.delay",
-            return_value=fake_async_result,
-        ) as delay:
+        fake_redis = MagicMock()
+        with (
+            patch(
+                "backend.pipeline.tasks.search.generate_queries.delay",
+                return_value=fake_async_result,
+            ) as delay,
+            patch("backend.core.cache.pipeline_state.redis_client", fake_redis),
+            patch("backend.core.cache.event_log.redis_client", fake_redis),
+        ):
             result = orchestrator.start_campaign("campaign-1")
 
         self.assertEqual(
@@ -45,9 +50,14 @@ class StartCampaignDispatchTest(unittest.TestCase):
     def test_start_pipeline_alias_still_works(self) -> None:
         from backend.pipeline.tasks import start_pipeline
 
-        with patch(
-            "backend.pipeline.tasks.search.generate_queries.delay",
-            return_value=SimpleNamespace(id="alias-task-id"),
+        fake_redis = MagicMock()
+        with (
+            patch(
+                "backend.pipeline.tasks.search.generate_queries.delay",
+                return_value=SimpleNamespace(id="alias-task-id"),
+            ),
+            patch("backend.core.cache.pipeline_state.redis_client", fake_redis),
+            patch("backend.core.cache.event_log.redis_client", fake_redis),
         ):
             result = start_pipeline("campaign-2")
 
@@ -79,28 +89,28 @@ class CancelCampaignTest(unittest.TestCase):
             captured_event["payload"] = payload
             return {"event_id": 1, "type": event_type}
 
+        fake_redis = MagicMock()
         with (
             patch.object(
                 orchestrator, "_get_session_local", return_value=lambda: session
             ),
             patch.object(orchestrator._common, "get_campaign", return_value=fake_campaign),
             patch.object(orchestrator, "emit_event", side_effect=_fake_emit),
+            patch("backend.core.cache.pipeline_state.redis_client", fake_redis),
+            patch("backend.core.cache.event_log.redis_client", fake_redis),
         ):
             result = orchestrator.cancel_campaign(self.campaign_id)
 
-        # Durable row updated to failed with reason="cancelled"
-        self.assertEqual(fake_campaign.status, "failed")
+        self.assertEqual(fake_campaign.status, "cancelled")
         self.assertEqual(fake_campaign.failure_reason, "cancelled")
         self.assertIsNotNone(fake_campaign.failed_at)
         session.commit.assert_called_once()
 
-        # campaign.cancelled event was emitted
         self.assertEqual(captured_event["campaign_id"], self.campaign_id)
         self.assertEqual(captured_event["type"], "campaign.cancelled")
         self.assertEqual(captured_event["payload"]["reason"], "cancelled")
         self.assertEqual(captured_event["payload"]["previous_status"], "running")
 
-        # Return shape
         self.assertEqual(
             result,
             {
@@ -133,18 +143,20 @@ class CancelCampaignTest(unittest.TestCase):
         from backend.pipeline.tasks import orchestrator
 
         session, fake_campaign = self._build_session_with_campaign()
+        fake_redis = MagicMock()
         with (
             patch.object(
                 orchestrator, "_get_session_local", return_value=lambda: session
             ),
             patch.object(orchestrator._common, "get_campaign", return_value=fake_campaign),
             patch.object(orchestrator, "emit_event", side_effect=Exception("redis down")),
+            patch("backend.core.cache.pipeline_state.redis_client", fake_redis),
         ):
             # Must not raise.
             result = orchestrator.cancel_campaign(self.campaign_id)
 
         self.assertTrue(result["cancelled"])
-        self.assertEqual(fake_campaign.status, "failed")
+        self.assertEqual(fake_campaign.status, "cancelled")
 
 
 class CampaignsRouterDispatchTest(unittest.TestCase):

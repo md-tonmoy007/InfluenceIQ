@@ -125,6 +125,8 @@ class ImportEveryModuleTest(unittest.TestCase):
         # modules. Without this, the central celery_app has only
         # the celery.* built-ins.
         from backend.pipeline.tasks import crawl, extract, score, search  # noqa: F401
+        import backend.pipeline.tasks.deep as _deep  # noqa: F401
+        import backend.pipeline.tasks.enrich as _enrich  # noqa: F401
 
         for task_name, queue in TASK_QUEUE_BY_NAME.items():
             with self.subTest(task=task_name):

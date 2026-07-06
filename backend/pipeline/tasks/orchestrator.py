@@ -34,6 +34,7 @@ worker task mid-flight. :func:`cancel_campaign` therefore:
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 from backend.core.cache.event_log import emit_event
 from backend.core.cache.pipeline_state import update_pipeline_state
@@ -81,9 +82,7 @@ def cancel_campaign(campaign_id: str, reason: str = "cancelled") -> dict:
         campaign = _common.get_campaign(session, campaign_id)
         previous_status = campaign.status
         campaign.status = "cancelled"
-        from datetime import datetime
-
-        campaign.failed_at = datetime.utcnow()
+        campaign.failed_at = datetime.now(UTC)
         campaign.failure_reason = reason[:4000]
         session.commit()
     finally:

@@ -216,12 +216,13 @@ class BillingSyncTest(unittest.TestCase):
                 ]
             ),
         )
-        row = apply_stripe_subscription(
-            self.session,
-            user_id=self.user_id,
-            stripe_customer_id="cus_test",
-            stripe_subscription=stripe_sub,
-        )
+        with patch("backend.core.billing.sync.settings.STRIPE_PRICE_GROWTH_MONTHLY", "price_monthly_test"):
+            row = apply_stripe_subscription(
+                self.session,
+                user_id=self.user_id,
+                stripe_customer_id="cus_test",
+                stripe_subscription=stripe_sub,
+            )
         self.assertEqual(row.plan, "pro")
         self.assertEqual(row.status, "trialing")
         self.assertEqual(row.billing_interval, "month")

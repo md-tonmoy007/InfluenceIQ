@@ -261,7 +261,7 @@ The scraping queue remains broad by design. Add a separate extraction queue only
 
 ### External search and fetch providers
 
-Search (URL discovery) and fetch (profile/page scraping) use separate provider stacks configured via `backend/.env`. `SEARCH_PROVIDER_MODE=auto` prefers OpenSERP in `dev` and Brave in `production`. Instagram, TikTok, and X use Apify when `APIFY_API_TOKEN` is set; YouTube uses HTML + RSS; generic articles use scrape.do or httpx. See [provider-configuration.md](./provider-configuration.md).
+Search (URL discovery) and fetch (profile/page scraping) use separate provider stacks configured via `backend/.env`. `SEARCH_PROVIDER_MODE=auto` prefers Brave with SerpAPI as fallback. Instagram, TikTok, and X use Apify when `APIFY_API_TOKEN` is set; YouTube uses HTML + RSS; generic articles use scrape.do or httpx. See [provider-configuration.md](./provider-configuration.md).
 
 ## Real-Time Events And Replay
 

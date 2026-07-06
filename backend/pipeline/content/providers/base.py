@@ -25,6 +25,7 @@ class PlatformProfile:
     raw: dict[str, Any] = field(default_factory=dict)
     provider: str = "platform"
     error: str | None = None
+    coverage: dict[str, Any] = field(default_factory=dict)
 
     def to_html(self) -> str:
         profile_links = "".join(f"<a href='{url}'>{url}</a>" for url in self.profile_urls)

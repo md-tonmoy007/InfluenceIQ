@@ -111,7 +111,7 @@ sequenceDiagram
 | **Pipeline dispatch** | Commit lifecycle state and enqueue the root task | `start_campaign` → `generate_queries.delay` |
 | **Query agent** | Generate campaign-specific search queries from the brief | `"best medical influencer Singapore site:youtube.com"` |
 | **Cache** | Avoid redundant LLM calls, search results, and page fetches | Redis URL cache (global), query dedup; campaign-scoped pipeline state |
-| **Search API** | Execute web search and return candidate URLs | Brave, OpenSERP (env-aware failover); see [provider-configuration.md](./provider-configuration.md) |
+| **Search API** | Execute web search and return candidate URLs | Brave, SerpAPI (env-aware failover); see [provider-configuration.md](./provider-configuration.md) |
 | **Scrape** | Fetch pages, extract readable content, discover social profile links | httpx fetch + content extraction (Firecrawl-style crawl in the target design) |
 
 ### Pipeline entry points
@@ -415,7 +415,7 @@ flowchart LR
 | 1 | Campaign intake | Implemented — `POST /api/campaigns` |
 | 1 | Campaign rerun | Implemented — `POST /api/campaigns/{id}/rerun` (see [Rerunning a campaign](#rerunning-a-campaign)) |
 | 1 | Query agent + cache | Implemented — deterministic queries + optional LLM; Redis cache |
-| 1 | Search API | Implemented — env-aware failover (dev→OpenSERP, prod→Brave); synthetic fallback |
+| 1 | Search API | Implemented — env-aware failover (Brave → SerpAPI); synthetic fallback |
 | 1 | Scrape / crawl | Implemented — per-platform providers + scrape.do/httpx for articles |
 | 2 | Extract agent | Implemented — spaCy/regex + optional LLM extraction |
 | 2 | Platform providers | YouTube (RSS); IG/TikTok/X via Apify when configured, else meta/fallback |

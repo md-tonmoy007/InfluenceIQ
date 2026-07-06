@@ -35,9 +35,7 @@ class Settings(BaseSettings):
 
     SERP_API_KEY: str = ""
     BRAVE_SEARCH_API_KEY: str = ""
-    OPENSERP_URL: str = ""
-    OPENSERP_API_KEY: str = ""
-    # auto | brave | openserp | serpapi | all (merge every configured provider)
+    # auto | brave | serpapi | all (merge every configured provider)
     SEARCH_PROVIDER_MODE: str = "auto"
     SCRAPE_DO_API: str = ""
 
