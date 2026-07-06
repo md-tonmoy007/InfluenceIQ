@@ -265,19 +265,19 @@ def _llm_filter_urls(
 ) -> tuple[list[dict], list[dict]]:
     """Split *results* into (accepted, rejected) using the LLM relevance filter.
 
-    Fails **closed**: whenever the LLM path is off, unavailable, or errors,
-    every result is rejected rather than silently passed through to
-    extraction. Each rejected dict gains a ``"reason"`` key (see
-    :data:`_REJECT_REASONS`) so callers can persist/display *why*.
+    Fails **open** when the LLM path is disabled, unavailable, or errors,
+    so transient provider issues do not collapse the whole campaign rerun.
+    Only a successful LLM response may explicitly reject URLs.
     """
     if not results:
         return [], []
 
-    def _reject_all(reason: str) -> tuple[list[dict], list[dict]]:
-        return [], [{**r, "reason": reason} for r in results]
+    def _accept_all(reason: str) -> tuple[list[dict], list[dict]]:
+        log.warning("llm_filter_urls bypassed; accepting all results reason=%s total=%d", reason, len(results))
+        return results, []
 
     if not _flag("AI_AGENT_LLM_QUERY_PLANNING"):
-        return _reject_all("llm_disabled")
+        return _accept_all("llm_disabled")
 
     try:
         from backend.ml.contracts import TextInferenceRequest  # noqa: F401
@@ -286,7 +286,7 @@ def _llm_filter_urls(
         reg = registry()
         llm_backend = reg.get(reg.resolve_name("llm"))
         if llm_backend is None or not hasattr(llm_backend, "predict_text"):
-            return _reject_all("llm_unavailable")
+            return _accept_all("llm_unavailable")
 
         prompt = _build_url_filter_prompt(results, payload)
         text = _run_predict(
@@ -295,13 +295,14 @@ def _llm_filter_urls(
             )
         )
         if not text or text.startswith("[stub:"):
-            return _reject_all("llm_error")
+            log.warning("llm_filter_urls received stub/empty response text=%r", (text or "")[:200])
+            return _accept_all("llm_error")
 
         import json
         selected_urls: set[str] = set(json.loads(_strip_code_fence(text)))
     except Exception as exc:
-        log.warning("llm_filter_urls failed, rejecting all results: %s", exc)
-        return _reject_all("llm_error")
+        log.warning("llm_filter_urls failed, accepting all results: %s", exc)
+        return _accept_all("llm_error")
 
     accepted = [r for r in results if r.get("url") in selected_urls]
     rejected = [

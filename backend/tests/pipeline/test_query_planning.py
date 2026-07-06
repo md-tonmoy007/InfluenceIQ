@@ -350,18 +350,17 @@ def _sample_results() -> list[dict]:
 
 
 @patch("backend.pipeline.tasks.search._flag", return_value=False)
-def test_url_filter_flag_off_rejects_all(mock_flag: MagicMock) -> None:
-    """When the LLM flag is off, every result is rejected with `llm_disabled`."""
+def test_url_filter_flag_off_accepts_all(mock_flag: MagicMock) -> None:
+    """When the LLM flag is off, fail open and keep all results."""
     results = _sample_results()
     accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-    assert accepted == []
-    assert len(rejected) == len(results)
-    assert all(r["reason"] == "llm_disabled" for r in rejected)
+    assert accepted == results
+    assert rejected == []
 
 
 @patch("backend.pipeline.tasks.search._flag", return_value=True)
-def test_url_filter_registry_unavailable_rejects_all(mock_flag: MagicMock) -> None:
-    """When the registry has no usable LLM backend, reject with `llm_unavailable`."""
+def test_url_filter_registry_unavailable_accepts_all(mock_flag: MagicMock) -> None:
+    """When the registry has no usable LLM backend, fail open and keep all results."""
     mock_registry = MagicMock()
     mock_registry.resolve_name.return_value = "llm"
     mock_registry.get.return_value = None
@@ -369,14 +368,13 @@ def test_url_filter_registry_unavailable_rejects_all(mock_flag: MagicMock) -> No
     with patch("backend.ml.models.registry.registry", return_value=mock_registry):
         results = _sample_results()
         accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-    assert accepted == []
-    assert len(rejected) == len(results)
-    assert all(r["reason"] == "llm_unavailable" for r in rejected)
+    assert accepted == results
+    assert rejected == []
 
 
 @patch("backend.pipeline.tasks.search._flag", return_value=True)
-def test_url_filter_predict_raises_rejects_all(mock_flag: MagicMock) -> None:
-    """When predict_text raises, reject everything with `llm_error`."""
+def test_url_filter_predict_raises_accepts_all(mock_flag: MagicMock) -> None:
+    """When predict_text raises, fail open and keep all results."""
     mock_llm = MagicMock()
     mock_llm.predict_text.side_effect = RuntimeError("boom")
 
@@ -387,14 +385,13 @@ def test_url_filter_predict_raises_rejects_all(mock_flag: MagicMock) -> None:
     with patch("backend.ml.models.registry.registry", return_value=mock_registry):
         results = _sample_results()
         accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-    assert accepted == []
-    assert len(rejected) == len(results)
-    assert all(r["reason"] == "llm_error" for r in rejected)
+    assert accepted == results
+    assert rejected == []
 
 
 @patch("backend.pipeline.tasks.search._flag", return_value=True)
-def test_url_filter_stub_response_rejects_all(mock_flag: MagicMock) -> None:
-    """A stub or empty LLM response is treated as a failed call (`llm_error`)."""
+def test_url_filter_stub_response_accepts_all(mock_flag: MagicMock) -> None:
+    """A stub or empty LLM response now fails open and keeps all results."""
     mock_llm = MagicMock()
     mock_llm.predict_text.return_value = "[stub: no backend configured]"
 
@@ -405,8 +402,8 @@ def test_url_filter_stub_response_rejects_all(mock_flag: MagicMock) -> None:
     with patch("backend.ml.models.registry.registry", return_value=mock_registry):
         results = _sample_results()
         accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-    assert accepted == []
-    assert all(r["reason"] == "llm_error" for r in rejected)
+    assert accepted == results
+    assert rejected == []
 
 
 @patch("backend.pipeline.tasks.search._flag", return_value=True)
@@ -433,11 +430,7 @@ def test_url_filter_subsets_selection(mock_flag: MagicMock) -> None:
 
 @patch("backend.pipeline.tasks.search._flag", return_value=True)
 def test_url_filter_empty_selection_rejects_all(mock_flag: MagicMock) -> None:
-    """An empty LLM selection now rejects everything as `not_selected`.
-
-    This is the behavioral flip worth a dedicated regression: previously
-    an empty selection fell back to returning all results fail-open.
-    """
+    """A successful empty LLM selection still explicitly rejects everything."""
     mock_llm = MagicMock()
     mock_llm.predict_text.return_value = "[]"
 
