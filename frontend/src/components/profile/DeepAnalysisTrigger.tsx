@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { getLatestDeepAnalysis, triggerDeepAnalysis } from "@/lib/api";
@@ -10,7 +11,11 @@ type DeepAnalysisTriggerProps = {
   influencerId: string;
   campaignId: string;
   className?: string;
+  viewClassName?: string;
+  rerunClassName?: string;
   label?: string;
+  deepAnalysisReady?: boolean;
+  deepAnalysisBlockReason?: string | null;
 };
 
 type TriggerStatus = "idle" | "starting" | "social" | "comments" | "trends" | "synthesizing" | "failed";
@@ -29,17 +34,41 @@ export default function DeepAnalysisTrigger({
   influencerId,
   campaignId,
   className = "row-cta",
+  viewClassName,
+  rerunClassName,
   label = "Run deep analysis",
+  deepAnalysisReady,
+  deepAnalysisBlockReason,
 }: DeepAnalysisTriggerProps) {
   const router = useRouter();
   const [status, setStatus] = useState<TriggerStatus>("idle");
+  const [latestReportId, setLatestReportId] = useState<string | null>(null);
 
-  const navigateToReport = useCallback(
-    (reportId: string) => {
-      router.push(reportHref(influencerId, reportId, campaignId));
-    },
-    [campaignId, influencerId, router]
-  );
+  useEffect(() => {
+    let active = true;
+
+    if (deepAnalysisReady === false) {
+      return () => {
+        active = false;
+      };
+    }
+
+    void getLatestDeepAnalysis(influencerId, campaignId)
+      .then((latest) => {
+        if (!active) return;
+        const report = latest.report as Record<string, unknown> | undefined;
+        const reportId = latest.fresh && report ? String(report.report_id ?? "") : "";
+        setLatestReportId(reportId || null);
+      })
+      .catch(() => {
+        if (!active) return;
+        setLatestReportId(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [campaignId, deepAnalysisReady, influencerId]);
 
   const handleClick = async () => {
     if (status !== "idle" && status !== "failed") {
@@ -49,29 +78,7 @@ export default function DeepAnalysisTrigger({
     try {
       setStatus("starting");
 
-      // Check for existing fresh report first
-      const latest = await getLatestDeepAnalysis(influencerId, campaignId);
-      if (latest.fresh) {
-        const report = latest.report as Record<string, unknown> | undefined;
-        const reportId = report ? String(report.report_id ?? "") : "";
-        if (reportId) {
-          navigateToReport(reportId);
-          return;
-        }
-      }
-
-      // No fresh report, start a new run
-      const start = await triggerDeepAnalysis(influencerId, campaignId);
-
-      // If the backend returned a cached report inline
-      const inlineReport = start.report as Record<string, unknown> | null | undefined;
-      if (inlineReport) {
-        const reportId = String(inlineReport.report_id ?? "");
-        if (reportId) {
-          navigateToReport(reportId);
-          return;
-        }
-      }
+      const start = await triggerDeepAnalysis(influencerId, campaignId, 2000, { force: true });
 
       const runId = String(start.run_id ?? "");
       if (!runId) {
@@ -79,6 +86,7 @@ export default function DeepAnalysisTrigger({
         return;
       }
 
+      setLatestReportId(null);
       setStatus("social");
       router.push(reportRunHref(influencerId, runId, campaignId));
     } catch {
@@ -88,11 +96,54 @@ export default function DeepAnalysisTrigger({
 
   const buttonLabel = STATUS_LABEL[status] ?? label;
   const isRunning = status !== "idle" && status !== "failed";
+  const rerunButtonClassName = rerunClassName ?? className;
+  const viewButtonClassName = viewClassName ?? className;
+
+  if (deepAnalysisReady === false) {
+    return (
+      <div
+        className="deep-analysis-actions"
+        style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}
+      >
+        <button type="button" className={viewButtonClassName} disabled>
+          Deep analysis unavailable
+        </button>
+        {deepAnalysisBlockReason ? (
+          <div style={{ fontSize: "11px", lineHeight: 1.45, color: "var(--muted)" }}>
+            {deepAnalysisBlockReason}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (!isRunning && latestReportId) {
+    return (
+      <div
+        className="deep-analysis-actions"
+        style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}
+      >
+        <Link
+          href={reportHref(influencerId, latestReportId, campaignId)}
+          className={viewButtonClassName}
+        >
+          View deep analysis
+        </Link>
+        <button
+          type="button"
+          className={rerunButtonClassName}
+          onClick={() => void handleClick()}
+        >
+          Rerun deep analysis
+        </button>
+      </div>
+    );
+  }
 
   return (
     <button
       type="button"
-      className={className}
+      className={rerunButtonClassName}
       disabled={isRunning}
       onClick={() => void handleClick()}
     >

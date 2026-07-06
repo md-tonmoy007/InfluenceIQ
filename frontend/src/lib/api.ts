@@ -84,6 +84,10 @@ type BackendInfluencer = {
   avg_views?: number | null;
   primary_category?: string | null;
   primary_location?: string | null;
+  deep_analysis_ready?: boolean;
+  deep_analysis_block_reason?: string | null;
+  platform_post_count?: number | null;
+  platform_comment_count?: number | null;
 };
 
 // GET /api/campaigns/{id}/influencers returns keyset-paginated rows.
@@ -521,6 +525,10 @@ const mapInfluencer = (item: BackendInfluencer): InfluencerRecommendation => {
     trustGrade: gradeFromScore(finalScore),
     brandSafetyFlags: item.negative_reasons ?? [],
     citations: (item.sources ?? []).map((source) => source.url),
+    deepAnalysisReady: item.deep_analysis_ready ?? false,
+    deepAnalysisBlockReason: item.deep_analysis_block_reason ?? null,
+    platformPostCount: item.platform_post_count ?? 0,
+    platformCommentCount: item.platform_comment_count ?? 0,
     subScores,
     scorePayload: {
       signal_scores: item.signal_scores ?? {},
@@ -760,10 +768,11 @@ export const getInfluencerVerifications = async (
 export const triggerDeepAnalysis = async (
   influencerId: string,
   campaignId: string,
-  commentTarget = 2000
+  commentTarget = 2000,
+  options?: { force?: boolean }
 ): Promise<Record<string, unknown>> =>
   requestJson<Record<string, unknown>>(
-    `/api/influencers/${encodeURIComponent(influencerId)}/deep-analysis?campaign_id=${encodeURIComponent(campaignId)}&comment_target=${commentTarget}`,
+    `/api/influencers/${encodeURIComponent(influencerId)}/deep-analysis?campaign_id=${encodeURIComponent(campaignId)}&comment_target=${commentTarget}${options?.force ? "&force=true" : ""}`,
     { method: "POST" }
   );
 

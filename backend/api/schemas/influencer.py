@@ -66,6 +66,10 @@ class InfluencerResponse(BaseModel):
     avg_views: int | None = None
     primary_category: str | None = None
     primary_location: str | None = None
+    deep_analysis_ready: bool = False
+    deep_analysis_block_reason: str | None = None
+    platform_post_count: int = 0
+    platform_comment_count: int = 0
 
     class Config:
         from_attributes = True

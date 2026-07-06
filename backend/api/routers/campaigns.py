@@ -956,6 +956,8 @@ def _to_influencer_response(
     rest of the workspace shell needs. Missing values stay ``None``
     (rendered as "—" on the frontend) instead of fabricated zeros.
     """
+    deep_analysis = _deep_analysis_readiness(inf)
+
     return InfluencerResponse(
         influencer_id=inf.id,
         canonical_name=inf.canonical_name,
@@ -987,7 +989,52 @@ def _to_influencer_response(
         avg_views=inf.avg_views,
         primary_category=inf.primary_category,
         primary_location=inf.primary_location,
+        deep_analysis_ready=deep_analysis["ready"],
+        deep_analysis_block_reason=deep_analysis["reason"],
+        platform_post_count=deep_analysis["post_count"],
+        platform_comment_count=deep_analysis["comment_count"],
     )
+
+
+def _deep_analysis_readiness(inf: models.Influencer) -> dict[str, Any]:
+    profile_count = len(list(inf.platform_profiles or []))
+    post_count = 0
+    comment_count = 0
+
+    for profile in inf.platform_profiles or []:
+        posts = list(profile.posts or [])
+        post_count += len(posts)
+        for post in posts:
+            comment_count += len(list(post.comments or []))
+
+    if profile_count == 0:
+        return {
+            "ready": False,
+            "reason": "No creator platform profiles were captured for this candidate yet.",
+            "post_count": 0,
+            "comment_count": 0,
+        }
+    if post_count == 0:
+        return {
+            "ready": False,
+            "reason": "No creator platform posts are available for deep analysis.",
+            "post_count": 0,
+            "comment_count": 0,
+        }
+    if comment_count == 0:
+        return {
+            "ready": False,
+            "reason": "No creator post comments are available for deep analysis.",
+            "post_count": post_count,
+            "comment_count": 0,
+        }
+
+    return {
+        "ready": True,
+        "reason": None,
+        "post_count": post_count,
+        "comment_count": comment_count,
+    }
 
 
 def _encode_cursor(final_score: float, influencer_id: str) -> str:

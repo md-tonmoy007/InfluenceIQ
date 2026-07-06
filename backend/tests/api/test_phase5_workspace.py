@@ -135,6 +135,18 @@ class CampaignResponseSchemaTest(unittest.TestCase):
         ):
             self.assertIn(field, props, f"CampaignResponse missing {field}")
 
+    def test_influencer_response_shape_has_deep_analysis_readiness_fields(self) -> None:
+        from backend.api.schemas.influencer import InfluencerResponse
+
+        props = InfluencerResponse.model_json_schema().get("properties", {})
+        for field in (
+            "deep_analysis_ready",
+            "deep_analysis_block_reason",
+            "platform_post_count",
+            "platform_comment_count",
+        ):
+            self.assertIn(field, props, f"InfluencerResponse missing {field}")
+
 
 class WorkspaceModelsTest(unittest.TestCase):
     """The new SavedList / SavedListItem ORM tables are wired correctly."""

@@ -270,6 +270,10 @@ class BackendContractsTest(unittest.TestCase):
         self.assertEqual(row["positive_reasons"], ["licensed clinician"])
         self.assertEqual(row["sources"][0]["mention_id"], "m-1")
         self.assertEqual(row["sources"][0]["url"], "https://example.com/source")
+        self.assertFalse(row["deep_analysis_ready"])
+        self.assertEqual(row["deep_analysis_block_reason"], "No creator platform profiles were captured for this candidate yet.")
+        self.assertEqual(row["platform_post_count"], 0)
+        self.assertEqual(row["platform_comment_count"], 0)
 
     def test_websocket_replays_and_streams_live_events(self):
         campaign_id = uuid.uuid4()

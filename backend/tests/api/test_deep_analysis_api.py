@@ -340,6 +340,40 @@ class DeepAnalysisAPITest(unittest.TestCase):
         self.assertIn("report", body)
         self.assertEqual(body["report"]["overall_grade"], "A")
 
+    def test_post_force_true_bypasses_existing_fresh_report(self) -> None:
+        run = models.DeepAnalysisRun(
+            id=uuid4(),
+            campaign_id=self.campaign_id,
+            influencer_id=self.influencer_id,
+            status="completed",
+            cache_expires_at=datetime.now(UTC) + timedelta(minutes=30),
+            completed_at=datetime.now(UTC),
+        )
+        report = models.DeepAnalysisReport(
+            id=uuid4(),
+            run_id=run.id,
+            overall_grade="A",
+            audience_sentiment=80.0,
+            fake_engagement_risk=5.0,
+            recommendation="Strong audience sentiment supports partnership.",
+            confidence="High",
+            report_payload={"creator_summary": {"name": "Test Creator"}},
+        )
+        self.session._deep_runs = [run]
+        self.session._deep_reports = [report]
+
+        with patch("backend.pipeline.tasks.deep.deep_analyze.delay") as mock_delay:
+            resp = self.client.post(
+                f"/api/influencers/{self.influencer_id}/deep-analysis?campaign_id={self.campaign_id}&force=true"
+            )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["status"], "queued")
+        self.assertNotEqual(body["run_id"], str(run.id))
+        created = [o for o in self.session.added if isinstance(o, models.DeepAnalysisRun)]
+        self.assertEqual(len(created), 1)
+        mock_delay.assert_called_once()
+
     def test_post_queues_new_run_when_no_fresh_cache(self) -> None:
         with patch("backend.pipeline.tasks.deep.deep_analyze.delay") as mock_delay:
             resp = self.client.post(

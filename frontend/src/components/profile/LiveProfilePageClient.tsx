@@ -9,6 +9,7 @@ import ScoreBreakdownPanel from "@/components/profile/ScoreBreakdownPanel";
 import ProfileInteractions from "./ProfileInteractions";
 import {
   getCampaign,
+  getCampaignInfluencer,
   getInfluencerProfile,
   getInfluencerSafetyFlags,
   getInfluencerScores,
@@ -117,6 +118,7 @@ export default function LiveProfilePageClient({
   const [scores, setScores] = useState<Array<Record<string, unknown>>>([]);
   const [safetyFlags, setSafetyFlags] = useState<Array<Record<string, unknown>>>([]);
   const [verifications, setVerifications] = useState<Array<Record<string, unknown>>>([]);
+  const [campaignRecommendation, setCampaignRecommendation] = useState<InfluencerRecommendation | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -126,18 +128,15 @@ export default function LiveProfilePageClient({
     const load = async () => {
       try {
         setLoading(true);
-        const requests: Promise<unknown>[] = [
-          getInfluencerProfile(influencerId),
-          getInfluencerScores(influencerId),
-          getInfluencerSafetyFlags(influencerId),
-          getInfluencerVerifications(influencerId),
-        ];
-        if (campaignId) {
-          requests.push(getCampaign(campaignId));
-        }
-
-        const [profileData, scoreData, flagData, verificationData, campaignData] =
-          await Promise.all(requests);
+        const [profileData, scoreData, flagData, verificationData, campaignData, recommendationData] =
+          await Promise.all([
+            getInfluencerProfile(influencerId),
+            getInfluencerScores(influencerId),
+            getInfluencerSafetyFlags(influencerId),
+            getInfluencerVerifications(influencerId),
+            campaignId ? getCampaign(campaignId) : Promise.resolve(null),
+            campaignId ? getCampaignInfluencer(campaignId, influencerId) : Promise.resolve(null),
+          ]);
 
         if (cancelled) return;
 
@@ -145,7 +144,8 @@ export default function LiveProfilePageClient({
         setScores(scoreData as Array<Record<string, unknown>>);
         setSafetyFlags(flagData as Array<Record<string, unknown>>);
         setVerifications(verificationData as Array<Record<string, unknown>>);
-        setCampaign((campaignData as CampaignSummary | undefined) ?? null);
+        setCampaign((campaignData as CampaignSummary | null) ?? null);
+        setCampaignRecommendation((recommendationData as InfluencerRecommendation | null) ?? null);
         setError("");
       } catch (nextError) {
         if (!cancelled) {
@@ -496,6 +496,8 @@ export default function LiveProfilePageClient({
                   campaignId={campaignId}
                   className="btn btn-ghost"
                   label="Run deep analysis"
+                  deepAnalysisReady={campaignRecommendation?.deepAnalysisReady}
+                  deepAnalysisBlockReason={campaignRecommendation?.deepAnalysisBlockReason}
                 />
               ) : null
             }
