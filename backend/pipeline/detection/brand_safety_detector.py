@@ -16,14 +16,15 @@ from typing import Any
 from backend.pipeline.analysis.brand_safety_blocklist import scan_brand_safety
 
 
-def detect_brand_safety(text: str, source_url: str = "") -> dict[str, Any]:
-    """Run brand-safety keyword scanning and produce a detection payload.
+def brand_safety_detection_from_scan(result: dict[str, Any], source_url: str = "") -> dict[str, Any]:
+    """Build the detection-shaped payload from an existing :func:`scan_brand_safety` result.
 
-    The payload keeps the full set of block-list flags (category,
-    severity, source URL, matched context) so the explanation panel can
-    cite each evidence point.
+    Pure transform — does not re-scan. Use this when the caller already
+    has a scan result (e.g. the orchestrator, which also needs the raw
+    scan for cap/reason logic) to avoid running the block-list (and any
+    model classifier behind ``ROLE5_USE_MODEL_CLASSIFIERS``) twice over
+    the same text.
     """
-    result = scan_brand_safety(text, source_url)
     severe = any(flag.get("severity") == "severe" for flag in result.get("flags", []))
     return {
         "detector": "brand_safety",
@@ -37,3 +38,14 @@ def detect_brand_safety(text: str, source_url: str = "") -> dict[str, Any]:
         "risks": result.get("risks", {}),
         "source_url": result.get("source_url", source_url),
     }
+
+
+def detect_brand_safety(text: str, source_url: str = "") -> dict[str, Any]:
+    """Run brand-safety keyword scanning and produce a detection payload.
+
+    The payload keeps the full set of block-list flags (category,
+    severity, source URL, matched context) so the explanation panel can
+    cite each evidence point.
+    """
+    result = scan_brand_safety(text, source_url)
+    return brand_safety_detection_from_scan(result, source_url)

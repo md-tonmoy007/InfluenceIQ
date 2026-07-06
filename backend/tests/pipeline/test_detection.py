@@ -6,6 +6,7 @@ import pytest
 
 from backend.pipeline.detection import (
     DetectionCategory,
+    brand_safety_detection_from_scan,
     classify_detection,
     detect_bot_behavior,
     detect_brand_safety,
@@ -172,3 +173,14 @@ def test_risk_level_mapping(category: DetectionCategory, expected_risk_level: st
     from backend.pipeline.detection.detection_classifier import _risk_level_for
     assert _risk_level_for(category) == expected_risk_level
     assert "detection_category" in decision_dict
+
+
+def test_brand_safety_detection_from_scan_matches_detect_brand_safety() -> None:
+    from backend.pipeline.analysis.brand_safety_blocklist import scan_brand_safety
+
+    text = "posted a death threat and terror propaganda"
+    url = "https://source.test/x"
+    scan_result = scan_brand_safety(text, url)
+    from_scan = brand_safety_detection_from_scan(scan_result, url)
+    direct = detect_brand_safety(text, url)
+    assert from_scan == direct

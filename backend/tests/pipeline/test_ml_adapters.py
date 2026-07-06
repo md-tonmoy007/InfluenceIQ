@@ -179,3 +179,113 @@ def test_signal_score_with_provenance_falls_back_to_heuristic() -> None:
     assert used is False
     assert versions == {}
     assert score is not None
+
+
+def test_semantic_v2_exception_logs_warning(monkeypatch, caplog):
+    """When the engine raises, a warning is logged and the adapter returns (None, {})."""
+    from backend.pipeline.fusion.backends import ml_adapters as adp
+
+    adp.ML_USE_SEMANTIC_V2 = True
+    adp._ML_CACHE["module"] = "force_success"
+
+    fake_pkg = types.ModuleType("backend.ml")
+    fake_contracts = types.ModuleType("backend.ml.contracts")
+    fake_models = types.ModuleType("backend.ml.models")
+    fake_registry_mod = types.ModuleType("backend.ml.models.registry")
+    fake_semantic_v2_mod = types.ModuleType("backend.ml.semantic_v2")
+
+    class _FakeRequest:
+        pass
+
+    fake_contracts.TextInferenceRequest = _FakeRequest
+    fake_registry_mod.registry = lambda: None
+
+    class _RaisingEngine:
+        def __init__(self, registry):
+            pass
+
+        def score(self, request):
+            raise RuntimeError("simulated engine crash")
+
+    fake_semantic_v2_mod.SemanticEngineV2 = _RaisingEngine
+
+    monkeypatch.setitem(sys.modules, "backend.ml", fake_pkg)
+    monkeypatch.setitem(sys.modules, "backend.ml.contracts", fake_contracts)
+    monkeypatch.setitem(sys.modules, "backend.ml.models", fake_models)
+    monkeypatch.setitem(sys.modules, "backend.ml.models.registry", fake_registry_mod)
+    monkeypatch.setitem(sys.modules, "backend.ml.semantic_v2", fake_semantic_v2_mod)
+    adp.reset_import_cache()
+
+    score_value, versions = adp.semantic_v2_score(
+        {"bio": "test"}, candidate={"influencer_id": "i-1"},
+    )
+    assert score_value is None
+    assert versions == {}
+    assert any("semantic_v2_score failed" in rec.message for rec in caplog.records)
+
+
+def test_behavioral_v2_exception_logs_warning(monkeypatch, caplog):
+    """When the engine raises, a warning is logged and the adapter returns (None, {})."""
+    from backend.pipeline.fusion.backends import ml_adapters as adp
+
+    adp.ML_USE_BEHAVIORAL_V2 = True
+    adp._ML_CACHE["module"] = "force_success"
+
+    fake_pkg = types.ModuleType("backend.ml")
+    fake_contracts = types.ModuleType("backend.ml.contracts")
+    fake_behavioral_mod = types.ModuleType("backend.ml.behavioral")
+
+    class _FakeFeatures:
+        pass
+
+    fake_contracts.BehaviorFeatures = _FakeFeatures
+
+    class _RaisingEngine:
+        def score(self, request):
+            raise RuntimeError("simulated engine crash")
+
+    fake_behavioral_mod.BehavioralEngine = _RaisingEngine
+
+    monkeypatch.setitem(sys.modules, "backend.ml", fake_pkg)
+    monkeypatch.setitem(sys.modules, "backend.ml.contracts", fake_contracts)
+    monkeypatch.setitem(sys.modules, "backend.ml.behavioral", fake_behavioral_mod)
+    adp.reset_import_cache()
+
+    score_value, versions = adp.behavioral_v2_score(
+        {"posts_per_hour": 10}, candidate={"influencer_id": "i-1"},
+    )
+    assert score_value is None
+    assert versions == {}
+    assert any("behavioral_v2_score failed" in rec.message for rec in caplog.records)
+
+
+def test_explain_via_llm_exception_logs_warning(monkeypatch, caplog):
+    """When the explainer raises, a warning is logged and the adapter returns ''."""
+    import asyncio
+
+    from backend.pipeline.fusion.backends import ml_adapters as adp
+
+    adp.ML_USE_LLM_EXPLAINER = True
+    adp._ML_CACHE["module"] = "force_success"
+
+    fake_pkg = types.ModuleType("backend.ml")
+    fake_llm_mod = types.ModuleType("backend.ml.llm_explainer")
+
+    class _FakeRequest:
+        pass
+
+    fake_llm_mod.ExplainerRequest = _FakeRequest
+
+    class _RaisingExplainer:
+        def explain(self, request):
+            raise RuntimeError("simulated explainer crash")
+
+    fake_llm_mod.LLMExplainer = _RaisingExplainer
+
+    monkeypatch.setitem(sys.modules, "backend.ml", fake_pkg)
+    monkeypatch.setitem(sys.modules, "backend.ml.llm_explainer", fake_llm_mod)
+    adp.reset_import_cache()
+
+    result = adp.explain_via_llm("i-1", {"relevance": 80})
+    assert result == ""
+    assert any("explain_via_llm failed" in rec.message for rec in caplog.records)

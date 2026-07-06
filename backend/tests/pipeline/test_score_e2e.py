@@ -122,3 +122,10 @@ def test_score_event_has_contact_info() -> None:
 def test_signal_model_versions_is_dict() -> None:
     result = run_role4_pipeline(_make_candidate())
     assert isinstance(result.signal_model_versions, dict)
+
+
+def test_signal_model_versions_not_equal_to_signal_scores() -> None:
+    result = run_role4_pipeline(_make_candidate())
+    assert isinstance(result.signal_model_versions, dict)
+    assert isinstance(result.signal_scores, dict)
+    assert result.signal_model_versions != result.signal_scores

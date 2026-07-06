@@ -12,6 +12,11 @@ from backend.pipeline.fusion.trust import (
     calculate_role4_trust,
     grade_for_trust,
 )
+from backend.pipeline.fusion.versioning import (
+    MODEL_VERSION,
+    MODEL_VERSION_V2,
+    model_version_for,
+)
 
 
 def test_renormalized_fusion_partial_layer_set() -> None:
@@ -141,3 +146,17 @@ def test_grade_for_trust_all_bands() -> None:
 
 def test_renormalized_fusion_default_weights_sum_to_one() -> None:
     assert round(sum(DEFAULT_WEIGHTS.values()), 4) == 1.0
+
+
+def test_model_version_helper_v2_when_any_v2_layer_used() -> None:
+    """The model_version_for helper returns MODEL_VERSION_V2 when any
+    v2 adapter fires and MODEL_VERSION otherwise. The LLM explainer is
+    intentionally excluded from the bump."""
+    assert model_version_for(semantic_v2=False, behavioral_v2=False,
+                             graph_v2=False, bot_rings_v2=False) == MODEL_VERSION
+    assert model_version_for(semantic_v2=True, behavioral_v2=False,
+                             graph_v2=False, bot_rings_v2=False) == MODEL_VERSION_V2
+    assert model_version_for(semantic_v2=False, behavioral_v2=True,
+                             graph_v2=False, bot_rings_v2=False) == MODEL_VERSION_V2
+    assert MODEL_VERSION == "Role4-InfluenceScore-v1"
+    assert MODEL_VERSION_V2 == "Role4-InfluenceScore-v2"

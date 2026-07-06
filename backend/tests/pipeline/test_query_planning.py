@@ -9,10 +9,10 @@ from unittest.mock import MagicMock, patch
 from backend.pipeline.tasks.search import (
     _build_llm_query_prompt,
     _build_query_set,
+    _ensure_location_coverage,
     _ensure_platform_coverage,
     _generate_planned_queries,
     _jaccard_similarity,
-    _llm_filter_urls,
     _llm_generate_queries,
     _normalize_tokens,
     _primary_locations,
@@ -63,6 +63,23 @@ def test_primary_locations_empty() -> None:
     assert _primary_locations({}) == []
     assert _primary_locations({"locations": []}) == []
     assert _primary_locations({"locations": ["", "  "]}) == []
+
+
+def test_primary_locations_inferred_from_description_when_no_explicit_location() -> None:
+    """A location only mentioned in the free-text description is still picked up."""
+    payload = {"description": "I am launching my natural ghee, I need influencers in India for this"}
+    assert _primary_locations(payload) == ["India"]
+
+
+def test_primary_locations_explicit_takes_precedence_over_description() -> None:
+    """An explicit locations list wins even if the description mentions another country."""
+    payload = {"description": "launching in the USA too", "locations": ["singapore"]}
+    assert _primary_locations(payload) == ["Singapore"]
+
+
+def test_primary_locations_no_match_in_description() -> None:
+    """No known country mentioned anywhere -> empty list, no false positive."""
+    assert _primary_locations({"description": "protein powder for fitness enthusiasts"}) == []
 
 
 def test_primary_locations_mixed_case() -> None:
@@ -149,7 +166,7 @@ def test_build_llm_query_prompt_contains_description_and_location() -> None:
     prompt = _build_llm_query_prompt(payload)
     assert "Campaign: protein powder for fitness enthusiasts" in prompt
     assert "Target location(s): Singapore" in prompt
-    assert "start with the word 'top'" in prompt
+    assert "start with 'top' followed by a count" in prompt
 
 
 def test_build_llm_query_prompt_no_location() -> None:
@@ -203,6 +220,70 @@ def test_dedupe_queries_threshold() -> None:
 def test_dedupe_queries_empty_input() -> None:
     """Empty list returns empty list."""
     assert dedupe_queries([]) == []
+
+
+# ---------------------------------------------------------------------------
+# _ensure_location_coverage
+# ---------------------------------------------------------------------------
+
+
+def test_location_coverage_appends_missing() -> None:
+    """Queries missing the target location get it appended."""
+    queries = ["top 10 food influencers youtube tiktok", "top 20 cooking influencers"]
+    result = _ensure_location_coverage(queries, ["India"])
+    assert all("india" in q.lower() for q in result)
+
+
+def test_location_coverage_already_present_unchanged() -> None:
+    """A query that already mentions the location is left untouched."""
+    queries = ["top 10 food influencers in India"]
+    result = _ensure_location_coverage(queries, ["India"])
+    assert result == queries
+
+
+def test_location_coverage_no_locations_no_change() -> None:
+    """No target locations -> queries pass through unchanged."""
+    queries = ["top 10 food influencers"]
+    assert _ensure_location_coverage(queries, []) == queries
+
+
+def test_location_coverage_multiple_locations_any_match_counts() -> None:
+    """A query mentioning any one of several target locations is left alone."""
+    queries = ["top 10 food influencers in Kuala Lumpur", "top 20 cooking influencers"]
+    result = _ensure_location_coverage(queries, ["Singapore", "Kuala Lumpur"])
+    assert result[0] == queries[0]
+    assert "singapore" in result[1].lower()
+
+
+def test_generate_planned_queries_forces_location_into_llm_output() -> None:
+    """Even if the LLM ignores the location instruction, the location is forced in."""
+    payload = {"description": "natural ghee", "locations": ["india"]}
+    with patch(
+        "backend.pipeline.tasks.search._llm_generate_queries",
+        return_value=[
+            "top 10 food influencers youtube tiktok",
+            "top 20 cooking influencers",
+            "top 50 healthy eating influencers",
+        ],
+    ):
+        queries = _generate_planned_queries(payload)
+    assert all("india" in q.lower() for q in queries)
+
+
+def test_generate_planned_queries_forces_location_from_description_only() -> None:
+    """The reported bug: location only in free-text description, no explicit field."""
+    payload = {"description": "I am launching my natural ghee, I need influencers in India for this"}
+    with patch(
+        "backend.pipeline.tasks.search._llm_generate_queries",
+        return_value=[
+            "top 10 food influencers youtube tiktok",
+            "top 20 cooking influencers",
+            "top 50 healthy eating influencers",
+            "top 10 Ayurveda influencers",
+        ],
+    ):
+        queries = _generate_planned_queries(payload)
+    assert all("india" in q.lower() for q in queries)
 
 
 # ---------------------------------------------------------------------------
@@ -334,128 +415,3 @@ def test_normalize_tokens() -> None:
     """Token normalization works correctly."""
     assert _normalize_tokens("Hello World!") == {"hello", "world"}
     assert _normalize_tokens("") == set()
-
-
-# ---------------------------------------------------------------------------
-# _llm_filter_urls — fail-closed URL filtering
-# ---------------------------------------------------------------------------
-
-
-def _sample_results() -> list[dict]:
-    return [
-        {"url": "https://example.com/creator1", "title": "Creator 1", "snippet": "bio"},
-        {"url": "https://example.com/creator2", "title": "Creator 2", "snippet": "bio"},
-        {"url": "https://example.com/product", "title": "Buy now", "snippet": "shop"},
-    ]
-
-
-@patch("backend.pipeline.tasks.search._flag", return_value=False)
-def test_url_filter_flag_off_rejects_all(mock_flag: MagicMock) -> None:
-    """When the LLM flag is off, every result is rejected with `llm_disabled`."""
-    results = _sample_results()
-    accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-    assert accepted == []
-    assert len(rejected) == len(results)
-    assert all(r["reason"] == "llm_disabled" for r in rejected)
-
-
-@patch("backend.pipeline.tasks.search._flag", return_value=True)
-def test_url_filter_registry_unavailable_rejects_all(mock_flag: MagicMock) -> None:
-    """When the registry has no usable LLM backend, reject with `llm_unavailable`."""
-    mock_registry = MagicMock()
-    mock_registry.resolve_name.return_value = "llm"
-    mock_registry.get.return_value = None
-
-    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
-        results = _sample_results()
-        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-    assert accepted == []
-    assert len(rejected) == len(results)
-    assert all(r["reason"] == "llm_unavailable" for r in rejected)
-
-
-@patch("backend.pipeline.tasks.search._flag", return_value=True)
-def test_url_filter_predict_raises_rejects_all(mock_flag: MagicMock) -> None:
-    """When predict_text raises, reject everything with `llm_error`."""
-    mock_llm = MagicMock()
-    mock_llm.predict_text.side_effect = RuntimeError("boom")
-
-    mock_registry = MagicMock()
-    mock_registry.resolve_name.return_value = "llm"
-    mock_registry.get.return_value = mock_llm
-
-    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
-        results = _sample_results()
-        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-    assert accepted == []
-    assert len(rejected) == len(results)
-    assert all(r["reason"] == "llm_error" for r in rejected)
-
-
-@patch("backend.pipeline.tasks.search._flag", return_value=True)
-def test_url_filter_stub_response_rejects_all(mock_flag: MagicMock) -> None:
-    """A stub or empty LLM response is treated as a failed call (`llm_error`)."""
-    mock_llm = MagicMock()
-    mock_llm.predict_text.return_value = "[stub: no backend configured]"
-
-    mock_registry = MagicMock()
-    mock_registry.resolve_name.return_value = "llm"
-    mock_registry.get.return_value = mock_llm
-
-    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
-        results = _sample_results()
-        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-    assert accepted == []
-    assert all(r["reason"] == "llm_error" for r in rejected)
-
-
-@patch("backend.pipeline.tasks.search._flag", return_value=True)
-def test_url_filter_subsets_selection(mock_flag: MagicMock) -> None:
-    """A successful LLM call selects a subset; the rest are `not_selected`."""
-    selected = ["https://example.com/creator1", "https://example.com/creator2"]
-    mock_llm = MagicMock()
-    mock_llm.predict_text.return_value = '["https://example.com/creator1", "https://example.com/creator2"]'
-
-    mock_registry = MagicMock()
-    mock_registry.resolve_name.return_value = "llm"
-    mock_registry.get.return_value = mock_llm
-
-    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
-        results = _sample_results()
-        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-
-    assert len(accepted) == 2
-    assert {r["url"] for r in accepted} == set(selected)
-    assert len(rejected) == 1
-    assert rejected[0]["url"] == "https://example.com/product"
-    assert rejected[0]["reason"] == "not_selected"
-
-
-@patch("backend.pipeline.tasks.search._flag", return_value=True)
-def test_url_filter_empty_selection_rejects_all(mock_flag: MagicMock) -> None:
-    """An empty LLM selection now rejects everything as `not_selected`.
-
-    This is the behavioral flip worth a dedicated regression: previously
-    an empty selection fell back to returning all results fail-open.
-    """
-    mock_llm = MagicMock()
-    mock_llm.predict_text.return_value = "[]"
-
-    mock_registry = MagicMock()
-    mock_registry.resolve_name.return_value = "llm"
-    mock_registry.get.return_value = mock_llm
-
-    with patch("backend.ml.models.registry.registry", return_value=mock_registry):
-        results = _sample_results()
-        accepted, rejected = _llm_filter_urls(results, {"description": "x"})
-
-    assert accepted == []
-    assert len(rejected) == len(results)
-    assert all(r["reason"] == "not_selected" for r in rejected)
-
-
-def test_url_filter_empty_input_returns_empty() -> None:
-    """An empty result list short-circuits cleanly."""
-    accepted, rejected = _llm_filter_urls([], {"description": "x"})
-    assert accepted == []
-    assert rejected == []

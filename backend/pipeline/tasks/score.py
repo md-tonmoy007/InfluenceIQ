@@ -7,10 +7,12 @@ import os
 from uuid import UUID, uuid4
 
 from backend.core.celery.app import celery_app
-
 from backend.core.database import models
 from backend.pipeline.analysis.brand_safety_blocklist import scan_brand_safety
-from backend.pipeline.candidate.builder import build_influencer_candidate, persist_candidate_snapshot
+from backend.pipeline.candidate.builder import (
+    build_influencer_candidate,
+    persist_candidate_snapshot,
+)
 from backend.pipeline.fusion.backends.ml_adapters import explain_via_llm
 from backend.pipeline.fusion.weights import campaign_weights_to_trust_weights
 from backend.pipeline.orchestrator.pipeline import run_role4_pipeline
@@ -108,7 +110,7 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
         score_row.scoring_weights = campaign_context.get("positive_weights")
         score_row.grade = result.grade
         score_row.trust_caps = trust_caps if isinstance(trust_caps := (result.analysis.get("trust") or {}).get("caps"), list) else []
-        score_row.model_versions = signal_scores
+        score_row.model_versions = result.signal_model_versions or {}
         score_row.explanation_payload = {
             "summary": result.score_event.get("explanation"),
             "positive_reasons": result.positive_reasons,

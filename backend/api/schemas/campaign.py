@@ -14,6 +14,7 @@ class CampaignWeights(BaseModel):
     engagement: float = Field(default=0.20, ge=0.0, le=1.0)
     sentiment: float = Field(default=0.10, ge=0.0, le=1.0)
     brand_safety: float = Field(default=0.10, ge=0.0, le=1.0)
+    source_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def validate_weights_sum(self) -> CampaignWeights:
@@ -23,6 +24,7 @@ class CampaignWeights(BaseModel):
             + self.engagement
             + self.sentiment
             + self.brand_safety
+            + self.source_confidence
         )
         if not (0.99 <= weights_sum <= 1.01):
             raise ValueError(f"Custom weights must sum to 1.0 (currently {weights_sum})")

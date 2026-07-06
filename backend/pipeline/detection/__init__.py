@@ -25,7 +25,10 @@ values, thresholded reasons, and the raw 0-100 risk score so the
 from __future__ import annotations
 
 from backend.pipeline.detection.bot_behavior_detector import detect_bot_behavior
-from backend.pipeline.detection.brand_safety_detector import detect_brand_safety
+from backend.pipeline.detection.brand_safety_detector import (
+    brand_safety_detection_from_scan,
+    detect_brand_safety,
+)
 from backend.pipeline.detection.coordinated_ring_detector import detect_coordinated_engagement
 from backend.pipeline.detection.detection_classifier import (
     DetectionCategory,
@@ -38,6 +41,7 @@ from backend.pipeline.detection.fake_follower_detector import detect_fake_follow
 __all__ = [
     "DetectionCategory",
     "DetectionDecision",
+    "brand_safety_detection_from_scan",
     "classify_detection",
     "detect_brand_safety",
     "detect_bot_behavior",

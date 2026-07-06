@@ -119,11 +119,100 @@ def _ensure_platform_coverage(queries: list[str],
     return result
 
 
+_INFERABLE_LOCATIONS: dict[str, str] = {
+    "india": "in",
+    "united states": "us",
+    "usa": "us",
+    "united kingdom": "gb",
+    "singapore": "sg",
+    "malaysia": "my",
+    "indonesia": "id",
+    "philippines": "ph",
+    "vietnam": "vn",
+    "thailand": "th",
+    "australia": "au",
+    "canada": "ca",
+    "united arab emirates": "ae",
+    "uae": "ae",
+    "saudi arabia": "sa",
+    "nigeria": "ng",
+    "south africa": "za",
+    "brazil": "br",
+    "mexico": "mx",
+    "germany": "de",
+    "france": "fr",
+    "spain": "es",
+    "italy": "it",
+    "japan": "jp",
+    "south korea": "kr",
+    "china": "cn",
+    "pakistan": "pk",
+    "bangladesh": "bd",
+}
+
+
+def _infer_locations_from_description(description: str, limit: int = 2) -> list[str]:
+    """Best-effort location detection from the free-text description.
+
+    Campaigns aren't always created with the structured "Target locations"
+    field filled in — a brand may just type "influencers in India" into the
+    description and never touch the locations field. When no explicit
+    location is set, scan the description for a known country name so
+    location targeting still kicks in instead of silently doing nothing.
+    Deliberately excludes ambiguous short aliases ("us", "uk") that risk
+    false positives against ordinary English words.
+    """
+    if not description:
+        return []
+    normalized = description.lower()
+    seen_codes: set[str] = set()
+    found: list[str] = []
+    for name, code in _INFERABLE_LOCATIONS.items():
+        if code in seen_codes:
+            continue
+        if re.search(rf"\b{re.escape(name)}\b", normalized):
+            found.append(name.title())
+            seen_codes.add(code)
+        if len(found) >= limit:
+            break
+    return found
+
+
 def _primary_locations(payload: dict[str, Any], limit: int = 2) -> list[str]:
-    """Return up to *limit* cleaned, title-cased location names."""
+    """Return up to *limit* cleaned, title-cased location names.
+
+    Falls back to :func:`_infer_locations_from_description` when the
+    campaign has no explicit ``locations`` set.
+    """
     raw = payload.get("locations") or []
     cleaned = [str(loc).strip() for loc in raw if str(loc).strip()]
-    return [loc.title() if loc.islower() or loc.isupper() else loc for loc in cleaned[:limit]]
+    explicit = [loc.title() if loc.islower() or loc.isupper() else loc for loc in cleaned[:limit]]
+    if explicit:
+        return explicit
+    return _infer_locations_from_description(str(payload.get("description") or ""), limit=limit)
+
+
+def _ensure_location_coverage(queries: list[str], locations: list[str]) -> list[str]:
+    """Force every query to mention a target location, when one is given.
+
+    A campaign's location is a hard targeting constraint, not a nice-to-have —
+    if the caller says "India", every returned query must mention it so
+    downstream search/scoring doesn't surface influencers from elsewhere.
+    Any query (deterministic or LLM-generated) that doesn't already mention
+    one of the target locations gets the primary one appended.
+    """
+    if not locations:
+        return queries
+    primary = locations[0]
+    location_names = {loc.lower() for loc in locations}
+    result = []
+    for query in queries:
+        query_lower = query.lower()
+        if any(loc in query_lower for loc in location_names):
+            result.append(query)
+        else:
+            result.append(f"{query} in {primary}")
+    return result
 
 
 def _top_query(description: str, *, location: str | None = None) -> str:
@@ -216,102 +305,19 @@ def _build_llm_query_prompt(payload: dict[str, Any]) -> str:
         f"Campaign: {description or '(not specified)'}\n"
         f"Target location(s): {location_str}\n"
         f"Preferred platforms: {platform_str}\n\n"
-        "Every query must start with the word 'top'. If a target location "
-        "is given, most queries should include it via 'in {location}'; if "
-        "none is given, do not invent one.\n"
+        "Phrase every query like a 'listicle' search, e.g. 'top 10 skincare "
+        "influencers in Dubai' or 'top 20 fitness influencers in California' — "
+        "start with 'top' followed by a count (10, 20, or 50), then the niche/"
+        "category derived from the campaign description, then 'influencer(s)'. "
+        "If the campaign targets a broad/general audience rather than a specific "
+        "niche, include one or more general queries too, e.g. 'top 50 popular "
+        "influencers in India', without inventing a niche that isn't there. "
+        "If a target location is given, it is a hard requirement: EVERY single "
+        "query you return must include it via 'in {location}', with no "
+        "exceptions — a query missing the location is useless for this "
+        "campaign. If no location is given, do not invent one.\n"
         "Return ONLY a JSON array of strings, no other text."
     )
-
-
-def _build_url_filter_prompt(results: list[dict], payload: dict[str, Any]) -> str:
-    description = (payload.get("description") or "").strip()
-    platforms = payload.get("preferred_platforms") or []
-    platform_str = ", ".join(platforms) if platforms else "any"
-
-    lines = [
-        "You are a research assistant selecting web pages that are likely to contain "
-        "influencer or creator profile information relevant to the campaign below.\n",
-        f"Campaign: {description or '(not specified)'}",
-        f"Preferred platforms: {platform_str}\n",
-        "Search results (index | url | title | snippet):",
-    ]
-    for i, r in enumerate(results):
-        snippet = (r.get("snippet") or "")[:120].replace("\n", " ")
-        lines.append(f"  {i} | {r.get('url', '')} | {r.get('title', '')} | {snippet}")
-
-    lines += [
-        "",
-        "Select ONLY the URLs that are likely to contain information about specific "
-        "influencers, creators, or content creators relevant to this campaign.",
-        "INCLUDE: influencer/creator profiles, bio pages, interview articles, creator "
-        "directories, social media pages, industry expert listings.",
-        "EXCLUDE: e-commerce product pages, brand news, generic informational articles, "
-        "search-result index pages, ads, wikis unrelated to people.",
-        "Return ONLY a JSON array of the selected URL strings, no other text.",
-    ]
-    return "\n".join(lines)
-
-
-_REJECT_REASONS = {
-    "llm_disabled": "LLM filtering is off",
-    "llm_unavailable": "LLM backend unavailable",
-    "llm_error": "LLM call failed",
-    "not_selected": "Not selected by LLM as influencer-relevant",
-}
-
-
-def _llm_filter_urls(
-    results: list[dict], payload: dict[str, Any]
-) -> tuple[list[dict], list[dict]]:
-    """Split *results* into (accepted, rejected) using the LLM relevance filter.
-
-    Fails **closed**: whenever the LLM path is off, unavailable, or errors,
-    every result is rejected rather than silently passed through to
-    extraction. Each rejected dict gains a ``"reason"`` key (see
-    :data:`_REJECT_REASONS`) so callers can persist/display *why*.
-    """
-    if not results:
-        return [], []
-
-    def _reject_all(reason: str) -> tuple[list[dict], list[dict]]:
-        return [], [{**r, "reason": reason} for r in results]
-
-    if not _flag("AI_AGENT_LLM_QUERY_PLANNING"):
-        return _reject_all("llm_disabled")
-
-    try:
-        from backend.ml.contracts import TextInferenceRequest  # noqa: F401
-        from backend.ml.models.registry import registry
-
-        reg = registry()
-        llm_backend = reg.get(reg.resolve_name("llm"))
-        if llm_backend is None or not hasattr(llm_backend, "predict_text"):
-            return _reject_all("llm_unavailable")
-
-        prompt = _build_url_filter_prompt(results, payload)
-        text = _run_predict(
-            llm_backend.predict_text(
-                prompt, max_tokens=512, temperature=0.1, model=_query_model_override()
-            )
-        )
-        if not text or text.startswith("[stub:"):
-            return _reject_all("llm_error")
-
-        import json
-        selected_urls: set[str] = set(json.loads(_strip_code_fence(text)))
-    except Exception as exc:
-        log.warning("llm_filter_urls failed, rejecting all results: %s", exc)
-        return _reject_all("llm_error")
-
-    accepted = [r for r in results if r.get("url") in selected_urls]
-    rejected = [
-        {**r, "reason": "not_selected"} for r in results if r.get("url") not in selected_urls
-    ]
-    log.info(
-        "llm_filter_urls accepted=%d rejected=%d of total=%d",
-        len(accepted), len(rejected), len(results),
-    )
-    return accepted, rejected
 
 
 @celery_app.task(name="backend.pipeline.tasks.search.generate_queries", bind=True, max_retries=2)
@@ -328,8 +334,10 @@ def generate_queries(self, campaign_id: str) -> dict:
         queries = _generate_planned_queries(payload)
         set_phase(campaign_id, phase="query_generation", urls_discovered=len(queries))
 
+    locations = _primary_locations(payload)
+    primary_location = locations[0] if locations else None
     for index, query in enumerate(queries):
-        execute_search.delay(campaign_id, query, index)
+        execute_search.delay(campaign_id, query, index, primary_location)
 
     publish_event(
         campaign_id,
@@ -352,25 +360,29 @@ def _generate_planned_queries(payload: dict[str, Any]) -> list[str]:
     platform coverage.
     """
     platforms = payload.get("preferred_platforms") or []
+    locations = _primary_locations(payload)
     queries = _llm_generate_queries(payload)
     if queries is None:
         queries = _build_query_set(payload)
     queries = dedupe_queries(queries)
+    queries = _ensure_location_coverage(queries, locations)
     queries = _ensure_platform_coverage(queries, platforms)
     return queries[:5]
 
 
 @celery_app.task(name="backend.pipeline.tasks.search.execute_search", bind=True, max_retries=3)
-def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
-    """Run a single web search and materialise the results as ``CrawlSource`` rows."""
-    log.info("execute_search campaign_id=%s query=%r", campaign_id, query)
+def execute_search(self, campaign_id: str, query: str, index: int = 0, location: str | None = None) -> dict:
+    """Run a single web search and materialise the results as ``CrawlSource`` rows.
+
+    ``location`` (the campaign's primary target location, if any) is passed
+    to the search provider so results are geo-biased server-side (SerpApi
+    ``location``/``gl``, Brave ``country``) — on top of it already being
+    embedded in the query text by :func:`_ensure_location_coverage`.
+    """
+    log.info("execute_search campaign_id=%s query=%r location=%r", campaign_id, query, location)
     limit = 8
     try:
-        results = search_web(query, limit=limit)
-        with db_session() as session:
-            campaign = get_campaign(session, campaign_id)
-            _payload = campaign_query_payload(campaign)
-        accepted, rejected = _llm_filter_urls(results, _payload)
+        results = search_web(query, limit=limit, location=location)
     except Exception as exc:
         log.exception("search_web failed campaign_id=%s query=%r: %s", campaign_id, query, exc)
         publish_event(
@@ -388,9 +400,8 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
         raise
 
     created_ids: list[str] = []
-    rejected_urls: list[dict[str, str]] = []
     with db_session() as session:
-        for result in accepted:
+        for result in results:
             url = result.get("url")
             if not url:
                 continue
@@ -430,37 +441,6 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
                 if existing is not None:
                     created_ids.append(str(existing.id))
 
-        for result in rejected:
-            url = result.get("url")
-            if not url:
-                continue
-            existing = (
-                session.query(models.CrawlSource)
-                .filter(
-                    models.CrawlSource.campaign_id == campaign_id,
-                    models.CrawlSource.url == url,
-                )
-                .first()
-            )
-            if existing is not None:
-                # Already tracked (e.g. another query already surfaced this URL).
-                continue
-            reason = result.get("reason", "llm_error")
-            try:
-                session.add(models.CrawlSource(
-                    id=uuid4(),
-                    campaign_id=campaign_id,
-                    url=url,
-                    title=result.get("title"),
-                    relevance_score=result.get("relevance_score"),
-                    status="rejected",
-                    error_message=reason,
-                ))
-                session.flush()
-                rejected_urls.append({"url": url, "reason": reason})
-            except SQLAlchemyError:
-                session.rollback()
-
         refresh_campaign_status(session, campaign_id)
 
     publish_event(
@@ -472,7 +452,6 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
             index=index,
             result_count=len(created_ids),
             crawl_source_ids=created_ids,
-            rejected=rejected_urls,
         ).to_payload(),
     )
     set_phase(campaign_id, urls_discovered=len(created_ids))
@@ -487,7 +466,6 @@ def execute_search(self, campaign_id: str, query: str, index: int = 0) -> dict:
         "query": query,
         "index": index,
         "crawl_source_ids": created_ids,
-        "rejected": rejected_urls,
     }
 
 

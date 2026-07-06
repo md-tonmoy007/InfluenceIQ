@@ -18,8 +18,8 @@ from backend.pipeline.analysis.fake_engagement import analyze_fake_engagement
 from backend.pipeline.analysis.sentiment import analyze_sentiment
 from backend.pipeline.extraction.entities import extract_influencer_mentions
 from backend.pipeline.extraction.handles import normalize_profile_url
-from backend.pipeline.fusion.sub_scores import build_sub_scores
 from backend.pipeline.identity.resolver import resolve_candidates, resolve_identity_clusters
+from backend.pipeline.orchestrator.pipeline import run_role4_pipeline
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
@@ -175,8 +175,10 @@ class AnalysisTest(unittest.TestCase):
         self.assertTrue(any("fewer than 3 sources" in reason for reason in result["reasons"]))
 
     def test_sub_score_builder_produces_final_formula_inputs(self) -> None:
-        result = build_sub_scores(
+        result = run_role4_pipeline(
             {
+                "influencer_id": "test-001",
+                "canonical_name": "Test Coach",
                 "context": "Certified running coach focused on trail training and outdoor education.",
                 "professional_titles": ["coach"],
                 "credentials": ["Certified Running Coach"],
@@ -184,17 +186,19 @@ class AnalysisTest(unittest.TestCase):
                 "followers": 100_000,
                 "average_engagement": 5_000,
                 "data_source_count": 4,
+                "mentions": [],
             },
             {"description": "Outdoor fitness", "interests": ["trail", "running"]},
         )
 
-        self.assertEqual(
-            set(result["sub_scores"]),
-            {"relevance", "credibility", "engagement", "sentiment", "brand_safety", "data_source_count"},
-        )
-        for name in ("relevance", "credibility", "engagement", "sentiment", "brand_safety"):
-            self.assertGreaterEqual(result["sub_scores"][name], 0)
-            self.assertLessEqual(result["sub_scores"][name], 100)
+        self.assertIn("relevance", result.sub_scores)
+        self.assertIn("credibility", result.sub_scores)
+        self.assertIn("engagement_quality", result.sub_scores)
+        self.assertIn("sentiment", result.sub_scores)
+        self.assertIn("brand_safety", result.sub_scores)
+        for name in ("relevance", "credibility", "engagement_quality", "sentiment", "brand_safety"):
+            self.assertGreaterEqual(result.sub_scores[name], 0)
+            self.assertLessEqual(result.sub_scores[name], 100)
 
 
 if __name__ == "__main__":

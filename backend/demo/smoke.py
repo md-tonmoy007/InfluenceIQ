@@ -12,8 +12,8 @@ from backend.pipeline.tasks.extract import _llm_extract_handles, _normalize_llm_
 from backend.pipeline.tasks.search import (
     _flag,
     _generate_planned_queries,
-    _llm_filter_urls,
     _llm_generate_queries,
+    _primary_locations,
     _query_model_override,
 )
 
@@ -45,25 +45,21 @@ def run_query_generation(req: QueryGenRequest) -> dict[str, Any]:
 
 
 def run_search_filter(req: SearchFilterRequest) -> dict[str, Any]:
-    """Run a single SERP search and LLM URL filter without persisting."""
-    payload = req.model_dump(exclude={"query"})
-    raw_results = search_web(req.query, limit=10)
-    filtered_results = _llm_filter_urls(raw_results, payload)
+    """Run a single SERP search without persisting.
+
+    URL filtering now happens downstream, at profile-extraction time
+    (``is_profile_url``/``canonical_profile_url``), not at search time —
+    every search result is returned as-is.
+    """
+    locations = _primary_locations(req.model_dump())
+    raw_results = search_web(req.query, limit=10, location=locations[0] if locations else None)
     providers_used = list({r.get("provider", "unknown") for r in raw_results})
 
     return {
         "query": req.query,
         "serp_api_enabled": bool(settings.SERP_API_KEY),
-        "llm_filter_enabled": _flag("AI_AGENT_LLM_QUERY_PLANNING"),
-        "model_override": _query_model_override(),
         "providers_used": providers_used,
         "raw": {"count": len(raw_results), "results": raw_results},
-        "filtered": {
-            "count": len(filtered_results),
-            "kept": len(filtered_results),
-            "dropped": len(raw_results) - len(filtered_results),
-            "results": filtered_results,
-        },
     }
 
 

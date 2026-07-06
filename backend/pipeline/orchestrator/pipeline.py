@@ -30,9 +30,9 @@ from backend.pipeline.analysis.sentiment import analyze_sentiment
 from backend.pipeline.analysis.source_confidence import source_confidence_score
 from backend.pipeline.detection import (
     DetectionDecision,
+    brand_safety_detection_from_scan,
     classify_detection,
     detect_bot_behavior,
-    detect_brand_safety,
     detect_coordinated_engagement,
     detect_fake_comments,
     detect_fake_followers,
@@ -191,7 +191,7 @@ def run_role4_pipeline(candidate: dict[str, Any],
     # ---- Detection (Pipeline 3) ----
     safety_text = _brand_safety_text(candidate)
     safety_scan = scan_brand_safety(safety_text, str(candidate.get("source_url", "")))
-    safety = detect_brand_safety(safety_text, str(candidate.get("source_url", "")))
+    safety = brand_safety_detection_from_scan(safety_scan, str(candidate.get("source_url", "")))
     bot_detection = detect_bot_behavior(candidate)
     follower_detection = detect_fake_followers(candidate)
     comment_detection = detect_fake_comments(features=candidate, comments=comments)

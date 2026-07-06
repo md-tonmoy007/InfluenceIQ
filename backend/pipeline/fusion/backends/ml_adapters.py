@@ -42,9 +42,12 @@ the explainer actually produced text; callers should treat ``""`` as
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Feature flags — read once at import time. Cheap and deterministic.
@@ -173,7 +176,8 @@ def semantic_v2_score(features: dict[str, Any], *,
         )
         result = SemanticEngineV2(registry()).score(request)
         return round(float(result.semantic_score) * 100.0, 2), dict(result.model_versions)
-    except Exception:
+    except Exception as exc:
+        log.warning("semantic_v2_score failed, falling back to heuristic: %s", exc)
         return None, {}
 
 
@@ -220,7 +224,8 @@ def behavioral_v2_score(features: dict[str, Any], *,
         )
         result = BehavioralEngine().score(request)
         return round(float(result.behavior_score) * 100.0, 2), {k: str(v) for k, v in (result.model_version and {"behavior": result.model_version} or {}).items()}
-    except Exception:
+    except Exception as exc:
+        log.warning("behavioral_v2_score failed, falling back to heuristic: %s", exc)
         return None, {}
 
 
@@ -278,7 +283,8 @@ def explain_via_llm(influencer_id: str | int, factors: dict[str, float], *,
         )
         response = asyncio.run(LLMExplainer().explain(request))
         return str(getattr(response, "text", "") or "")
-    except Exception:
+    except Exception as exc:
+        log.warning("explain_via_llm failed, falling back to deterministic summary: %s", exc)
         return ""
 
 

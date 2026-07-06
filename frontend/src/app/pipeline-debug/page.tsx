@@ -16,13 +16,10 @@ type PipelineEvent = {
 
 type QueryItem = { index: number; text: string };
 
-type RejectedUrl = { url: string; reason: string };
-
 type SearchResult = {
   query: string;
   crawlSourceIds: string[];
   urls: string[];
-  rejected: RejectedUrl[];
 };
 
 type CrawlItem = {
@@ -79,14 +76,6 @@ const initials = (name: string) =>
 
 const logTypeClass = (type: string) => type.split(".")[0] ?? "info";
 
-const REJECT_REASON_LABELS: Record<string, string> = {
-  llm_disabled: "LLM off",
-  llm_unavailable: "LLM unavailable",
-  llm_error: "LLM error",
-  not_selected: "Not relevant (LLM)",
-};
-const rejectReasonLabel = (reason: string) => REJECT_REASON_LABELS[reason] ?? reason;
-
 const buildWsUrl = (campaignId: string, lastEventId = 0) => {
   if (!API_BASE_URL) return null;
   const base = API_BASE_URL.replace(/^http/, "ws").replace(/\/$/, "");
@@ -97,9 +86,7 @@ const summariseEvent = (type: string, payload: Record<string, unknown>): string 
   switch (type) {
     case "campaign.started":              return "status → running";
     case "query.generation.completed":    return `${payload.query_count ?? 0} queries generated`;
-    case "search.executed":               return `"${payload.query}" → ${payload.result_count ?? 0} accepted, ${
-      (payload.rejected as RejectedUrl[] | undefined)?.length ?? 0
-    } rejected`;
+    case "search.executed":               return `"${payload.query}" → ${payload.result_count ?? 0} results`;
     case "search.failed":                 return `"${payload.query}" failed: ${payload.error}`;
     case "page.fetched":                  return String(payload.url ?? "");
     case "content.extracted":             return String(payload.title || payload.url || "");
@@ -155,10 +142,9 @@ export default function PipelineDebugPage() {
 
       case "search.executed": {
         const ids = (payload.crawl_source_ids as string[] | undefined) ?? [];
-        const rejected = (payload.rejected as RejectedUrl[] | undefined) ?? [];
         setSearches(prev => [
           ...prev,
-          { query: String(payload.query ?? ""), crawlSourceIds: ids, urls: [], rejected },
+          { query: String(payload.query ?? ""), crawlSourceIds: ids, urls: [] },
         ]);
         break;
       }
@@ -410,23 +396,8 @@ export default function PipelineDebugPage() {
                           ))
                       }
                     </ul>
-                    {s.crawlSourceIds.length === 0 && s.rejected.length === 0 && (
+                    {s.crawlSourceIds.length === 0 && (
                       <div style={{ color: "#4a4e5a", fontSize: "11px" }}>No results</div>
-                    )}
-                    {s.rejected.length > 0 && (
-                      <>
-                        <div className="pdbg-search-query-label" style={{ marginTop: "8px" }}>
-                          Rejected ({s.rejected.length})
-                        </div>
-                        <ul className="pdbg-url-list">
-                          {s.rejected.map((r, j) => (
-                            <li key={j} className="pdbg-url-item rejected">
-                              <span className="pdbg-badge fail">{rejectReasonLabel(r.reason)}</span>
-                              {r.url}
-                            </li>
-                          ))}
-                        </ul>
-                      </>
                     )}
                   </div>
                 ))}
