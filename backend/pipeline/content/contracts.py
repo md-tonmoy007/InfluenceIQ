@@ -7,15 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
-SOCIAL_DOMAINS = {
-    "instagram.com": "instagram",
-    "youtube.com": "youtube",
-    "youtu.be": "youtube",
-    "tiktok.com": "tiktok",
-    "x.com": "x",
-    "twitter.com": "x",
-    "facebook.com": "facebook",
-}
+from backend.pipeline.extraction.handles import platform_for_url as _canonical_platform_for_url
 
 
 @dataclass
@@ -83,11 +75,7 @@ def domain_for_url(url: str) -> str:
 
 
 def platform_for_url(url: str) -> str:
-    domain = domain_for_url(url)
-    for social_domain, platform in SOCIAL_DOMAINS.items():
-        if domain == social_domain or domain.endswith(f".{social_domain}"):
-            return platform
-    return "web"
+    return _canonical_platform_for_url(url) or "web"
 
 
 def compact_number(value: str | int | float | None) -> int | None:

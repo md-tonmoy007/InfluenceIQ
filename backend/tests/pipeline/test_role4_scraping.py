@@ -160,16 +160,11 @@ class Role4ScrapingContractTest(unittest.TestCase):
         self.assertEqual(content["role4_candidate"]["average_engagement"], 5400)
         self.assertTrue(content["role4_candidate"]["verified"])
 
-    def test_fetch_url_routes_tiktok_and_x_profiles_to_platform_providers(self) -> None:
+    def test_fetch_url_routes_tiktok_to_platform_provider_and_x_falls_back_to_generic(self) -> None:
         tiktok_html = """
             <html><head><meta property="og:title" content="Maya Trails | TikTok">
             <meta name="description" content="Outdoor creator with 88K Followers and 1.2M Likes"></head>
             <body>Verified</body></html>
-        """
-        x_html = """
-            <html><head><meta property="og:title" content="Maya Trails on X">
-            <meta name="description" content="Outdoor creator and gear reviewer"></head>
-            <body>88K Followers 300 Following Verified account</body></html>
         """
 
         with (
@@ -178,19 +173,23 @@ class Role4ScrapingContractTest(unittest.TestCase):
             patch("backend.pipeline.content.providers.tiktok.httpx.get", return_value=DummyResponse(tiktok_html)),
         ):
             tiktok_page = fetch_url("https://www.tiktok.com/@mayatrails")
+
+        # X/Twitter URLs no longer route through a platform provider — they fall
+        # through to the generic fetch path (scrape.do / httpx / fallback).
         with (
             patch("backend.pipeline.content.fetcher.get_cached_page", return_value=None),
             patch("backend.pipeline.content.fetcher.store_cached_page"),
-            patch("backend.pipeline.content.providers.x.httpx.get", return_value=DummyResponse(x_html)),
+            patch("backend.pipeline.content.fetcher.httpx.get") as mock_httpx,
         ):
+            mock_httpx.return_value = DummyResponse(
+                "<html><head><title>Maya Trails on X</title></head><body>88K Followers</body></html>"
+            )
             x_page = fetch_url("https://twitter.com/mayatrails")
 
         tiktok_content = extract_role4_content(tiktok_page)
-        x_content = extract_role4_content(x_page)
         self.assertEqual(tiktok_page["provider"], "tiktok_meta")
-        self.assertEqual(x_page["provider"], "x_meta")
         self.assertEqual(tiktok_content["role4_candidate"]["followers"], 88000)
-        self.assertEqual(x_content["role4_candidate"]["followers"], 88000)
+        self.assertNotEqual(x_page.get("provider"), "x_meta")
 
 
 if __name__ == "__main__":

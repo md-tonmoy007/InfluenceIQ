@@ -95,10 +95,6 @@ def fetch_platform_profile(url: str) -> dict[str, Any] | None:
         from backend.pipeline.content.providers.tiktok import fetch_tiktok_profile
 
         providers[platform] = fetch_tiktok_profile
-    elif platform == "x":
-        from backend.pipeline.content.providers.x import fetch_x_profile
-
-        providers[platform] = fetch_x_profile
 
     provider = providers.get(platform)
     if provider is None:

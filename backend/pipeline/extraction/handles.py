@@ -4,9 +4,9 @@ import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 PLATFORM_DOMAINS = {
-    "instagram.com": "instagram", "x.com": "x", "twitter.com": "x",
-    "tiktok.com": "tiktok", "youtube.com": "youtube", "youtu.be": "youtube",
-    "facebook.com": "facebook", "fb.com": "facebook", "linkedin.com": "linkedin",
+    "instagram.com": "instagram",
+    "tiktok.com": "tiktok",
+    "youtube.com": "youtube", "youtu.be": "youtube",
 }
 TRACKING_PARAMETERS = {"fbclid", "gclid", "igshid", "ref", "ref_src", "si", "lang"}
 HANDLE_PATTERN = re.compile(r"(?<![\w@])@([A-Za-z0-9._-]{2,50})")
@@ -49,13 +49,30 @@ _PROFILE_PATH_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
 }
 
+_INSTAGRAM_RESERVED_PATHS = {
+    "p", "reel", "reels", "tv", "stories", "explore", "accounts",
+    "direct", "about", "developer", "legal", "privacy", "web", "api",
+}
+
+_INSTAGRAM_USERNAME_RE = re.compile(r"^[\w.]{1,30}$")
+
 _WWW_PREFIXED_HOSTS = {"tiktok.com", "youtube.com"}
+
+
+def _is_instagram_profile_path(path: str) -> bool:
+    segments = [s for s in path.split("/") if s]
+    if len(segments) != 1 or segments[0].casefold() in _INSTAGRAM_RESERVED_PATHS:
+        return False
+    return bool(_INSTAGRAM_USERNAME_RE.match(segments[0]))
 
 
 def is_profile_url(url: str) -> bool:
     platform = platform_for_url(url)
     if platform is None:
         return False
+    if platform == "instagram":
+        path = urlsplit(_ensure_scheme(url)).path or "/"
+        return _is_instagram_profile_path(path)
     pattern = _PROFILE_PATH_PATTERNS.get(platform)
     if pattern is None:
         return True

@@ -6,12 +6,11 @@ import json
 import logging
 import os
 import re
-from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy.exc import IntegrityError
 
 from backend.core.celery.app import celery_app
-
 from backend.core.database import models
 from backend.pipeline.events import (
     IdentityAmbiguous,
@@ -36,9 +35,6 @@ _PLATFORM_BASE = {
     "instagram": "https://instagram.com/",
     "tiktok": "https://tiktok.com/@",
     "youtube": "https://youtube.com/@",
-    "twitter": "https://x.com/",
-    "x": "https://x.com/",
-    "linkedin": "https://linkedin.com/in/",
 }
 
 
@@ -51,7 +47,9 @@ def _build_handle_extract_prompt(text: str, url: str) -> str:
         "For each one found, extract:\n"
         "  name     — their real name or display name (string)\n"
         "  handle   — their @username including the @ symbol, or null if not stated\n"
-        "  platform — one of: instagram, tiktok, youtube, twitter, linkedin (string)\n"
+        "  platform — one of: instagram, tiktok, youtube (string). If the "
+        "creator's platform is anything else — Twitter/X, Facebook, LinkedIn, "
+        "etc. — omit them entirely, do not guess one of the three.\n"
         "  followers — follower/subscriber count as an integer if mentioned, else null\n\n"
         "Rules:\n"
         "- Include ONLY real people or named creator accounts\n"
@@ -78,7 +76,11 @@ def _llm_extract_handles(content: dict) -> list[dict] | None:
 
     try:
         from backend.ml.models.registry import registry
-        from backend.pipeline.tasks.search import _query_model_override, _run_predict, _strip_code_fence
+        from backend.pipeline.tasks.search import (
+            _query_model_override,
+            _run_predict,
+            _strip_code_fence,
+        )
 
         reg = registry()
         llm_backend = reg.get(reg.resolve_name("llm"))
@@ -141,9 +143,13 @@ def _normalize_llm_mentions(items: list[dict], source_url: str) -> list[dict]:
         followers = item.get("followers")
 
         username = handle.lstrip("@") if handle else re.sub(r"\s+", "", name.lower())
-        base = _PLATFORM_BASE.get(platform, "https://instagram.com/")
-        profile_url = f"{base}{username}" if username else ""
+        base = _PLATFORM_BASE.get(platform)
+        profile_url = f"{base}{username}" if (username and base) else ""
 
+        from backend.pipeline.extraction.handles import is_profile_url
+
+        if profile_url and not is_profile_url(profile_url):
+            profile_url = ""
         platforms = {platform: profile_url} if profile_url else {}
         evidence = sum(bool(v) for v in (name, handle, platforms))
         mentions.append({
@@ -170,6 +176,89 @@ def _normalize_llm_mentions(items: list[dict], source_url: str) -> list[dict]:
     return mentions
 
 
+def _build_profile_verify_prompt(candidates: list[dict], page_url: str, text: str) -> str:
+    excerpt = text[:4000]
+    listing = "\n".join(
+        f"{i}. platform={c['platform']} url={c['url']} "
+        f"associated_name={c.get('name') or '(unknown)'}"
+        for i, c in enumerate(candidates)
+    )
+    return (
+        "You are verifying social media links extracted from a scraped web "
+        "page. For each numbered candidate below, decide whether the URL is "
+        "genuinely that creator's/influencer's own YouTube, TikTok, or "
+        "Instagram profile page — as opposed to a brand/sponsor account, an "
+        "unrelated person's profile, a placeholder/example handle, or a link "
+        "that merely appears near the name coincidentally.\n\n"
+        f"Source page: {page_url}\n\n"
+        f"Page excerpt:\n{excerpt}\n\n"
+        f"Candidates:\n{listing}\n\n"
+        "Return ONLY a JSON array of the integer indices (from the list "
+        "above) that are genuine creator profile links. Return [] if none "
+        "qualify. Do not include an index for a URL you are not confident "
+        "about."
+    )
+
+
+def _verify_profile_mentions_llm(mentions: list[dict], content: dict) -> list[dict]:
+    """Drop platform links the LLM can't confirm are the creator's own profile.
+
+    Fails open to the structural filter already applied upstream
+    (``is_profile_url``): when the flag is off, the LLM backend is
+    unavailable, or the call errors, *mentions* is returned unchanged. Only
+    a successful LLM verdict removes a link — this never adds one back that
+    structural filtering already rejected.
+    """
+    if os.environ.get("AI_AGENT_LLM_PROFILE_VERIFY", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return mentions
+
+    candidates: list[dict] = []
+    for m_idx, mention in enumerate(mentions):
+        for platform, url in (mention.get("platforms") or {}).items():
+            if isinstance(url, str) and url.startswith("http"):
+                candidates.append({"mention_idx": m_idx, "platform": platform, "url": url, "name": mention.get("name")})
+    if not candidates:
+        return mentions
+
+    try:
+        from backend.ml.models.registry import registry
+        from backend.pipeline.tasks.search import (
+            _query_model_override,
+            _run_predict,
+            _strip_code_fence,
+        )
+
+        reg = registry()
+        llm_backend = reg.get(reg.resolve_name("llm"))
+        if llm_backend is None or not hasattr(llm_backend, "predict_text"):
+            return mentions
+
+        prompt = _build_profile_verify_prompt(candidates, str(content.get("url") or ""), str(content.get("content") or ""))
+        text = _run_predict(
+            llm_backend.predict_text(prompt, max_tokens=512, temperature=0.0, model=_query_model_override())
+        )
+        if not text or text.startswith("[stub:"):
+            return mentions
+
+        verified_indices = set(json.loads(_strip_code_fence(text)))
+    except Exception:
+        log.exception("_verify_profile_mentions_llm failed for %s", content.get("url"))
+        return mentions
+
+    rejected = [c for i, c in enumerate(candidates) if i not in verified_indices]
+    if not rejected:
+        return mentions
+
+    log.info("profile_verify rejected=%d of %d candidates url=%s", len(rejected), len(candidates), content.get("url"))
+    for candidate in rejected:
+        mention = mentions[candidate["mention_idx"]]
+        mention["platforms"] = {k: v for k, v in (mention.get("platforms") or {}).items() if v != candidate["url"]}
+        mention["profile_urls"] = [u for u in (mention.get("profile_urls") or []) if u != candidate["url"]]
+        if mention.get("profile_url") == candidate["url"]:
+            mention["profile_url"] = next(iter(mention["platforms"].values()), None)
+    return mentions
+
+
 @celery_app.task(name="backend.pipeline.tasks.extract.extract_influencers", bind=True, max_retries=2)
 def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: dict) -> dict:
     """Parse a content dict into influencer mentions and score each."""
@@ -181,6 +270,7 @@ def extract_influencers(self, campaign_id: str, crawl_source_id: str, content: d
             mentions = _normalize_llm_mentions(llm_items, source_url)
         else:
             mentions = extract_influencer_mentions(content)
+        mentions = _verify_profile_mentions_llm(mentions, content)
     except Exception as exc:
         log.exception("influencer extraction failed: %s", exc)
         with db_session() as session:
@@ -408,8 +498,9 @@ def resolve_identity_cluster(self, campaign_id: str) -> dict:
     )
 
     merge_count = 0
-    from backend.pipeline.identity.persistence import apply_merge
     from sqlalchemy.exc import IntegrityError
+
+    from backend.pipeline.identity.persistence import apply_merge
 
     for merge_event in result.get("merge_events", []):
         try:

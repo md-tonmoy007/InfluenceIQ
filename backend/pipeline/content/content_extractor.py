@@ -16,7 +16,7 @@ META_RE = re.compile(
 )
 LINK_RE = re.compile(r"href=[\"']([^\"']+)[\"']", re.IGNORECASE)
 SOCIAL_RE = re.compile(
-    r"https?://(?:www\.)?(?:instagram|youtube|youtu\.be|tiktok|x|twitter|facebook)\.com/[^\s\"'<>]+",
+    r"https?://(?:www\.)?(?:instagram|youtube|youtu\.be|tiktok)\.com/[^\s\"'<>]+",
     re.IGNORECASE,
 )
 HANDLE_RE = re.compile(r"(?<![\w.])@([A-Za-z0-9_.]{3,30})")
