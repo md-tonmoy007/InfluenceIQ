@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
+from sqlalchemy.exc import OperationalError
+
 from backend.core.celery.app import celery_app
 from backend.core.database import models
 from backend.pipeline.content.enrichment import (
@@ -56,11 +58,17 @@ def enrich_influencer_platforms_task(self, campaign_id: str, influencer_id: str)
     fetched = fetch_profiles_for_urls(urls)
 
     # Step 3: persist results — brief DB write session.
-    with db_session() as session:
-        result = persist_enrichment(session, influencer_uuid, fetched)
-        if result.get("profiles", 0) > 0:
-            compute_and_persist_embedding(session, influencer_uuid)
-        refresh_campaign_status(session, campaign_id)
+    try:
+        with db_session() as session:
+            result = persist_enrichment(session, influencer_uuid, fetched)
+            if result.get("profiles", 0) > 0:
+                compute_and_persist_embedding(session, influencer_uuid)
+            refresh_campaign_status(session, campaign_id)
+    except OperationalError as exc:
+        if "deadlock detected" not in str(exc).lower():
+            raise
+        log.warning("enrich_influencer_platforms: deadlock persisting influencer=%s, retrying", influencer_id)
+        raise self.retry(exc=exc, countdown=min(2 ** self.request.retries, 10))
 
     from backend.core.cache.pipeline_state import increment_pipeline_counter
 

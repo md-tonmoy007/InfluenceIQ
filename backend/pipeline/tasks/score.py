@@ -6,6 +6,8 @@ import logging
 import os
 from uuid import UUID, uuid4
 
+from sqlalchemy.exc import IntegrityError
+
 from backend.core.celery.app import celery_app
 from backend.core.database import models
 from backend.pipeline.analysis.brand_safety_blocklist import scan_brand_safety
@@ -72,63 +74,75 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
     if llm_explanation:
         result.score_event["explanation"] = llm_explanation
 
-    with db_session() as session:
-        existing_current = (
-            session.query(models.InfluencerScore)
-            .filter(
-                models.InfluencerScore.influencer_id == influencer_uuid,
-                models.InfluencerScore.campaign_id == campaign_uuid,
-                models.InfluencerScore.is_current.is_(True),
+    # Multiple crawl sources can mention the same influencer, so more than one
+    # enrich->score chain may run concurrently for the same (campaign, influencer)
+    # pair. The existing_current lookup below is a check-then-act race: two
+    # concurrent runs can both see no current row and both try to insert one,
+    # tripping uq_influencer_scores_current. Retry so the loser re-reads the
+    # now-committed current row and supersedes it instead of failing outright.
+    try:
+        with db_session() as session:
+            existing_current = (
+                session.query(models.InfluencerScore)
+                .filter(
+                    models.InfluencerScore.influencer_id == influencer_uuid,
+                    models.InfluencerScore.campaign_id == campaign_uuid,
+                    models.InfluencerScore.is_current.is_(True),
+                )
+                .first()
             )
-            .first()
-        )
-        score_row = models.InfluencerScore(
-            id=uuid4(),
-            influencer_id=influencer_uuid,
-            campaign_id=campaign_uuid,
-            is_current=True,
-            run_trigger="initial" if existing_current is None else "rescore",
-        )
-        score_row.final_score = float(sub_scores.get("role4_trust_score", 0.0))
-        score_row.relevance_score = float(sub_scores.get("relevance", 0.0))
-        score_row.credibility_score = float(sub_scores.get("credibility", 0.0))
-        score_row.engagement_score = float(sub_scores.get("engagement_quality", 0.0))
-        score_row.sentiment_score = float(sub_scores.get("sentiment", 0.0))
-        score_row.brand_safety_score = float(sub_scores.get("brand_safety", 0.0))
-        score_row.confidence_level = result.confidence
-        score_row.data_source_count = result.data_source_count
-        score_row.score_version = (
-            risk_score.get("model_version")
-            or "Role4-InfluenceScore-v1"
-        )
-        score_row.signal_scores = signal_scores
-        score_row.risk_category = risk_score.get("risk_category")
-        score_row.detection_category = detection.get("category") if isinstance(detection, dict) else None
-        score_row.positive_reasons = result.positive_reasons
-        score_row.negative_reasons = result.negative_reasons
-        score_row.source_provenance = sources_for_event
-        score_row.scoring_weights = campaign_context.get("positive_weights")
-        score_row.grade = result.grade
-        score_row.trust_caps = trust_caps if isinstance(trust_caps := (result.analysis.get("trust") or {}).get("caps"), list) else []
-        score_row.model_versions = result.signal_model_versions or {}
-        score_row.explanation_payload = {
-            "summary": result.score_event.get("explanation"),
-            "positive_reasons": result.positive_reasons,
-            "negative_reasons": result.negative_reasons,
-            "candidate_snapshot_id": str(snapshot_id),
-        }
-        session.add(score_row)
-        if existing_current is not None:
-            # superseded_by has no ORM relationship() (self-FK on a plain
-            # column), so the unit of work has no dependency edge telling it
-            # to insert score_row before this update — without the explicit
-            # flush the UPDATE can be emitted first and violate the FK.
-            session.flush()
-            existing_current.is_current = False
-            existing_current.superseded_by = score_row.id
-        refresh_campaign_status(session, campaign_id)
-        final_score = float(score_row.final_score or 0.0)
-        score_run_id = score_row.id
+            score_row = models.InfluencerScore(
+                id=uuid4(),
+                influencer_id=influencer_uuid,
+                campaign_id=campaign_uuid,
+                is_current=True,
+                run_trigger="initial" if existing_current is None else "rescore",
+            )
+            score_row.final_score = float(sub_scores.get("role4_trust_score", 0.0))
+            score_row.relevance_score = float(sub_scores.get("relevance", 0.0))
+            score_row.credibility_score = float(sub_scores.get("credibility", 0.0))
+            score_row.engagement_score = float(sub_scores.get("engagement_quality", 0.0))
+            score_row.sentiment_score = float(sub_scores.get("sentiment", 0.0))
+            score_row.brand_safety_score = float(sub_scores.get("brand_safety", 0.0))
+            score_row.confidence_level = result.confidence
+            score_row.data_source_count = result.data_source_count
+            score_row.score_version = (
+                risk_score.get("model_version")
+                or "Role4-InfluenceScore-v1"
+            )
+            score_row.signal_scores = signal_scores
+            score_row.risk_category = risk_score.get("risk_category")
+            score_row.detection_category = detection.get("category") if isinstance(detection, dict) else None
+            score_row.positive_reasons = result.positive_reasons
+            score_row.negative_reasons = result.negative_reasons
+            score_row.source_provenance = sources_for_event
+            score_row.scoring_weights = campaign_context.get("positive_weights")
+            score_row.grade = result.grade
+            score_row.trust_caps = trust_caps if isinstance(trust_caps := (result.analysis.get("trust") or {}).get("caps"), list) else []
+            score_row.model_versions = result.signal_model_versions or {}
+            score_row.explanation_payload = {
+                "summary": result.score_event.get("explanation"),
+                "positive_reasons": result.positive_reasons,
+                "negative_reasons": result.negative_reasons,
+                "candidate_snapshot_id": str(snapshot_id),
+            }
+            session.add(score_row)
+            if existing_current is not None:
+                # superseded_by has no ORM relationship() (self-FK on a plain
+                # column), so the unit of work has no dependency edge telling it
+                # to insert score_row before this update — without the explicit
+                # flush the UPDATE can be emitted first and violate the FK.
+                session.flush()
+                existing_current.is_current = False
+                existing_current.superseded_by = score_row.id
+            refresh_campaign_status(session, campaign_id)
+            final_score = float(score_row.final_score or 0.0)
+            score_run_id = score_row.id
+    except IntegrityError as exc:
+        if "uq_influencer_scores_current" not in str(exc):
+            raise
+        log.warning("score_influencer: concurrent score write for influencer=%s, retrying", influencer_id)
+        raise self.retry(exc=exc, countdown=min(2 ** self.request.retries, 10))
 
     severe_flags = [
         flag for flag in (result.analysis.get("brand_safety", {}).get("flags", []) or [])

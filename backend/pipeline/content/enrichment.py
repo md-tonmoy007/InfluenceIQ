@@ -282,7 +282,16 @@ def persist_enrichment(
     best_lifetime_views = 0
     primary_platform = influencer.primary_platform
 
-    for url, profile in fetched:
+    # Sort by (platform, profile_url) — the columns of uq_platform_profiles_platform_url —
+    # so concurrent tasks that touch overlapping profile rows always acquire row locks in
+    # the same global order. Without this, two tasks upserting the same URLs in different
+    # orders can each hold one row and wait on the other, deadlocking in Postgres.
+    ordered = sorted(
+        fetched,
+        key=lambda item: (item[1].platform, item[1].url) if item[1] is not None else ("", item[0]),
+    )
+
+    for url, profile in ordered:
         if profile is None:
             failed += 1
             coverage[url] = "unsupported"
