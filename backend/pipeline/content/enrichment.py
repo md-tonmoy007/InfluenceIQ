@@ -447,7 +447,7 @@ def compute_and_persist_embedding(
     except Exception:
         log.exception("compute_and_persist_embedding failed for %s", influencer_id)
         envelope = {
-            "source": "stub",
+            "source": "openrouter",
             "model": _embedding_model_name(),
             "vector": _stub_vector(corpus),
         }

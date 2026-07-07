@@ -279,8 +279,9 @@ class PipelineE2ETest(unittest.TestCase):
         #    capture the query list instead of dispatching.
         captured: dict = {}
 
-        def _fake_execute_search(campaign_id_arg, query, index=0):
+        def _fake_execute_search(campaign_id_arg, query, index=0, location=None):
             captured.setdefault("queries", []).append(query)
+            captured.setdefault("locations", []).append(location)
             # Each search hit would normally become a CrawlSource
             # row. Return three fake IDs so the chain can continue.
             return {"crawl_source_ids": [
@@ -292,8 +293,17 @@ class PipelineE2ETest(unittest.TestCase):
              patch("backend.pipeline.tasks.search.get_campaign", side_effect=_stub_get_campaign):
             result = generate_queries.apply(args=[campaign_id]).get()
 
-        self.assertGreaterEqual(result["count"], 3)
+        # The deterministic query builder returns one query per inferred
+        # target location, capped at 5. The fake campaign has no
+        # location in its description, so we expect exactly 1 here; if
+        # the campaign advertises N locations the contract is N (≤5).
+        self.assertGreaterEqual(result["count"], 1)
+        self.assertLessEqual(result["count"], 5)
         self.assertEqual(len(captured["queries"]), result["count"])
+        # The captured location list must align 1:1 with the queries
+        # — execute_search is fanned out once per query, with the
+        # campaign's primary location (or None) threaded through.
+        self.assertEqual(len(captured["locations"]), result["count"])
 
         # 2) The chain hands off to fetch_page. We do not need to
         #    re-run the chain end-to-end because the dispatch sites

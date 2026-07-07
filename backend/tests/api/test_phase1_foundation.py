@@ -69,13 +69,27 @@ class CampaignModelSurfaceTest(unittest.TestCase):
         except Exception as exc:
             self.skipTest(f"psycopg not available in test env: {exc}")
 
-    def test_unique_constraint_present(self) -> None:
+    def test_owner_product_niche_unique_constraint_absent(self) -> None:
+        """The DB-level unique constraint was intentionally dropped.
+
+        ``o1p2q3r4s5t6_relax_campaign_product_niche`` removed it because
+        campaigns now capture a free-text ``search_query`` instead of
+        separate product/niche fields. Dedup moved to the API layer
+        (Idempotency-Key header). We assert the constraint is gone so a
+        future migration that re-adds it without revisiting the
+        dedup contract trips this guard.
+        """
         from backend.core.database import models
 
         constraint_names = {
             c.name for c in models.Campaign.__table__.constraints
         }
-        self.assertIn("uq_campaigns_owner_product_niche", constraint_names)
+        self.assertNotIn("uq_campaigns_owner_product_niche", constraint_names)
+
+        # The relaxed migration also dropped the corresponding unique
+        # index, so the live schema should not have it either.
+        index_names = {ix.name for ix in models.Campaign.__table__.indexes}
+        self.assertNotIn("uq_campaigns_owner_product_niche", index_names)
 
     def test_new_indexes_present(self) -> None:
         from backend.core.database import models
