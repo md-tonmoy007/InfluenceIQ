@@ -717,7 +717,9 @@ def get_campaign_state(
     The response is augmented with ``last_event_id`` derived from the
     Redis event counter so a WebSocket client that just opened the
     connection can pass ``?last_event_id=N`` and receive only the
-    events it has not yet seen.
+    events it has not yet seen. Integer counters (URLs, influencers,
+    scores) are reconciled with the DB so a re-run that wiped the
+    Redis state hash does not leave the UI reporting zeros.
     """
     db_campaign = _get_owned_campaign(db, id, current_user)
     if isinstance(db, Session):
@@ -725,6 +727,8 @@ def get_campaign_state(
         db.flush()
         db.refresh(db_campaign)
     payload = get_campaign_state_payload(db_campaign, str(id))
+    db_counters = _derive_pipeline_counters_from_db(db, id)
+    _reconcile_state_with_db(payload, db_counters)
     payload["last_event_id"] = _get_last_event_id(str(id))
     return payload
 
@@ -848,6 +852,101 @@ def _get_last_event_id(campaign_id_str: str) -> int:
         return int(raw) if raw else 0
     except Exception:
         return 0
+
+
+def _derive_pipeline_counters_from_db(db: Session, campaign_id: UUID) -> dict[str, int]:
+    """Derive the integer pipeline counters from the durable DB state.
+
+    The Redis state hash tracks counters that the live Celery pipeline
+    bumps in real time, but it can drift after a re-run: the re-run
+    path calls :func:`clear_campaign_pipeline_cache` and wipes the
+    hash, then a partial re-run (e.g. only scoring) leaves it full of
+    zeros even though the DB still holds the previous run's sources
+    and influencers. The debug page's state strip and the shortlist
+    page's sidebar both read from the Redis state, so they end up
+    showing "0 influencers" while the shortlist's own influencer list
+    (read from the DB) shows 20.
+
+    This helper computes the DB-truth counters so the endpoint can
+    merge them in via ``max(redis, db)`` — never regressing the
+    in-flight Redis value, but filling in zeros the pipeline forgot
+    to bump on the current run.
+    """
+    total_sources = (
+        db.query(func.count(models.CrawlSource.id))
+        .filter(models.CrawlSource.campaign_id == campaign_id)
+        .scalar()
+        or 0
+    )
+    pending_sources = (
+        db.query(func.count(models.CrawlSource.id))
+        .filter(
+            models.CrawlSource.campaign_id == campaign_id,
+            models.CrawlSource.status.in_(["pending", "scraped"]),
+        )
+        .scalar()
+        or 0
+    )
+    failed_sources = (
+        db.query(func.count(models.CrawlSource.id))
+        .filter(
+            models.CrawlSource.campaign_id == campaign_id,
+            models.CrawlSource.status.in_(["failed", "rejected"]),
+        )
+        .scalar()
+        or 0
+    )
+
+    linked_influencer_count = (
+        db.query(func.count(func.distinct(models.CrawlSourceInfluencer.influencer_id)))
+        .join(
+            models.CrawlSource,
+            models.CrawlSource.id == models.CrawlSourceInfluencer.crawl_source_id,
+        )
+        .filter(models.CrawlSource.campaign_id == campaign_id)
+        .scalar()
+        or 0
+    )
+    if linked_influencer_count == 0:
+        linked_influencer_count = (
+            db.query(func.count(func.distinct(models.CrawlSource.influencer_id)))
+            .filter(
+                models.CrawlSource.campaign_id == campaign_id,
+                models.CrawlSource.influencer_id.isnot(None),
+            )
+            .scalar()
+            or 0
+        )
+
+    scored_count = (
+        db.query(func.count(func.distinct(models.InfluencerScore.influencer_id)))
+        .filter(models.InfluencerScore.campaign_id == campaign_id)
+        .scalar()
+        or 0
+    )
+
+    return {
+        "urls_discovered": int(total_sources),
+        "urls_scraped": max(0, int(total_sources - pending_sources - failed_sources)),
+        "urls_failed": int(failed_sources),
+        "influencers_found": int(linked_influencer_count),
+        "scores_computed": int(scored_count),
+    }
+
+
+def _reconcile_state_with_db(state: dict[str, Any], db_counters: dict[str, int]) -> None:
+    """Patch stale/zero Redis counters with the DB-truth values in place.
+
+    Uses ``max`` so a live in-flight Redis value is never regressed,
+    but a zero Redis value (e.g. cleared by a re-run) is back-filled
+    from the DB. Unknown keys in ``db_counters`` are ignored.
+    """
+    for key, db_value in db_counters.items():
+        try:
+            redis_value = int(state.get(key) or 0)
+        except (TypeError, ValueError):
+            redis_value = 0
+        state[key] = max(redis_value, db_value)
 
 
 @router.get("/{id}/influencers", response_model=dict[str, Any])

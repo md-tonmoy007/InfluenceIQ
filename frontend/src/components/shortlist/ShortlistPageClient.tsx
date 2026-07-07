@@ -22,7 +22,7 @@ import { useToast } from '@/components/ui/ToastProvider';
 import DeepAnalysisTrigger from '@/components/profile/DeepAnalysisTrigger';
 import CampaignBriefActions from '@/components/campaigns/CampaignBriefActions';
 import { canRerunCampaign } from '@/lib/campaignLifecycle';
-import { performQuickRerunWithConfirm } from '@/lib/rerunActions';
+import { performCancelAndRerun, performQuickRerunWithConfirm } from '@/lib/rerunActions';
 
 const platformGlyphs: Record<string, ReactNode> = {
   instagram: (
@@ -347,6 +347,7 @@ export default function ShortlistPageClient() {
   const [errorMessage, setErrorMessage] = useState(missingCampaignId ? 'No campaignId found in the URL. Submit a brief first to start the live pipeline.' : '');
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connected' | 'polling'>(missingCampaignId ? 'idle' : 'polling');
   const [bannerRerunning, setBannerRerunning] = useState(false);
+  const [cancelRerunning, setCancelRerunning] = useState(false);
   const lastEventIdRef = useRef(0);
 
   const clearRerunState = useCallback(() => {
@@ -715,6 +716,30 @@ export default function ShortlistPageClient() {
     }
   };
 
+  const handleCancelAndRerun = async () => {
+    if (cancelRerunning || !campaignId) return;
+    if (
+      !confirm(
+        'Cancel the current run and restart the search? Already-completed work is preserved and the new run usually finishes within a couple of minutes.'
+      )
+    ) {
+      return;
+    }
+    setCancelRerunning(true);
+    try {
+      await performCancelAndRerun(campaignId, router, toast, clearRerunState);
+    } catch (error) {
+      toast(
+        error instanceof Error
+          ? error.message
+          : 'Unable to cancel and restart the run.',
+        { type: 'error' }
+      );
+    } finally {
+      setCancelRerunning(false);
+    }
+  };
+
   const emptyListState = (() => {
     if (loadingInfluencers) {
       return {
@@ -810,10 +835,23 @@ export default function ShortlistPageClient() {
             <span className="pill">{liveBrief.budget}</span>
           </p>
         </div>
-        <span className="toast">
-          <span className="dot"></span>
-          {connectionStatus === 'connected' ? 'Live updates connected' : 'Polling fallback active'} · {titleize(stateStatus)} / {titleize(statePhase)}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <span className="toast">
+            <span className="dot"></span>
+            {connectionStatus === 'connected' ? 'Live updates connected' : 'Polling fallback active'} · {titleize(stateStatus)} / {titleize(statePhase)}
+          </span>
+          {stateStatus === 'running' && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={cancelRerunning}
+              onClick={() => void handleCancelAndRerun()}
+              title="Cancel the current run and restart the search"
+            >
+              {cancelRerunning ? 'Restarting…' : 'Restart search'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="top-actions">

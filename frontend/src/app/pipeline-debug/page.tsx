@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, getCampaignState, type CampaignState } from "@/lib/api";
 import "./pipeline-debug.css";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -76,6 +76,23 @@ const initials = (name: string) =>
 
 const logTypeClass = (type: string) => type.split(".")[0] ?? "info";
 
+const STATE_STATUS_CLASS: Record<string, string> = {
+  queued: "queued",
+  running: "running",
+  completed: "completed",
+  partial: "partial",
+  failed: "failed",
+  cancelled: "cancelled",
+};
+
+const stateStatusClass = (status?: string) =>
+  (status && STATE_STATUS_CLASS[status]) || "unknown";
+
+const titleize = (s?: string) =>
+  s ? s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "—";
+
+const n = (v: unknown): number => (typeof v === "number" ? v : 0);
+
 const buildWsUrl = (campaignId: string, lastEventId = 0) => {
   if (!API_BASE_URL) return null;
   const base = API_BASE_URL.replace(/^http/, "ws").replace(/\/$/, "");
@@ -111,6 +128,7 @@ export default function PipelineDebugPage() {
   const [inputId, setInputId]         = useState("");
   const [campaignId, setCampaignId]   = useState<string | null>(null);
   const [wsStatus, setWsStatus]       = useState<WsStatus>("idle");
+  const [state, setState]             = useState<CampaignState | null>(null);
 
   const [queries, setQueries]         = useState<QueryItem[]>([]);
   const [searches, setSearches]       = useState<SearchResult[]>([]);
@@ -132,6 +150,14 @@ export default function PipelineDebugPage() {
     const { type, payload, event_id, timestamp } = evt;
     if (event_id > 0) lastEventIdRef.current = Math.max(lastEventIdRef.current, event_id);
     pushLog(type, payload, event_id, timestamp);
+
+    if (type === "heartbeat") {
+      const hbState = payload.state;
+      if (hbState && typeof hbState === "object") {
+        setState(prev => ({ ...(prev ?? {}), ...(hbState as CampaignState) }));
+      }
+      return;
+    }
 
     switch (type) {
       case "query.generation.completed": {
@@ -246,6 +272,7 @@ export default function PipelineDebugPage() {
     setCrawls([]);
     setInfluencers([]);
     setLog([]);
+    setState(null);
 
     const url = buildWsUrl(id, 0);
     if (!url) { setWsStatus("error"); return; }
@@ -270,6 +297,7 @@ export default function PipelineDebugPage() {
     wsRef.current = null;
     setWsStatus("idle");
     setCampaignId(null);
+    setState(null);
   }, []);
 
   useEffect(() => {
@@ -286,6 +314,34 @@ export default function PipelineDebugPage() {
     const el = infScrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [influencers]);
+
+  useEffect(() => {
+    if (!campaignId) return;
+
+    const status = state?.status;
+    const isTerminal =
+      status === "completed" ||
+      status === "partial" ||
+      status === "failed" ||
+      status === "cancelled";
+    if (isTerminal) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const next = await getCampaignState(campaignId);
+        if (!cancelled) setState(next);
+      } catch {
+        /* keep last known state on transient errors */
+      }
+    };
+    void poll();
+    const interval = window.setInterval(poll, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [campaignId, state?.status]);
 
   useEffect(() => () => { wsRef.current?.close(); }, []);
 
@@ -352,6 +408,38 @@ export default function PipelineDebugPage() {
           </div>
         ) : (
           <>
+            {/* State strip — driven by polling + heartbeat so the page is
+                never blank when the pipeline is alive but quiet. */}
+            <div className="pdbg-state-strip">
+              <div className={`pdbg-state-badge ${stateStatusClass(state?.status)}`}>
+                <span className="pdbg-state-dot" />
+                {titleize(state?.status)}
+              </div>
+              <div className="pdbg-state-phase">
+                <span className="pdbg-state-label">Phase</span>
+                <span className="pdbg-state-value">{titleize(state?.phase)}</span>
+              </div>
+              <div className="pdbg-state-counters">
+                <span className="pdbg-state-counter">
+                  <span className="pdbg-state-label">URLs</span>
+                  <span className="pdbg-state-value">
+                    {n(state?.urls_scraped)}/{n(state?.urls_discovered)}
+                  </span>
+                </span>
+                <span className="pdbg-state-counter">
+                  <span className="pdbg-state-label">Influencers</span>
+                  <span className="pdbg-state-value">{n(state?.influencers_found)}</span>
+                </span>
+                <span className="pdbg-state-counter">
+                  <span className="pdbg-state-label">Scores</span>
+                  <span className="pdbg-state-value">{n(state?.scores_computed)}</span>
+                </span>
+              </div>
+              {state?.partial_results_available && state?.status !== "completed" && (
+                <div className="pdbg-state-partial">partial results ready</div>
+              )}
+            </div>
+
             {/* Panel 1 — LLM Queries */}
             <div className="pdbg-panel">
               <div className="pdbg-panel-head">
