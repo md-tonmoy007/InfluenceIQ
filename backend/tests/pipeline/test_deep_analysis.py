@@ -527,5 +527,28 @@ class ConfidenceNoDataTests(unittest.TestCase):
         self.assertIn("limited comment volume", result["reasoning"])
 
 
+class DetachedInstanceRegressionTests(unittest.TestCase):
+    """Regression: between-stage ``publish_event`` calls must not access
+    attributes on a ``DeepAnalysisRun`` ORM instance after its session
+    has closed (DetachedInstanceError). The values are read while the
+    session is still open and stored in locals."""
+
+    def test_run_attribute_access_pattern(self) -> None:
+        # The fix is structural — we capture ``run.collected_comment_count``
+        # into a local inside the ``with db_session()`` block before
+        # ``publish_event`` runs after the block. This test documents
+        # the contract by reading the relevant lines of ``deep.py``.
+        import inspect
+
+        from backend.pipeline.tasks import deep
+
+        source = inspect.getsource(deep.deep_analyze)
+        # The publish_event for comments_collected must reference a local,
+        # not ``run.collected_comment_count`` (which is detached).
+        self.assertIn("comments_total = int(run.collected_comment_count or 0)", source)
+        # And the publish_event must use that local.
+        self.assertIn("comment_count=comments_total", source)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -101,6 +101,7 @@ def deep_analyze(
         )
 
         # --- Stage 2: collect_post_comments ---
+        comments_total = 0
         with db_session() as session:
             run = session.get(models.DeepAnalysisRun, run_uuid)
             if run is None:
@@ -111,12 +112,15 @@ def deep_analyze(
             social = _merge_coverage_with_comments(social, comments.get("platform_comments", {}))
             run.coverage_summary = social["coverage"]
             run.current_stage = "comments"
+            # Capture before the session closes — accessing the attribute
+            # after the with-block raises DetachedInstanceError.
+            comments_total = int(run.collected_comment_count or 0)
         publish_event(
             campaign_id,
             "deep_analysis.comments_collected",
             run_id=run_id,
             influencer_id=influencer_id,
-            comment_count=run.collected_comment_count,
+            comment_count=comments_total,
         )
 
         # --- Stage 3: collect_external_signals ---
@@ -156,6 +160,7 @@ def deep_analyze(
                 campaign_uuid,
                 influencer_uuid,
             )
+            # Capture before the session closes.
             final_comment_count = int(run.collected_comment_count or 0)
     except Exception as exc:
         log.exception("deep_analyze failed campaign_id=%s influencer_id=%s run_id=%s", campaign_id, influencer_id, run_id)
