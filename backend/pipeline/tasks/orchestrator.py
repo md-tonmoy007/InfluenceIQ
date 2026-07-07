@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from uuid import UUID
 
 from backend.core.cache.event_log import emit_event
 from backend.core.cache.pipeline_state import update_pipeline_state
@@ -55,6 +56,31 @@ def start_campaign(campaign_id: str) -> dict:
     from backend.pipeline.tasks.search import generate_queries
 
     log.info("start_campaign dispatching generate_queries campaign_id=%s", campaign_id)
+
+    # Compute the campaign-level relevance embedding synchronously so the
+    # dispatcher (and the downstream score task) always see a populated
+    # `Campaign.embedding` envelope. The helper is fail-open: when the
+    # OpenRouter backend is unavailable it writes a hash-derived stub
+    # envelope instead of raising, so a missing key never blocks the
+    # pipeline.
+    try:
+        from backend.pipeline.content.enrichment import (
+            compute_and_persist_campaign_embedding,
+        )
+
+        session = _get_session_local()()
+        try:
+            compute_and_persist_campaign_embedding(session, UUID(campaign_id))
+            session.commit()
+        finally:
+            session.close()
+    except Exception as exc:  # noqa: BLE001 — embedding is optional
+        log.warning(
+            "start_campaign: campaign embedding compute failed for %s: %s",
+            campaign_id,
+            exc,
+        )
+
     update_pipeline_state(campaign_id, status="running", phase="query_generation")
     _common.publish_event(
         campaign_id,

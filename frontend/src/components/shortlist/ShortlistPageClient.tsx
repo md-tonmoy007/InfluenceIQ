@@ -1010,7 +1010,7 @@ export default function ShortlistPageClient() {
             <div className="foot">
               <CampaignBriefActions
                 campaignId={campaignId}
-                status={campaign?.status ?? stateStatus}
+                status={stateStatus}
                 label={campaign?.campaignName || campaign?.searchQuery || campaign?.product || liveBrief.description}
                 onRerunStart={clearRerunState}
               />

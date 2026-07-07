@@ -4,7 +4,13 @@ Add nullable JSONB ``embedding`` columns to ``influencers`` and
 ``campaigns`` for semantic relevance scoring (plan 06).  The column
 stores an envelope of shape::
 
-    {"source": "openrouter"|"stub", "model": "...", "vector": [...]}
+    {"source": "openrouter", "model": "...", "vector": [...]}
+
+The ``source`` field is always ``"openrouter"``; the underlying vector
+is either a real OpenRouter embedding (when the key is configured) or
+a deterministic hash-derived stub vector (when it is not). The stub
+vs live distinction is implicit in the vector values, not in the
+``source`` field.
 """
 
 from __future__ import annotations

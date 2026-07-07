@@ -446,6 +446,19 @@ const requestVoid = async (path: string, init?: RequestInit): Promise<void> => {
   await requestJson<null>(path, init);
 };
 
+const TERMINAL_CAMPAIGN_STATUSES = new Set(["completed", "partial", "failed", "cancelled"]);
+
+const deriveEffectiveCampaignStatus = (
+  campaignStatus: string,
+  pipelineState?: CampaignState | null
+): string => {
+  const pipelineStatus = typeof pipelineState?.status === "string" ? pipelineState.status : "";
+  if (TERMINAL_CAMPAIGN_STATUSES.has(pipelineStatus) && !TERMINAL_CAMPAIGN_STATUSES.has(campaignStatus)) {
+    return pipelineStatus;
+  }
+  return campaignStatus;
+};
+
 const mapCampaign = (response: BackendCampaign): CampaignSummary => {
   const { pipeline_state: state, ...campaign } = response;
   const snapshot = campaign.brief_snapshot ?? {};
@@ -454,6 +467,7 @@ const mapCampaign = (response: BackendCampaign): CampaignSummary => {
     campaign.product ||
     campaign.search_query ||
     "Untitled campaign";
+  const effectiveStatus = deriveEffectiveCampaignStatus(campaign.status, state);
 
   return {
     campaignId: campaign.id,
@@ -461,7 +475,7 @@ const mapCampaign = (response: BackendCampaign): CampaignSummary => {
     product: campaign.product,
     category: campaign.niche,
     goal: campaign.goals ?? "",
-    status: campaign.status,
+    status: effectiveStatus,
     createdAt: campaign.created_at,
     campaignName: campaign.campaign_name,
     entryPoint: campaign.entry_point,

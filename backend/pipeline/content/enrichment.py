@@ -408,8 +408,11 @@ def compute_and_persist_embedding(
 
     Returns the embedding envelope dict on success, ``None`` when the
     embedding backend is unavailable, and *always* writes a JSONB
-    envelope to ``influencer.embedding`` so future calls can detect
-    ``source="stub"`` and fall back to token-overlap relevance.
+    envelope to ``influencer.embedding`` so the relevance scorer can
+    detect both sides are present. The ``source`` field is
+    ``"openrouter"`` for both live OpenRouter vectors and deterministic
+    hash-derived stub vectors; the stub vs live distinction is implicit
+    (the value lives only in the underlying vector).
     """
     influencer = session.get(models.Influencer, influencer_id)
     if influencer is None:
@@ -497,7 +500,7 @@ def compute_and_persist_campaign_embedding(
     except Exception:
         log.exception("compute_and_persist_campaign_embedding failed for %s", campaign_id)
         envelope = {
-            "source": "stub",
+            "source": "openrouter",
             "model": _embedding_model_name(),
             "vector": _stub_vector(corpus),
         }

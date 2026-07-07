@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import xml.etree.ElementTree as ET
 
 import httpx
 
+from backend.core.config import settings
 from backend.pipeline.content.contracts import compact_number, normalize_url
 from backend.pipeline.content.providers.base import PlatformProfile
 from backend.pipeline.content.providers.utils import handle_from_url, json_ld_blocks, meta_content
 
 log = logging.getLogger(__name__)
-
-_YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
 
 
 def _fetch_html(url: str) -> str:
@@ -67,13 +65,13 @@ def _rss_posts(channel_id: str) -> list[dict]:
 
 
 def _channels_api_fetch(channel_id: str) -> dict | None:
-    if not _YOUTUBE_API_KEY or not channel_id:
+    if not settings.YOUTUBE_API_KEY or not channel_id:
         return None
     try:
         response = httpx.get(
             "https://www.googleapis.com/youtube/v3/channels",
             params={
-                "key": _YOUTUBE_API_KEY,
+                "key": settings.YOUTUBE_API_KEY,
                 "id": channel_id,
                 "part": "statistics,snippet,brandingSettings",
             },
@@ -90,13 +88,13 @@ def _channels_api_fetch(channel_id: str) -> dict | None:
 
 
 def _videos_api_fetch(video_ids: list[str]) -> dict[str, dict]:
-    if not _YOUTUBE_API_KEY or not video_ids:
+    if not settings.YOUTUBE_API_KEY or not video_ids:
         return {}
     try:
         response = httpx.get(
             "https://www.googleapis.com/youtube/v3/videos",
             params={
-                "key": _YOUTUBE_API_KEY,
+                "key": settings.YOUTUBE_API_KEY,
                 "id": ",".join(video_ids),
                 "part": "statistics,snippet",
             },
@@ -131,7 +129,7 @@ def fetch_youtube_profile(url: str) -> PlatformProfile | None:
             title = title or str(block.get("name") or "")
             description = description or str(block.get("description") or "")
 
-        if _YOUTUBE_API_KEY and channel_id:
+        if settings.YOUTUBE_API_KEY and channel_id:
             channel_raw = _channels_api_fetch(channel_id)
             if channel_raw is not None:
                 stats = (channel_raw.get("statistics") or {}) if isinstance(channel_raw, dict) else {}
@@ -204,7 +202,7 @@ def fetch_youtube_profile(url: str) -> PlatformProfile | None:
             posts=posts,
             comments=comments,
             raw={"channel_id": channel_id},
-            provider="youtube_html_fallback" if _YOUTUBE_API_KEY else "youtube",
+            provider="youtube_html_fallback" if settings.YOUTUBE_API_KEY else "youtube",
         )
     except Exception as exc:
         return PlatformProfile(

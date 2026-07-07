@@ -78,6 +78,41 @@ SCRAPE_DO_API=...
 
 Used for Medium, Substack, and article roundup pages when plain `httpx` is blocked. Only applies to non-platform URLs.
 
+### YouTube Data API v3 (optional, recommended)
+
+```env
+YOUTUBE_API_KEY=AIza...
+```
+
+When set, `fetch_youtube_profile` (`backend/pipeline/content/providers/youtube.py`) calls `channels.list` + `videos.list` and populates:
+
+- **Authoritative subscriber count** (`statistics.subscriberCount`) instead of the HTML `og:description` regex.
+- **Per-video stats** (`viewCount` / `likeCount` / `commentCount` on each post dict) — lights up `engagement_rollup.compute_recent_engagement` and the `avg_views` fallback in `enrichment.persist_enrichment` automatically, no extra wiring.
+- **Verified badge** (`status.isLinked` + `snippet.customUrl`) instead of the `"Verified"` substring match.
+- **Lifetime view count** (`statistics.viewCount`) — written to `PlatformProfile.raw["lifetime_views"]` and surfaced by the engagement roll-up.
+
+When **unset**, the provider falls back to the existing HTML regex + RSS-only path — same behaviour as today.
+
+**Quota math.** Free tier is 10,000 units/day. `channels.list` costs 1 unit, `videos.list` costs 1 unit, so each profile fetch = 2 units. A 50-influencer campaign = 100 units, leaving 9,900 units of headroom.
+
+**Get a key.** [Google Cloud Console](https://console.cloud.google.com/) → enable the YouTube Data API v3 → APIs & Services → Credentials → Create Credentials → API key. Restrict it to the YouTube Data API v3 in production.
+
+### Semantic relevance embeddings (optional, recommended)
+
+```env
+OPENROUTER_API_KEY=sk-or-v1-...
+UMGL_EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIM=1536
+```
+
+`OPENROUTER_API_KEY` powers both the chat-completion route and OpenRouter's `/embeddings` endpoint used by `compute_and_persist_embedding` and `compute_and_persist_campaign_embedding` (`backend/pipeline/content/enrichment.py`).
+
+When the key is **unset**, embeddings are stored as deterministic hash-derived stub vectors (L2-normalized, `EMBEDDING_DIM` long) and the relevance scorer (`backend/pipeline/fusion/sub_scores.py`) still runs cosine on them — the score will be small-but-nonzero for unrelated stubs rather than the 40-100 range produced by token-overlap. The helper **always** writes a JSONB envelope so `sub_scores.relevance_score` can detect both sides are present.
+
+`UMGL_EMBEDDING_MODEL` is the model ID passed to the `/embeddings` route (default `text-embedding-3-small`, ~$0.02 / 1M tokens). `EMBEDDING_DIM` **must match the model's output dimension** — if it doesn't, cosine is wrong (the scorer returns `None` for dimension mismatches and falls back to token-overlap).
+
+[Get an OpenRouter key](https://openrouter.ai/keys).
+
 ## Recommended setups
 
 ### Local development (zero search cost)

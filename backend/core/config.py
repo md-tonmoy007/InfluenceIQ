@@ -51,6 +51,9 @@ class Settings(BaseSettings):
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIM: int = 1536
+    # Preferred name (Plan 06); ML adapters read UMGL_EMBEDDING_MODEL.
+    UMGL_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    UMGL_EMBEDDING_MODEL: str = "text-embedding-3-small"
 
     TOKEN_BUDGET_QUERY_GEN: int = 2000
     TOKEN_BUDGET_BRAND_SAFETY: int = 800

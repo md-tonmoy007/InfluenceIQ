@@ -20,6 +20,11 @@ def relevance_score(candidate: dict[str, Any], campaign: dict[str, Any] | None =
     if not isinstance(campaign_emb, dict):
         campaign_emb = {}
 
+    # The "source" field is "openrouter" for BOTH live OpenRouter vectors and
+    # deterministic hash-derived stub vectors. The stub vs live distinction is
+    # implicit: stub vectors are L2-normalized hashes of the source text, so
+    # cosine between two unrelated stubs is small-but-nonzero. When either
+    # side has no envelope at all, we fall through to token-overlap.
     if candidate_emb.get("source") == "openrouter" and campaign_emb.get("source") == "openrouter":
         c_vec = candidate_emb.get("vector") or []
         p_vec = campaign_emb.get("vector") or []

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -36,6 +37,7 @@ from backend.core.database.session import get_db
 from backend.pipeline.tasks._common import refresh_campaign_status
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
+log = logging.getLogger(__name__)
 
 _optional_oauth = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
@@ -339,7 +341,9 @@ def get_campaign(
 
     campaign_id_str = str(id)
     response = _enrich_campaign(db, db_campaign, user=current_user)
-    response["pipeline_state"] = get_campaign_state_payload(db_campaign, campaign_id_str)
+    pipeline_state = get_campaign_state_payload(db_campaign, campaign_id_str)
+    response["pipeline_state"] = pipeline_state
+    response["status"] = derive_effective_campaign_status(db_campaign.status, pipeline_state)
     return response
 
 
@@ -448,18 +452,28 @@ def rerun_campaign(
 ) -> dict[str, Any]:
     """Reset pipeline artifacts and rerun matching on the same campaign."""
     db_campaign = _get_owned_campaign(db, id, current_user)
+    pipeline_state = get_campaign_state_payload(db_campaign, str(id))
+    effective_status = derive_effective_campaign_status(db_campaign.status, pipeline_state)
+    log.debug(
+        "rerun_campaign status resolution campaign_id=%s db_status=%s pipeline_status=%s effective_status=%s start_pipeline=%s",
+        id,
+        db_campaign.status,
+        pipeline_state.get("status") if isinstance(pipeline_state, dict) else None,
+        effective_status,
+        start_pipeline,
+    )
 
-    if db_campaign.status == "running":
+    if effective_status == "running":
         raise HTTPException(
             status_code=409,
             detail="Campaign is still running. Cancel it before rerunning.",
         )
 
-    if db_campaign.status not in _RERUNNABLE_STATUSES:
+    if effective_status not in _RERUNNABLE_STATUSES:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Cannot rerun a campaign with status {db_campaign.status!r}. "
+                f"Cannot rerun a campaign with status {effective_status!r}. "
                 "Use submit for drafts or duplicate to fork."
             ),
         )
@@ -1059,6 +1073,20 @@ def _decode_cursor(cursor: str) -> tuple[float, str] | None:
         return float(parsed["s"]), str(parsed["i"])
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         return None
+
+
+_TERMINAL_CAMPAIGN_STATUSES = frozenset({"completed", "partial", "failed", "cancelled"})
+
+
+def derive_effective_campaign_status(campaign_status: str, pipeline_state: dict[str, Any] | None) -> str:
+    pipeline_status = pipeline_state.get("status") if pipeline_state else None
+    if (
+        isinstance(pipeline_status, str)
+        and pipeline_status in _TERMINAL_CAMPAIGN_STATUSES
+        and campaign_status not in _TERMINAL_CAMPAIGN_STATUSES
+    ):
+        return pipeline_status
+    return campaign_status
 
 
 def get_campaign_state_payload(campaign: models.Campaign, campaign_id_str: str) -> dict[str, Any]:
