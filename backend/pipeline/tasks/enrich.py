@@ -9,6 +9,7 @@ from backend.core.celery.app import celery_app
 from backend.core.database import models
 from backend.pipeline.content.enrichment import (
     collect_platform_urls_for_influencer,
+    compute_and_persist_embedding,
     fetch_profiles_for_urls,
     persist_enrichment,
 )
@@ -57,6 +58,8 @@ def enrich_influencer_platforms_task(self, campaign_id: str, influencer_id: str)
     # Step 3: persist results — brief DB write session.
     with db_session() as session:
         result = persist_enrichment(session, influencer_uuid, fetched)
+        if result.get("profiles", 0) > 0:
+            compute_and_persist_embedding(session, influencer_uuid)
         refresh_campaign_status(session, campaign_id)
 
     from backend.core.cache.pipeline_state import increment_pipeline_counter

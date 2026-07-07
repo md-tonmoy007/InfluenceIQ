@@ -123,6 +123,7 @@ class Campaign(Base):
     entry_point = Column(String(32), nullable=True, default="brief_form")
     search_query = Column(Text, nullable=True)
     brief_snapshot = Column(JSONB, nullable=True)
+    embedding = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
@@ -152,6 +153,7 @@ class Influencer(Base):
     avg_views = Column(Integer, nullable=True)
     primary_category = Column(String(128), nullable=True)
     primary_location = Column(String(128), nullable=True)
+    embedding = Column(JSONB, nullable=True)
     merged_into_id = Column(UUID(as_uuid=True), ForeignKey("influencers.id", ondelete="SET NULL"), nullable=True)
     is_canonical = Column(Boolean, default=True, nullable=False)
     identity_confidence = Column(Float, nullable=True)

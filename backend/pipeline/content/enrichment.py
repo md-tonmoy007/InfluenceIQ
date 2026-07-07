@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import inspect
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -12,9 +14,10 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.core.database import models
+from backend.pipeline.content.contracts import normalize_url
+from backend.pipeline.content.engagement_rollup import compute_recent_engagement
 from backend.pipeline.content.providers.base import PlatformProfile, fetch_platform_profile
 from backend.pipeline.content.providers.utils import handle_from_url
-from backend.pipeline.content.contracts import normalize_url
 from backend.pipeline.extraction.handles import is_profile_url, platform_for_url
 
 log = logging.getLogger(__name__)
@@ -274,7 +277,9 @@ def persist_enrichment(
     failed = 0
     coverage: dict[str, str] = {}
     best_followers = influencer.follower_count or 0
-    best_engagement = influencer.engagement_rate or 0.0
+    best_avg_views = influencer.avg_views or 0
+    best_engagement_rate = influencer.engagement_rate or 0.0
+    best_lifetime_views = 0
     primary_platform = influencer.primary_platform
 
     for url, profile in fetched:
@@ -284,7 +289,7 @@ def persist_enrichment(
             continue
         try:
             with session.begin_nested():
-                persist_platform_profile(session, influencer_id, profile)
+                db_profile = persist_platform_profile(session, influencer_id, profile)
                 session.flush()
             enriched += 1
             coverage[url] = "partial" if profile.error else "ok"
@@ -292,14 +297,33 @@ def persist_enrichment(
             log.warning("persist_platform_profile: skipped url=%s influencer=%s reason=%s", url, influencer_id, exc.__class__.__name__)
             coverage[url] = "duplicate" if isinstance(exc, IntegrityError) else "error"
             continue
+
+        rollup = compute_recent_engagement(profile)
+        recent_views = rollup.get("recent_views")
+        recent_engagement_rate = rollup.get("recent_engagement_rate")
+        lifetime_views = rollup.get("lifetime_views")
+
+        if recent_views is not None:
+            db_profile.avg_engagement = _clamp_int(recent_views)
+        if recent_engagement_rate is not None:
+            db_profile.engagement_rate = float(recent_engagement_rate)
+
         if profile.followers and profile.followers > best_followers:
             best_followers = profile.followers
             primary_platform = profile.platform
-        if profile.average_engagement:
-            best_engagement = float(profile.average_engagement)
+        if recent_views is not None and recent_views > best_avg_views:
+            best_avg_views = recent_views
+        if recent_engagement_rate is not None and recent_engagement_rate > best_engagement_rate:
+            best_engagement_rate = recent_engagement_rate
+        if lifetime_views is not None and lifetime_views > best_lifetime_views:
+            best_lifetime_views = lifetime_views
 
     influencer.follower_count = _clamp_int(best_followers) or influencer.follower_count
-    influencer.engagement_rate = best_engagement or influencer.engagement_rate
+    if best_avg_views > 0:
+        influencer.avg_views = _clamp_int(best_avg_views)
+    elif best_lifetime_views > 0:
+        influencer.avg_views = _clamp_int(best_lifetime_views)
+    influencer.engagement_rate = best_engagement_rate or influencer.engagement_rate
     influencer.primary_platform = primary_platform or influencer.primary_platform
     influencer.updated_at = datetime.now(UTC)
 
@@ -333,6 +357,164 @@ def enrich_influencer_platforms(
 
 
 _PG_INT_MAX = 2_147_483_647
+_EMBEDDING_CORPUS_CAP = 8_000
+
+
+def _build_profile_corpus(profile: PlatformProfile) -> str:
+    parts: list[str] = []
+    if profile.name:
+        parts.append(profile.name)
+    if profile.bio:
+        parts.append(profile.bio)
+    for post in (profile.posts or [])[:12]:
+        for key in ("caption", "title", "description"):
+            value = post.get(key)
+            if value and isinstance(value, str):
+                parts.append(str(value))
+    return " ".join(parts)[:_EMBEDDING_CORPUS_CAP]
+
+
+def _build_influencer_embedding_text(session: Session, influencer_id: UUID) -> str | None:
+    profiles = (
+        session.query(models.PlatformProfile)
+        .filter(models.PlatformProfile.influencer_id == influencer_id)
+        .all()
+    )
+    if not profiles:
+        return None
+    parts: list[str] = []
+    for pr in profiles:
+        if pr.bio:
+            parts.append(pr.bio)
+        if pr.display_name:
+            parts.append(pr.display_name)
+    return " ".join(parts)[:_EMBEDDING_CORPUS_CAP] or None
+
+
+def compute_and_persist_embedding(
+    session: Session,
+    influencer_id: UUID,
+) -> dict[str, Any] | None:
+    """Compute a relevance embedding for *influencer_id* and store it.
+
+    Returns the embedding envelope dict on success, ``None`` when the
+    embedding backend is unavailable, and *always* writes a JSONB
+    envelope to ``influencer.embedding`` so future calls can detect
+    ``source="stub"`` and fall back to token-overlap relevance.
+    """
+    influencer = session.get(models.Influencer, influencer_id)
+    if influencer is None:
+        return None
+
+    corpus = _build_influencer_embedding_text(session, influencer_id)
+    if not corpus:
+        return None
+
+    try:
+        from backend.ml.models.registry import registry as model_registry
+
+        reg = model_registry()
+        backend = reg.get(reg.resolve_name("embedding"))
+        embed_fn = getattr(backend, "embed_text", None)
+        if embed_fn is None:
+            return None
+
+        result = embed_fn(corpus)
+        if inspect.isawaitable(result):
+            result = asyncio.run(result)
+
+        vector = result if isinstance(result, list) else None
+        if not vector:
+            return None
+
+        envelope: dict[str, Any] = {
+            "source": "openrouter",
+            "model": _embedding_model_name(),
+            "vector": vector,
+        }
+    except Exception:
+        log.exception("compute_and_persist_embedding failed for %s", influencer_id)
+        envelope = {
+            "source": "stub",
+            "model": _embedding_model_name(),
+            "vector": _stub_vector(corpus),
+        }
+
+    influencer.embedding = envelope
+    influencer.updated_at = datetime.now(UTC)
+    return envelope
+
+
+def compute_and_persist_campaign_embedding(
+    session: Session,
+    campaign_id: UUID,
+) -> dict[str, Any] | None:
+    """Compute a relevance embedding for *campaign_id* and store it."""
+    campaign = session.get(models.Campaign, campaign_id)
+    if campaign is None:
+        return None
+
+    parts: list[str] = []
+    for field in ("niche", "target_audience", "goals", "product", "search_query"):
+        value = getattr(campaign, field, None)
+        if value and isinstance(value, str):
+            parts.append(str(value))
+    corpus = " ".join(parts)[:_EMBEDDING_CORPUS_CAP]
+    if not corpus:
+        return None
+
+    try:
+        from backend.ml.models.registry import registry as model_registry
+
+        reg = model_registry()
+        backend = reg.get(reg.resolve_name("embedding"))
+        embed_fn = getattr(backend, "embed_text", None)
+        if embed_fn is None:
+            return None
+
+        result = embed_fn(corpus)
+        if inspect.isawaitable(result):
+            result = asyncio.run(result)
+
+        vector = result if isinstance(result, list) else None
+        if not vector:
+            return None
+
+        envelope: dict[str, Any] = {
+            "source": "openrouter",
+            "model": _embedding_model_name(),
+            "vector": vector,
+        }
+    except Exception:
+        log.exception("compute_and_persist_campaign_embedding failed for %s", campaign_id)
+        envelope = {
+            "source": "stub",
+            "model": _embedding_model_name(),
+            "vector": _stub_vector(corpus),
+        }
+
+    campaign.embedding = envelope
+    return envelope
+
+
+def _embedding_model_name() -> str:
+    import os
+
+    return os.environ.get("UMGL_EMBEDDING_MODEL", "text-embedding-3-small")
+
+
+def _stub_vector(text: str) -> list[float]:
+    import os
+
+    dim = int(os.environ.get("EMBEDDING_DIM", "1536"))
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    raw = [b / 255.0 for b in digest]
+    expanded: list[float] = []
+    while len(expanded) < dim:
+        expanded.extend(raw)
+    vec = expanded[:dim]
+    norm = sum(x * x for x in vec) ** 0.5 or 1.0
+    return [x / norm for x in vec]
 
 
 def _clamp_int(value: Any) -> int | None:

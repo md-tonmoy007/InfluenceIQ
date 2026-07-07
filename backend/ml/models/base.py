@@ -57,9 +57,15 @@ class GraphEmbedder(Protocol):
     def embed_graph(self, nodes: list[Any], edges: list[Any]) -> list[float]: ...
 
 
+class TextEmbedder(Protocol):
+    """Text -> embedding vector; consumed by relevance scoring."""
+
+    async def embed_text(self, text: str, **kwargs: Any) -> list[float]: ...
+
+
 @runtime_checkable
 class ModelSpec(Protocol):
-    """The union of all three protocols.
+    """The union of all four protocols.
 
     A backend may implement any subset; the registry only calls
     methods that the backend advertises via :meth:`info`. This
@@ -76,4 +82,5 @@ __all__ = [
     "TextScorer",
     "AsyncTextPredictor",
     "GraphEmbedder",
+    "TextEmbedder",
 ]

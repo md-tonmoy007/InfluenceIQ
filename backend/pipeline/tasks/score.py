@@ -247,12 +247,17 @@ def _campaign_context(campaign: models.Campaign | None) -> dict:
         return {}
     positive_weights = campaign_weights_to_trust_weights(campaign.weights)
     brief_snapshot = campaign.brief_snapshot or {}
+    embedding = campaign.embedding if isinstance(campaign.embedding, dict) else {}
     return {
         "campaign_id": str(campaign.id),
         "description": campaign.search_query or "",
-        "interests": list(campaign.preferred_platforms or []),
+        "niche": campaign.niche or "",
+        "target_audience": campaign.target_audience or "",
+        "goals": campaign.goals or "",
+        "product": campaign.product or "",
         "locations": list(brief_snapshot.get("locations") or []),
         "positive_weights": positive_weights,
+        "embedding": embedding,
     }
 
 

@@ -6,10 +6,9 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy.orm import Session
-
 from backend.core.database import models
 from backend.pipeline.extraction.handles import is_profile_url
+from sqlalchemy.orm import Session
 
 
 def build_influencer_candidate(
@@ -116,6 +115,7 @@ def build_influencer_candidate(
         "engagement_rate": engagement_rate,
         "verified": verified,
         "primary_location": influencer.primary_location,
+        "embedding": influencer.embedding if isinstance(influencer.embedding, dict) else {},
     }
     return candidate
 

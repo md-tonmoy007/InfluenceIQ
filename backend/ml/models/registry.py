@@ -54,6 +54,7 @@ _DEFAULTS: dict[str, str] = {
     "aigc": "roberta_aigc",
     "llm": "llama_explainer",
     "graph": "graphsage",
+    "embedding": "openrouter",
 }
 
 
@@ -109,6 +110,8 @@ class ModelRegistry:
             return "llama_explainer"
         if name in {"gat", "graphsage", "gcn", "ggt"}:
             return "graphsage"
+        if name in {"embedding", "openrouter_embedding"}:
+            return "openrouter"
         return "distilbert_spam"
 
     def info(self) -> list[ModelInfo]:
