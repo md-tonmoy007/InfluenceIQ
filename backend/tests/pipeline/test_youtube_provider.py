@@ -177,6 +177,206 @@ class YouTubeProviderEnvWiringTest(unittest.TestCase):
         # API path keeps the bare "youtube" provider tag.
         self.assertEqual(profile.provider, "youtube")
 
+    def test_forhandle_path_skips_html_channel_id(self) -> None:
+        """Key set + handle → channels.list?forHandle resolves channel_id
+        even when the HTML scrape returns no channelId. RSS feed then
+        uses the API-resolved channel_id, and stats come from the API."""
+
+        channels_payload = {
+            "items": [
+                {
+                    "id": "UCHANDLE",
+                    "statistics": {
+                        "subscriberCount": "77000",
+                        "viewCount": "2500000",
+                        "videoCount": "88",
+                    },
+                    "snippet": {
+                        "title": "Handle Coach",
+                        "description": "Bio from the API.",
+                        "customUrl": "@handlecoach",
+                    },
+                    "status": {"isLinked": True},
+                }
+            ]
+        }
+        videos_payload = {"items": []}
+
+        html_no_channel = """
+            <html><head>
+              <meta property="og:title" content="Handle Coach - YouTube">
+            </head><body></body></html>
+        """
+
+        def fake_get(url: str, *args, **kwargs):
+            if "feeds/videos.xml" in url:
+                return _DummyResponse(_RSS)
+            if "/youtube/v3/channels" in url:
+                # First call uses forHandle (HTML had no channelId);
+                # second call uses id=UCHANDLE for full stats.
+                if "forHandle" in url:
+                    self.assertNotIn("id=", url)
+                return _DummyResponse(json_payload=channels_payload)
+            if "/youtube/v3/videos" in url:
+                return _DummyResponse(json_payload=videos_payload)
+            return _DummyResponse(html_no_channel)
+
+        with (
+            patch.object(settings, "YOUTUBE_API_KEY", "test-key"),
+            patch("backend.pipeline.content.providers.youtube.httpx.get", side_effect=fake_get),
+        ):
+            profile = fetch_youtube_profile("https://www.youtube.com/@handlecoach")
+
+        assert profile is not None
+        # forHandle resolved the channel_id; API stats are authoritative.
+        self.assertEqual(profile.followers, 77000)
+        self.assertEqual(profile.raw.get("channel_id"), "UCHANDLE")
+        self.assertEqual(profile.raw.get("lifetime_views"), 2_500_000)
+        self.assertEqual(profile.provider, "youtube")
+
+    def test_fast_path_skips_html_scrape(self) -> None:
+        """API key + handle → YouTube page URL is never fetched."""
+
+        channels_payload = {
+            "items": [
+                {
+                    "id": "UCFAST",
+                    "statistics": {"subscriberCount": "1000", "viewCount": "5000", "videoCount": "10"},
+                    "snippet": {"title": "Fast Channel", "customUrl": "@fast"},
+                    "status": {"isLinked": True},
+                }
+            ]
+        }
+        videos_payload = {"items": []}
+
+        def fake_get(url: str, *args, **kwargs):
+            if "feeds/videos.xml" in url:
+                return _DummyResponse(_RSS)
+            if "/youtube/v3/channels" in url:
+                return _DummyResponse(json_payload=channels_payload)
+            if "/youtube/v3/videos" in url:
+                return _DummyResponse(json_payload=videos_payload)
+            raise AssertionError(f"Unexpected URL fetched in fast path: {url}")
+
+        with (
+            patch.object(settings, "YOUTUBE_API_KEY", "test-key"),
+            patch("backend.pipeline.content.providers.youtube.httpx.get", side_effect=fake_get),
+        ):
+            profile = fetch_youtube_profile("https://www.youtube.com/@fast")
+
+        assert profile is not None
+        self.assertEqual(profile.followers, 1000)
+        self.assertEqual(profile.raw.get("channel_id"), "UCFAST")
+        self.assertEqual(profile.provider, "youtube")
+
+    def test_cache_dedupes_repeated_handles(self) -> None:
+        """Two fetches for the same handle → only one channels.list HTTP call."""
+
+        call_count = {"channels": 0, "videos": 0, "rss": 0}
+        store: dict[str, dict] = {}
+
+        def fake_get_store(kind: str, value: str):
+            return store.get(f"{kind}:{value}")
+
+        def fake_set_store(kind: str, value: str, payload: dict, ttl: int | None = None) -> None:
+            store[f"{kind}:{value}"] = payload
+
+        channels_payload = {
+            "items": [
+                {
+                    "id": "UCCACHED",
+                    "statistics": {"subscriberCount": "2000", "viewCount": "8000", "videoCount": "20"},
+                    "snippet": {"title": "Cached", "customUrl": "@cached"},
+                    "status": {"isLinked": True},
+                }
+            ]
+        }
+        videos_payload = {"items": []}
+
+        def fake_get(url: str, *args, **kwargs):
+            if "feeds/videos.xml" in url:
+                call_count["rss"] += 1
+                return _DummyResponse(_RSS)
+            if "/youtube/v3/channels" in url:
+                call_count["channels"] += 1
+                return _DummyResponse(json_payload=channels_payload)
+            if "/youtube/v3/videos" in url:
+                call_count["videos"] += 1
+                return _DummyResponse(json_payload=videos_payload)
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        with (
+            patch.object(settings, "YOUTUBE_API_KEY", "test-key"),
+            patch("backend.pipeline.content.providers.youtube.httpx.get", side_effect=fake_get),
+            patch(
+                "backend.pipeline.content.providers.youtube.get_cached_youtube_api",
+                side_effect=fake_get_store,
+            ),
+            patch(
+                "backend.pipeline.content.providers.youtube.store_cached_youtube_api",
+                side_effect=fake_set_store,
+            ),
+        ):
+            fetch_youtube_profile("https://www.youtube.com/@cached")
+            fetch_youtube_profile("https://www.youtube.com/@cached")
+            fetch_youtube_profile("https://www.youtube.com/@cached")
+
+        self.assertEqual(call_count["channels"], 1, "channels.list should be cached")
+        self.assertEqual(call_count["videos"], 1, "videos.list should be cached")
+        # RSS feed is cached as well — same channel, 1 fetch.
+        self.assertEqual(call_count["rss"], 1, "RSS feed should be cached")
+
+    def test_rss_feed_is_cached(self) -> None:
+        """Multiple fetches of the same channel → RSS feed fetched once."""
+
+        call_count = {"rss": 0}
+        store: dict[str, list] = {}
+
+        def fake_get_store(kind: str, value: str):
+            return store.get(f"{kind}:{value}")
+
+        def fake_set_store(kind: str, value: str, payload, ttl: int | None = None) -> None:
+            if kind == "rss":
+                store[f"{kind}:{value}"] = payload
+
+        channels_payload = {
+            "items": [
+                {
+                    "id": "UCRSS",
+                    "statistics": {"subscriberCount": "100", "viewCount": "1000", "videoCount": "1"},
+                    "snippet": {"title": "RSS Cached"},
+                    "status": {"isLinked": False},
+                }
+            ]
+        }
+
+        def fake_get(url: str, *args, **kwargs):
+            if "feeds/videos.xml" in url:
+                call_count["rss"] += 1
+                return _DummyResponse(_RSS)
+            if "/youtube/v3/channels" in url:
+                return _DummyResponse(json_payload=channels_payload)
+            if "/youtube/v3/videos" in url:
+                return _DummyResponse(json_payload={"items": []})
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        with (
+            patch.object(settings, "YOUTUBE_API_KEY", "test-key"),
+            patch("backend.pipeline.content.providers.youtube.httpx.get", side_effect=fake_get),
+            patch(
+                "backend.pipeline.content.providers.youtube.get_cached_youtube_api",
+                side_effect=fake_get_store,
+            ),
+            patch(
+                "backend.pipeline.content.providers.youtube.store_cached_youtube_api",
+                side_effect=fake_set_store,
+            ),
+        ):
+            for _ in range(5):
+                fetch_youtube_profile("https://www.youtube.com/@rss")
+
+        self.assertEqual(call_count["rss"], 1, "RSS feed should be cached across fetches")
+
     def test_with_key_but_channels_empty_falls_back(self) -> None:
         """Key set + channels.list returns no items → falls back to HTML path."""
 

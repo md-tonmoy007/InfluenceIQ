@@ -16,6 +16,7 @@ os.environ.setdefault("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 os.environ.setdefault("REDIS_STATE_DB", "redis://localhost:6379/2")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 
+from backend.core.config import settings
 from backend.pipeline.content.content_extractor import extract_role4_content
 from backend.pipeline.content.fetcher import fetch_url
 from backend.pipeline.content.search_providers import search_web
@@ -111,6 +112,7 @@ class Role4ScrapingContractTest(unittest.TestCase):
         with (
             patch("backend.pipeline.content.fetcher.get_cached_page", return_value=None),
             patch("backend.pipeline.content.fetcher.store_cached_page"),
+            patch.object(settings, "YOUTUBE_API_KEY", ""),
             patch("backend.pipeline.content.providers.youtube.httpx.get", side_effect=fake_get),
         ):
             page = fetch_url("https://www.youtube.com/@trailcoach")

@@ -18,6 +18,13 @@ PROVIDER_FAIL_THRESHOLD = 5
 PROVIDER_FAIL_WINDOW = 60  # seconds
 PROVIDER_COOLDOWN = 300    # 5 minutes
 
+# YouTube Data API v3 response cache — dedupes calls within and across
+# campaigns when multiple influencers share a channel or re-fetch the
+# same handle.
+YOUTUBE_API_CACHE_PREFIX = "role4:youtube_api:"
+YOUTUBE_API_CACHE_TTL = 6 * 60 * 60  # 6 hours
+YOUTUBE_RSS_CACHE_TTL = 60 * 60      # 1 hour (RSS updates when creators post)
+
 
 @lru_cache(maxsize=1)
 def _redis_connection() -> redis.Redis:
@@ -100,3 +107,58 @@ def reset_provider_breaker(provider: str) -> None:
         redis_client().delete(_provider_fail_key(provider))
     except redis.RedisError:
         return
+
+
+# ---------------------------------------------------------------------------
+# YouTube Data API v3 response cache
+# ---------------------------------------------------------------------------
+
+
+def _youtube_api_cache_key(kind: str, value: str) -> str:
+    return f"{YOUTUBE_API_CACHE_PREFIX}{kind}:{value}"
+
+
+def get_cached_youtube_api(kind: str, value: str) -> Any | None:
+    """Return a cached ``channels.list`` / ``videos.list`` / RSS response.
+
+    ``kind`` is one of ``"handle"``, ``"id"``, ``"videos"``, ``"rss"``.
+    ``value`` is the ``forHandle``/``id``/comma-joined video ids/``channel_id``
+    string passed to the API. Returns ``None`` on miss or any Redis error.
+    """
+    try:
+        raw = redis_client().get(_youtube_api_cache_key(kind, value))
+    except redis.RedisError:
+        return None
+    if not raw:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    try:
+        return json.loads(str(raw))
+    except json.JSONDecodeError:
+        return None
+
+
+def store_cached_youtube_api(kind: str, value: str, payload: Any, ttl: int | None = None) -> None:
+    """Persist a successful API response for the configured TTL."""
+    try:
+        redis_client().setex(
+            _youtube_api_cache_key(kind, value),
+            ttl if ttl is not None else YOUTUBE_API_CACHE_TTL,
+            json.dumps(payload, sort_keys=True, default=str),
+        )
+    except redis.RedisError:
+        return
+
+
+def clear_youtube_api_cache() -> int:
+    """Delete all cached YouTube API responses. Returns the count deleted."""
+    try:
+        client = redis_client()
+        deleted = 0
+        for key in client.scan_iter(match=f"{YOUTUBE_API_CACHE_PREFIX}*"):
+            client.delete(key)
+            deleted += 1
+        return deleted
+    except redis.RedisError:
+        return 0
