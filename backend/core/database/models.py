@@ -453,6 +453,7 @@ class DeepAnalysisRun(Base):
     provider_coverage = Column(JSONB, nullable=True)
     coverage_summary = Column(JSONB, nullable=True)
     report_version = Column(String(32), nullable=False, default="v1")
+    current_stage = Column(String(32), nullable=True)
     cache_expires_at = Column(DateTime, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)

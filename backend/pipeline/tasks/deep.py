@@ -30,6 +30,17 @@ _CACHE_TTL_MINUTES = 30
 _POST_LIMIT = 20
 _COMMENT_PER_POST_LIMIT = 200
 
+_INSUFFICIENT_RECOMMENDATION = (
+    "Insufficient data to grade this creator — re-run after enrichment completes."
+)
+
+_BRAND_RISK_KEYWORDS = (
+    "scandal", "lawsuit", "fraud", "scam", "controversy", "controversial",
+    "sued", "indicted", "plea", "settlement", "investigation", "allegation",
+    "allegations", "misconduct", "harassment", "ban", "banned", "boycott",
+    "fake", "deepfake", "plagiarism", "stolen", "leak", "leaked",
+)
+
 
 @celery_app.task(name="backend.pipeline.tasks.deep.deep_analyze", bind=True, max_retries=1)
 def deep_analyze(
@@ -53,6 +64,11 @@ def deep_analyze(
 
     final_comment_count = 0
     try:
+        # We use multiple short-lived sessions so that the run row's
+        # ``status``, ``collected_comment_count`` and ``coverage_summary`` are
+        # visible to the polling endpoint between stages. Without this, the
+        # frontend would see a single "queued → completed" transition and the
+        # ``comments analyzed`` counter would stay at 0 for the entire run.
         with db_session() as session:
             run = session.get(models.DeepAnalysisRun, run_uuid)
             if run is None:
@@ -64,40 +80,69 @@ def deep_analyze(
             run.requested_post_limit = _POST_LIMIT
             run.requested_comment_limit = _COMMENT_PER_POST_LIMIT
             run.report_version = _REPORT_VERSION
+            run.current_stage = "starting"
 
-            # --- Stage 1: collect_social_content ---
-            social = _collect_social_content(session, campaign_uuid, influencer_uuid, run, campaign_id, influencer_id, run_id)
-            publish_event(
-                campaign_id,
-                "deep_analysis.social_collected",
-                run_id=run_id,
-                influencer_id=influencer_id,
-                platform_count=social.get("platform_count", 0),
-                post_count=social.get("post_count", 0),
+        # --- Stage 1: collect_social_content ---
+        with db_session() as session:
+            run = session.get(models.DeepAnalysisRun, run_uuid)
+            if run is None:
+                return {"status": "missing_run"}
+            social = _collect_social_content(
+                session, campaign_uuid, influencer_uuid, run, campaign_id, influencer_id, run_id
             )
+            run.current_stage = "social"
+        publish_event(
+            campaign_id,
+            "deep_analysis.social_collected",
+            run_id=run_id,
+            influencer_id=influencer_id,
+            platform_count=social.get("platform_count", 0),
+            post_count=social.get("post_count", 0),
+        )
 
-            # --- Stage 2: collect_post_comments ---
-            comments = _collect_post_comments(session, influencer_uuid, run, campaign_id, influencer_id, run_id)
-            publish_event(
-                campaign_id,
-                "deep_analysis.comments_collected",
-                run_id=run_id,
-                influencer_id=influencer_id,
-                comment_count=run.collected_comment_count,
+        # --- Stage 2: collect_post_comments ---
+        with db_session() as session:
+            run = session.get(models.DeepAnalysisRun, run_uuid)
+            if run is None:
+                return {"status": "missing_run"}
+            comments = _collect_post_comments(
+                session, influencer_uuid, run, campaign_id, influencer_id, run_id
             )
+            social = _merge_coverage_with_comments(social, comments.get("platform_comments", {}))
+            run.coverage_summary = social["coverage"]
+            run.current_stage = "comments"
+        publish_event(
+            campaign_id,
+            "deep_analysis.comments_collected",
+            run_id=run_id,
+            influencer_id=influencer_id,
+            comment_count=run.collected_comment_count,
+        )
 
-            # --- Stage 3: collect_external_signals ---
-            candidate = build_influencer_candidate(session, influencer_uuid, campaign_uuid, comment_limit=comment_target)
-            external = _collect_external(candidate, campaign_id, influencer_id, run_id)
-            publish_event(
-                campaign_id,
-                "deep_analysis.external_signals_collected",
-                run_id=run_id,
-                influencer_id=influencer_id,
-                coverage=external.get("_coverage", {}),
+        # --- Stage 3: collect_external_signals ---
+        with db_session() as session:
+            run = session.get(models.DeepAnalysisRun, run_uuid)
+            if run is None:
+                return {"status": "missing_run"}
+            run.current_stage = "trends"
+            candidate = build_influencer_candidate(
+                session, influencer_uuid, campaign_uuid, comment_limit=comment_target
             )
+        external = _collect_external(candidate, campaign_id, influencer_id, run_id)
+        publish_event(
+            campaign_id,
+            "deep_analysis.external_signals_collected",
+            run_id=run_id,
+            influencer_id=influencer_id,
+            coverage=external.get("_coverage", {}),
+        )
 
-            # --- Stage 4: synthesize_report ---
+        # --- Stage 4: synthesize_report ---
+        with db_session() as session:
+            run = session.get(models.DeepAnalysisRun, run_uuid)
+            if run is None:
+                return {"status": "missing_run"}
+            run.current_stage = "synthesizing"
             report_id = _synthesize_report(
                 session,
                 run,
@@ -119,6 +164,7 @@ def deep_analyze(
             if run:
                 run.status = "failed"
                 run.failed_at = datetime.now(UTC)
+                run.current_stage = "failed"
                 run.failure_reason = str(exc)[:4000]
         publish_event(
             campaign_id,
@@ -185,6 +231,15 @@ def _collect_social_content(
 
 
 def _build_coverage_summary(provider_coverage: dict, posts: list) -> dict:
+    """Build the per-platform coverage summary used by the report page.
+
+    ``comments_fetched`` is initialised to ``False`` and only flipped to
+    ``True`` by :func:`_merge_coverage_with_comments` once the comment
+    stage has actually run for that platform. This is the source of truth
+    for the "ok / unavailable" badge in the Platform coverage card; we
+    never want to render "ok" for a platform whose comment stage was
+    skipped.
+    """
     platforms: dict[str, dict] = {}
     for post in posts:
         platform = post.platform
@@ -198,7 +253,8 @@ def _build_coverage_summary(provider_coverage: dict, posts: list) -> dict:
         summary[platform] = {
             "profile_status": status,
             "posts_fetched": platforms.get(platform, {}).get("posts", 0),
-            "comments_fetched": platforms.get(platform, {}).get("comments", False),
+            "comments_fetched": False,
+            "comments_analyzed": 0,
         }
     return summary
 
@@ -234,6 +290,7 @@ def _collect_post_comments(
     )
 
     total_comments = 0
+    per_platform: dict[str, int] = {}
     for post in posts:
         post_comments = (
             session.query(models.PlatformComment)
@@ -242,9 +299,31 @@ def _collect_post_comments(
             .all()
         )
         total_comments += len(post_comments)
+        per_platform[post.platform] = per_platform.get(post.platform, 0) + len(post_comments)
 
     run.collected_comment_count = total_comments
-    return {"post_count": len(posts), "total_comments": total_comments}
+    return {
+        "post_count": len(posts),
+        "total_comments": total_comments,
+        "platform_comments": per_platform,
+    }
+
+
+def _merge_coverage_with_comments(social: dict, platform_comments: dict[str, int]) -> dict:
+    """Stamp the comment-fetch result into the per-platform coverage summary.
+
+    ``_build_coverage_summary`` only had access to post counts and the
+    provider URL status; it could not tell whether the comment-fetch stage
+    actually ran for each platform. ``_collect_post_comments`` now returns
+    per-platform comment counts; this helper mutates the coverage dict in
+    place so the frontend can render the right badge.
+    """
+    coverage = social.get("coverage") or {}
+    for platform, info in coverage.items():
+        info["comments_fetched"] = platform in platform_comments
+        info["comments_analyzed"] = int(platform_comments.get(platform, 0))
+    social["coverage"] = coverage
+    return social
 
 
 def _collect_external(candidate: dict, campaign_id: str, influencer_id: str, run_id: str) -> dict:
@@ -305,7 +384,6 @@ def _synthesize_report(
     influencer_uuid: UUID,
 ) -> str:
     run_uuid = UUID(run_id)
-    influencer_uid = UUID(influencer_id)
 
     posts = (
         session.query(models.PlatformPost)
@@ -341,7 +419,7 @@ def _synthesize_report(
             continue
 
         sentiment = analyze_sentiment(post_comments)
-        fake = score_fake_comments(post_comments)
+        fake = score_fake_comments(comments=post_comments)
         engagement = engagement_quality_score(
             {
                 "comments": post_comments,
@@ -393,13 +471,21 @@ def _synthesize_report(
 
     audience_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 50.0
     fake_engagement_risk = sum(fake_risks) / len(fake_risks) if fake_risks else 0.0
-    overall_grade = _grade_from_scores(audience_sentiment, fake_engagement_risk)
+    analyzed_posts = [p for p in posts_analyzed if p.get("status") == "ok"]
+    has_data = bool(analyzed_posts) and int(run.collected_comment_count or 0) > 0
+    overall_grade = _grade_from_scores(
+        audience_sentiment, fake_engagement_risk, has_data=has_data
+    )
 
     total_comments = run.collected_comment_count
     confidence = _derive_confidence(total_comments, external, posts_analyzed)
 
-    strengths, risks = _derive_strengths_risks(audience_sentiment, fake_engagement_risk, external)
-    recommendation = _build_recommendation(audience_sentiment, fake_engagement_risk, total_comments)
+    strengths, risks = _derive_strengths_risks(
+        audience_sentiment, fake_engagement_risk, external, has_data=has_data
+    )
+    recommendation = _build_recommendation(
+        audience_sentiment, fake_engagement_risk, total_comments, has_data=has_data
+    )
 
     # Build v1 report payload
     report_payload = {
@@ -409,6 +495,12 @@ def _synthesize_report(
             "followers": candidate.get("followers", 0),
             "engagement_rate": candidate.get("engagement_rate", 0),
             "verified": candidate.get("verified", False),
+        },
+        "data_sufficiency": {
+            "has_data": has_data,
+            "analyzed_posts": len(analyzed_posts),
+            "total_comments": int(total_comments or 0),
+            "grade": overall_grade,
         },
         "campaign_fit_summary": recommendation,
         "platform_coverage": run.coverage_summary or {},
@@ -445,6 +537,7 @@ def _synthesize_report(
     session.add(report)
 
     run.status = "completed"
+    run.current_stage = "done"
     run.completed_at = datetime.now(UTC)
     run.cache_expires_at = datetime.now(UTC) + timedelta(minutes=_CACHE_TTL_MINUTES)
 
@@ -455,6 +548,13 @@ def _derive_confidence(total_comments: int, external: dict, posts_analyzed: list
     reasoning_parts: list[str] = []
     score = 0.0
 
+    analyzed_posts = [p for p in posts_analyzed if p.get("status") == "ok"]
+    has_data = bool(analyzed_posts) and int(total_comments or 0) > 0
+
+    if not has_data:
+        reasoning_parts.append("insufficient evidence — no analyzed posts and no comments")
+        return {"level": "Low", "score": 0.0, "reasoning": "; ".join(reasoning_parts)}
+
     if total_comments >= 100:
         score += 0.4
         reasoning_parts.append("sufficient comment volume")
@@ -464,7 +564,6 @@ def _derive_confidence(total_comments: int, external: dict, posts_analyzed: list
     else:
         reasoning_parts.append("no comments available")
 
-    analyzed_posts = [p for p in posts_analyzed if p.get("status") == "ok"]
     if len(analyzed_posts) >= 10:
         score += 0.3
         reasoning_parts.append("sufficient post coverage")
@@ -495,9 +594,30 @@ def _derive_confidence(total_comments: int, external: dict, posts_analyzed: list
     return {"level": level, "score": round(score, 2), "reasoning": "; ".join(reasoning_parts)}
 
 
-def _derive_strengths_risks(sentiment: float, fake_risk: float, external: dict) -> tuple[list[str], list[str]]:
+def _derive_strengths_risks(
+    sentiment: float,
+    fake_risk: float,
+    external: dict,
+    *,
+    has_data: bool,
+) -> tuple[list[str], list[str]]:
+    """Compute strengths and risks, gated on whether we actually have evidence.
+
+    The previous implementation unconditionally asserted "Low fake engagement
+    risk" whenever the fake-risk default was 0 — which happens whenever we
+    have no analyzed posts. That's a contradiction: the recommendation text
+    at the same time said "Insufficient comment data". With ``has_data``
+    False we instead surface a single "Insufficient evidence" note so the
+    user can tell the strengths list is a placeholder, not a verdict.
+    """
     strengths: list[str] = []
     risks: list[str] = []
+
+    if not has_data:
+        return (
+            ["Insufficient evidence to assess creator strengths — no analyzed posts or comments."],
+            ["Re-run after enrichment completes to generate strengths and risks."],
+        )
 
     if sentiment >= 70:
         strengths.append("Strong positive audience sentiment")
@@ -525,7 +645,9 @@ def _derive_strengths_risks(sentiment: float, fake_risk: float, external: dict) 
     return strengths, risks
 
 
-def _build_recommendation(sentiment: float, fake_risk: float, total_comments: int) -> str:
+def _build_recommendation(sentiment: float, fake_risk: float, total_comments: int, *, has_data: bool) -> str:
+    if not has_data:
+        return _INSUFFICIENT_RECOMMENDATION
     if total_comments == 0:
         return "Insufficient comment data to provide a strong recommendation."
     if fake_risk >= 70:
@@ -569,14 +691,39 @@ def _build_citations(posts_analyzed: list[dict], external: dict) -> list[dict]:
     return citations
 
 
+def _flag_brand_risk(snippet: dict) -> bool:
+    """Best-effort risk flag using keyword scan over title + snippet text.
+
+    Cheap, deterministic, and a strict subset of the more thorough
+    ``brand_safety_blocklist`` scan used by the main role-4 pipeline. The
+    goal is to give the user a real signal — not just a count of search
+    API results — so the report says e.g. "9 mentions (2 flagged)" rather
+    than "9 mentions".
+    """
+    text = " ".join(
+        str(snippet.get(field, "")) for field in ("title", "snippet", "url")
+    ).lower()
+    return any(keyword in text for keyword in _BRAND_RISK_KEYWORDS)
+
+
 def _brand_safety_summary(external: dict) -> str:
     web_sentiment = external.get("web_sentiment")
-    if web_sentiment and web_sentiment.get("snippets"):
-        return f"Found {len(web_sentiment['snippets'])} external mentions; review for brand-risk signals."
-    return "No additional brand-safety issues beyond campaign scoring."
+    snippets = (web_sentiment or {}).get("snippets") or []
+    if not snippets:
+        return "No additional brand-safety issues beyond campaign scoring."
+    total = len(snippets)
+    flagged = sum(1 for snippet in snippets if _flag_brand_risk(snippet))
+    if flagged == 0:
+        return f"Found {total} external mentions; none flagged for review."
+    return f"Found {total} external mentions ({flagged} flagged for review); review for brand-risk signals."
 
 
-def _grade_from_scores(sentiment: float, fake_risk: float) -> str:
+_NO_GRADE = "N/A"
+
+
+def _grade_from_scores(sentiment: float, fake_risk: float, *, has_data: bool) -> str:
+    if not has_data:
+        return _NO_GRADE
     adjusted = sentiment - fake_risk * 0.4
     if adjusted >= 80:
         return "A"

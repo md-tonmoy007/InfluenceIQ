@@ -70,7 +70,7 @@ export default function DeepAnalysisTrigger({
     };
   }, [campaignId, deepAnalysisReady, influencerId]);
 
-  const handleClick = async () => {
+  const handleClick = async (force: boolean) => {
     if (status !== "idle" && status !== "failed") {
       return;
     }
@@ -78,7 +78,19 @@ export default function DeepAnalysisTrigger({
     try {
       setStatus("starting");
 
-      const start = await triggerDeepAnalysis(influencerId, campaignId, 2000, { force: true });
+      const start = await triggerDeepAnalysis(influencerId, campaignId, 2000, { force });
+
+      // When ``force=false`` and a fresh cached report exists the API
+      // returns ``status: "completed"`` with a ``report.report_id`` —
+      // there is no run id because no Celery task was dispatched. Jump
+      // straight to the rendered report.
+      const startReport = start.report as Record<string, unknown> | undefined;
+      if (start.status === "completed" && startReport && startReport.report_id) {
+        setLatestReportId(String(startReport.report_id));
+        setStatus("idle");
+        router.push(reportHref(influencerId, String(startReport.report_id), campaignId));
+        return;
+      }
 
       const runId = String(start.run_id ?? "");
       if (!runId) {
@@ -132,7 +144,7 @@ export default function DeepAnalysisTrigger({
         <button
           type="button"
           className={rerunButtonClassName}
-          onClick={() => void handleClick()}
+          onClick={() => void handleClick(true)}
         >
           Rerun deep analysis
         </button>
@@ -145,7 +157,7 @@ export default function DeepAnalysisTrigger({
       type="button"
       className={rerunButtonClassName}
       disabled={isRunning}
-      onClick={() => void handleClick()}
+      onClick={() => void handleClick(false)}
     >
       {buttonLabel}
     </button>

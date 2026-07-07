@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { getDeepAnalysisReport, getDeepAnalysisStatus } from "@/lib/api";
 import { reportHref, shortlistHref } from "@/lib/routes";
+import { getCampaignWebSocketUrl } from "@/lib/websocket";
 
 type ReportPageClientProps = {
   influencerId: string;
@@ -51,6 +52,15 @@ const STAGE_HINT: Record<TriggerStage, string> = {
   failed: "Something went wrong while generating the report.",
 };
 
+const WS_EVENT_TO_STAGE: Record<string, TriggerStage> = {
+  "deep_analysis.started": "starting",
+  "deep_analysis.social_collected": "comments",
+  "deep_analysis.comments_collected": "trends",
+  "deep_analysis.external_signals_collected": "synthesizing",
+  "deep_analysis.report_ready": "done",
+  "deep_analysis.failed": "failed",
+};
+
 function Section({ title, meta, children }: { title: string; meta?: string; children: React.ReactNode }) {
   return (
     <section className="report-section">
@@ -63,12 +73,27 @@ function Section({ title, meta, children }: { title: string; meta?: string; chil
   );
 }
 
+function inferStageFromStatus(result: Record<string, unknown>): TriggerStage {
+  const runStatus = String(result.status ?? "");
+  if (runStatus === "failed") return "failed";
+  if (runStatus === "completed") return "done";
+  const stage = result.current_stage;
+  if (typeof stage === "string") {
+    if (stage === "starting" || stage === "social" || stage === "comments" || stage === "trends" || stage === "synthesizing") {
+      return stage;
+    }
+    if (stage === "done") return "done";
+  }
+  return "social";
+}
+
 export default function ReportPageClient({ influencerId, reportId, runId, campaignId }: ReportPageClientProps) {
   const router = useRouter();
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingStage, setLoadingStage] = useState<TriggerStage>(runId ? "starting" : "social");
   const [commentsAnalyzed, setCommentsAnalyzed] = useState<number>(0);
+  const lastEventIdRef = useRef<number>(0);
 
   useEffect(() => {
     if (reportId) {
@@ -85,41 +110,40 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
     let active = true;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
+    const handleStatus = (result: Record<string, unknown>, fromWs: boolean) => {
+      if (!active) return;
+      const runStatus = String(result.status ?? "");
+      const stage = inferStageFromStatus(result);
+      setLoadingStage(stage);
+      setCommentsAnalyzed(Number(result.collected_comment_count ?? 0));
+
+      if (runStatus === "completed") {
+        const completedReport = result.report as Record<string, unknown> | null | undefined;
+        const nextReportId = completedReport ? String(completedReport.report_id ?? "") : "";
+        if (nextReportId) {
+          router.replace(reportHref(influencerId, nextReportId, campaignId));
+          return;
+        }
+        setError("Analysis finished, but no report id was returned.");
+        return;
+      }
+
+      if (runStatus === "failed") {
+        setError(String(result.failure_reason ?? result.error ?? "Deep analysis failed."));
+        return;
+      }
+
+      // Only continue polling if the WS path didn't already give us a
+      // terminal state.
+      if (!fromWs && (runStatus === "running" || runStatus === "queued")) {
+        pollTimer = setTimeout(poll, 2500);
+      }
+    };
+
     const poll = async () => {
       try {
         const result = await getDeepAnalysisStatus(influencerId, runId);
-        if (!active) return;
-
-        const runStatus = String(result.status ?? "");
-        const coverage = (result.provider_coverage as Record<string, unknown> | null) ?? {};
-        const hasCoverage = Object.keys(coverage).length > 0;
-        const commentCount = Number(result.collected_comment_count ?? 0);
-        setCommentsAnalyzed(commentCount);
-
-        if (runStatus === "completed") {
-          const completedReport = result.report as Record<string, unknown> | null | undefined;
-          const nextReportId = completedReport ? String(completedReport.report_id ?? "") : "";
-          setLoadingStage("done");
-          if (nextReportId) {
-            router.replace(reportHref(influencerId, nextReportId, campaignId));
-            return;
-          }
-          setError("Analysis finished, but no report id was returned.");
-          return;
-        }
-
-        if (runStatus === "failed") {
-          setLoadingStage("failed");
-          setError(String(result.failure_reason ?? result.error ?? "Deep analysis failed."));
-          return;
-        }
-
-        if (!hasCoverage) setLoadingStage("social");
-        else if (commentCount === 0) setLoadingStage("comments");
-        else if (commentCount < 25) setLoadingStage("trends");
-        else setLoadingStage("synthesizing");
-
-        pollTimer = setTimeout(poll, 2500);
+        handleStatus(result, false);
       } catch (err) {
         if (!active) return;
         setLoadingStage("failed");
@@ -127,10 +151,106 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
       }
     };
 
-    void poll();
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectAttempt = 0;
+
+    const connectWebSocket = () => {
+      if (!campaignId) {
+        // No campaign context → fall back to plain polling.
+        pollTimer = setTimeout(poll, 2500);
+        return;
+      }
+      try {
+        const url = getCampaignWebSocketUrl(campaignId, { lastEventId: lastEventIdRef.current });
+        socket = new WebSocket(url);
+      } catch {
+        if (!active) return;
+        reconnectTimer = setTimeout(connectWebSocket, 1500 * ++reconnectAttempt);
+        return;
+      }
+      socket.onmessage = (ev) => {
+        if (!active) return;
+        try {
+          const event = JSON.parse(ev.data) as { type?: string; event_id?: number; payload?: Record<string, unknown> };
+          if (typeof event.event_id === "number" && event.event_id > lastEventIdRef.current) {
+            lastEventIdRef.current = event.event_id;
+          }
+          if (event.type && event.type in WS_EVENT_TO_STAGE) {
+            const stage = WS_EVENT_TO_STAGE[event.type];
+            if (stage === "done") {
+              setLoadingStage("done");
+              void (async () => {
+                try {
+                  const result = await getDeepAnalysisStatus(influencerId, runId);
+                  handleStatus(result, true);
+                } catch {
+                  /* fall through to redirect */
+                }
+                const latest = await getDeepAnalysisStatus(influencerId, runId).catch(() => null);
+                const completedReport = latest?.report as Record<string, unknown> | null | undefined;
+                const nextReportId = completedReport ? String(completedReport.report_id ?? "") : "";
+                if (nextReportId) {
+                  router.replace(reportHref(influencerId, nextReportId, campaignId));
+                }
+              })();
+              return;
+            }
+            if (stage === "failed") {
+              setLoadingStage("failed");
+              const reason = String(event.payload?.error ?? "Deep analysis failed.");
+              setError(reason);
+              return;
+            }
+            setLoadingStage(stage);
+            if (typeof event.payload?.comment_count === "number") {
+              setCommentsAnalyzed(event.payload.comment_count as number);
+            } else if (typeof event.payload?.post_count === "number") {
+              // social stage emits post_count
+            }
+          }
+        } catch {
+          /* ignore malformed events */
+        }
+      };
+      socket.onerror = () => {
+        if (!active) return;
+      };
+      socket.onclose = () => {
+        if (!active) return;
+        // Fall back to polling if WS closes before completion.
+        reconnectAttempt = Math.min(reconnectAttempt + 1, 4);
+        reconnectTimer = setTimeout(connectWebSocket, 1500 * reconnectAttempt);
+      };
+    };
+
+    // Kick off the first poll to get the current status. Subsequent
+    // progress comes from the WebSocket; if the WS isn't available
+    // (no campaign context, or the socket fails) we fall back to plain
+    // polling inside the handler.
+    void (async () => {
+      try {
+        const result = await getDeepAnalysisStatus(influencerId, runId);
+        if (!active) return;
+        const stage = inferStageFromStatus(result);
+        handleStatus(result, false);
+        if (stage !== "done" && stage !== "failed") {
+          connectWebSocket();
+        }
+      } catch (err) {
+        if (!active) return;
+        setLoadingStage("failed");
+        setError(err instanceof Error ? err.message : "Unable to load analysis status.");
+      }
+    })();
+
     return () => {
       active = false;
       if (pollTimer) clearTimeout(pollTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (socket) {
+        try { socket.close(); } catch { /* ignore */ }
+      }
     };
   }, [campaignId, influencerId, reportId, router, runId]);
 
@@ -189,6 +309,10 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
   const postsAnalyzed = (payload.posts_analyzed as Array<Record<string, unknown>> | undefined) ?? [];
   const platformCoverage = (payload.platform_coverage as Record<string, Record<string, unknown>> | undefined) ?? {};
   const confidenceReasoning = safeStr(payload.confidence_reasoning, "");
+  const sufficiency = (payload.data_sufficiency as Record<string, unknown> | undefined) ?? {};
+  const hasData = sufficiency.has_data !== false && (Number(sufficiency.analyzed_posts ?? 0) > 0 || Number(sufficiency.total_comments ?? 0) > 0);
+  const primaryPlatform = safeStr(creator.primary_platform, "");
+  const showPlatformChip = primaryPlatform !== "";
 
   return (
     <div className="report-page">
@@ -200,9 +324,10 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
             Recommendation grade <strong>{safeStr(report.overall_grade)}</strong> with <strong>{safeStr(report.confidence)}</strong> confidence.
           </p>
           <div className="report-chip-row">
-            <span className="report-chip">{safeStr(creator.primary_platform, "Platform unavailable")}</span>
+            {showPlatformChip ? <span className="report-chip">{primaryPlatform}</span> : null}
             <span className="report-chip">{safeStr(creator.followers, "0")} followers</span>
             <span className="report-chip">{safeStr(payload.comments_analyzed, "0")} comments analyzed</span>
+            {!hasData ? <span className="report-chip report-chip-warn">Insufficient evidence</span> : null}
           </div>
         </div>
         {campaignId ? <Link href={shortlistHref(campaignId)} className="report-link-btn">Back to shortlist</Link> : null}
@@ -278,8 +403,8 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
           <section className="report-card report-metrics">
             <h3>Audience sentiment & authenticity</h3>
             <div className="report-stat-list">
-              <div><span>Audience sentiment</span><strong>{safeStr(audience.sentiment)}</strong></div>
-              <div><span>Fake engagement risk</span><strong>{safeStr(audience.fake_engagement_risk)}</strong></div>
+              <div><span>Audience sentiment</span><strong>{hasData ? safeStr(audience.sentiment) : "—"}</strong></div>
+              <div><span>Fake engagement risk</span><strong>{hasData ? safeStr(audience.fake_engagement_risk) : "—"}</strong></div>
               <div><span>Comments analyzed</span><strong>{safeStr(payload.comments_analyzed, "0")}</strong></div>
             </div>
           </section>
@@ -301,7 +426,7 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
                   <div key={platform} className="report-coverage-row">
                     <div>
                       <strong>{platform}</strong>
-                      <span>{safeStr(info.profile_status)} · {safeStr(info.posts_fetched, "0")} posts</span>
+                      <span>{safeStr(info.profile_status)} · {safeStr(info.posts_fetched, "0")} posts · {safeStr(info.comments_analyzed, "0")} comments</span>
                     </div>
                     {!info.comments_fetched ? <CoverageBadge status="unavailable" /> : <CoverageBadge status="ok" />}
                   </div>
@@ -316,3 +441,4 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
     </div>
   );
 }
+

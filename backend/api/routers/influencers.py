@@ -335,6 +335,7 @@ def get_deep_analysis_status(
     return {
         "run_id": str(run.id),
         "status": run.status,
+        "current_stage": run.current_stage,
         "campaign_id": str(run.campaign_id),
         "influencer_id": str(run.influencer_id),
         "collected_comment_count": run.collected_comment_count,
