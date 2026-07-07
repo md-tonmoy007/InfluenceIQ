@@ -6,6 +6,7 @@ import logging
 import os
 from uuid import UUID, uuid4
 
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from backend.core.celery.app import celery_app
@@ -27,6 +28,20 @@ from backend.pipeline.tasks._common import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _advisory_lock_keys(campaign_uuid: UUID, influencer_uuid: UUID) -> tuple[int, int]:
+    """Derive a stable (int, int) lock key from a (campaign, influencer) pair.
+
+    ``pg_advisory_xact_lock(int, int)`` is the two-key form: rows sharing
+    both keys wait on the same lock, rows sharing only one do not. The
+    values are reduced modulo 2^31 to fit in a signed 32-bit int, which
+    is the call signature's int4 inputs.
+    """
+    modulus = 1 << 31
+    a = int.from_bytes(campaign_uuid.bytes[:8], "big", signed=False) % modulus
+    b = int.from_bytes(influencer_uuid.bytes[:8], "big", signed=False) % modulus
+    return a, b
 
 
 @celery_app.task(name="backend.pipeline.tasks.score.score_influencer", bind=True, max_retries=2)
@@ -78,10 +93,18 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
     # enrich->score chain may run concurrently for the same (campaign, influencer)
     # pair. The existing_current lookup below is a check-then-act race: two
     # concurrent runs can both see no current row and both try to insert one,
-    # tripping uq_influencer_scores_current. Retry so the loser re-reads the
-    # now-committed current row and supersedes it instead of failing outright.
+    # tripping uq_influencer_scores_current. We take a transaction-scoped
+    # advisory lock keyed on (campaign_id, influencer_id) so the second
+    # worker blocks until the first commits, then re-reads the now-current
+    # row and supersedes it. The IntegrityError catch is defence in depth
+    # for environments where the lock call is unavailable.
+    lock_a, lock_b = _advisory_lock_keys(campaign_uuid, influencer_uuid)
     try:
         with db_session() as session:
+            session.execute(
+                text("SELECT pg_advisory_xact_lock(:k1, :k2)"),
+                {"k1": lock_a, "k2": lock_b},
+            )
             existing_current = (
                 session.query(models.InfluencerScore)
                 .filter(

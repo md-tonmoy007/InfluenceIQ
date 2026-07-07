@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 from backend.core.celery.app import celery_app
@@ -32,6 +33,9 @@ _COMMENT_PER_POST_LIMIT = 200
 
 _INSUFFICIENT_RECOMMENDATION = (
     "Insufficient data to grade this creator — re-run after enrichment completes."
+)
+_INSUFFICIENT_BRAND_SAFETY = (
+    "Insufficient data to assess brand safety — re-run after enrichment completes."
 )
 
 _BRAND_RISK_KEYWORDS = (
@@ -255,9 +259,13 @@ def _build_coverage_summary(provider_coverage: dict, posts: list) -> dict:
     summary: dict[str, dict] = {}
     for key, status in provider_coverage.items():
         platform = _platform_from_url(key)
+        post_count = platforms.get(platform, {}).get("posts", 0)
+        effective_status = status
+        if status == "ok" and post_count == 0:
+            effective_status = "no_posts"
         summary[platform] = {
-            "profile_status": status,
-            "posts_fetched": platforms.get(platform, {}).get("posts", 0),
+            "profile_status": effective_status,
+            "posts_fetched": post_count,
             "comments_fetched": False,
             "comments_analyzed": 0,
         }
@@ -329,6 +337,21 @@ def _merge_coverage_with_comments(social: dict, platform_comments: dict[str, int
         info["comments_analyzed"] = int(platform_comments.get(platform, 0))
     social["coverage"] = coverage
     return social
+
+
+_ENGAGEMENT_QUALITY_FEATURE_KEYS = (
+    "diverse_comments_score",
+    "context_relevant_comments_score",
+    "stable_engagement_rate_score",
+    "realistic_like_comment_ratio_score",
+    "organic_source_diversity_score",
+)
+
+
+def _engagement_quality_features(candidate: dict) -> dict[str, Any]:
+    if not isinstance(candidate, dict):
+        return {}
+    return {key: candidate.get(key, 0.0) for key in _ENGAGEMENT_QUALITY_FEATURE_KEYS}
 
 
 def _collect_external(candidate: dict, campaign_id: str, influencer_id: str, run_id: str) -> dict:
@@ -405,6 +428,30 @@ def _synthesize_report(
     engagement_scores: list[float] = []
     posts_analyzed: list[dict] = []
 
+    def _raw_value(post, *keys: str):
+        raw = post.raw if isinstance(post.raw, dict) else {}
+        for key in keys:
+            value = raw.get(key)
+            if value not in (None, ""):
+                return value
+        return None
+
+    def _first_text(*values) -> str | None:
+        for value in values:
+            if isinstance(value, str) and value.strip():
+                return value
+        return None
+
+    def _first_int(*values) -> int | None:
+        for value in values:
+            if value is None:
+                continue
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+        return None
+
     for post in posts:
         post_comments = [
             row.text
@@ -414,10 +461,27 @@ def _synthesize_report(
             .all()
             if row.text
         ]
+        title = _first_text(post.title, _raw_value(post, "title"))
+        caption = _first_text(
+            post.caption,
+            _raw_value(post, "caption", "description", "text"),
+        )
+        post_url = _first_text(
+            post.post_url,
+            _raw_value(post, "url", "post_url", "link"),
+        )
+        like_count = _first_int(post.like_count, _raw_value(post, "like_count", "likes"))
+        view_count = _first_int(post.view_count, _raw_value(post, "view_count", "views"))
+
         if not post_comments:
             posts_analyzed.append({
                 "post_id": str(post.id),
                 "platform": post.platform,
+                "title": title,
+                "caption": caption,
+                "post_url": post_url,
+                "like_count": like_count,
+                "view_count": view_count,
                 "comment_count": 0,
                 "status": "no_comments",
             })
@@ -426,16 +490,12 @@ def _synthesize_report(
         sentiment = analyze_sentiment(post_comments)
         fake = score_fake_comments(comments=post_comments)
         engagement = engagement_quality_score(
-            {
-                "comments": post_comments,
-                "followers": candidate.get("followers", 0),
-                "average_engagement": candidate.get("average_engagement", 0),
-            },
-            fake_comment_risk=float(fake.get("fake_comment_risk", 0)),
+            float(fake.get("fake_comment_risk_score", 0.0)),
+            features=_engagement_quality_features(candidate),
         )
 
         sentiment_value = float(sentiment.get("sentiment_score", 50.0))
-        fake_value = float(fake.get("fake_comment_risk", 0.0))
+        fake_value = float(fake.get("fake_comment_risk_score", 0.0))
         engagement_value = float(engagement.get("engagement_quality_score", 50.0))
 
         sentiment_scores.append(sentiment_value)
@@ -467,6 +527,11 @@ def _synthesize_report(
         posts_analyzed.append({
             "post_id": str(post.id),
             "platform": post.platform,
+            "title": title,
+            "caption": caption,
+            "post_url": post_url,
+            "like_count": like_count,
+            "view_count": view_count,
             "comment_count": len(post_comments),
             "sentiment_score": sentiment_value,
             "fake_comment_risk": fake_value,
@@ -520,12 +585,14 @@ def _synthesize_report(
         "brand_safety_signals": {
             "search_visibility": external.get("search_visibility"),
             "web_sentiment": external.get("web_sentiment"),
+            "mention_count": _brand_mention_count(external, has_data=has_data),
+            "flagged_count": _brand_flagged_count(external, has_data=has_data),
         },
         "key_strengths": strengths,
         "key_risks": risks,
         "recommendation": recommendation,
         "confidence_reasoning": confidence.get("reasoning", ""),
-        "citations": _build_citations(posts_analyzed, external),
+        "citations": _build_citations(posts_analyzed, external, has_data=has_data),
     }
 
     report = models.DeepAnalysisReport(
@@ -534,7 +601,7 @@ def _synthesize_report(
         overall_grade=overall_grade,
         audience_sentiment=round(audience_sentiment, 2),
         fake_engagement_risk=round(fake_engagement_risk, 2),
-        brand_safety_summary=_brand_safety_summary(external),
+        brand_safety_summary=_brand_safety_summary(external, has_data=has_data),
         recommendation=recommendation,
         confidence=confidence.get("level", "Low"),
         report_payload=report_payload,
@@ -664,7 +731,7 @@ def _build_recommendation(sentiment: float, fake_risk: float, total_comments: in
     return "Weak audience sentiment; consider other shortlisted creators."
 
 
-def _build_citations(posts_analyzed: list[dict], external: dict) -> list[dict]:
+def _build_citations(posts_analyzed: list[dict], external: dict, *, has_data: bool) -> list[dict]:
     citations: list[dict] = []
 
     for post in posts_analyzed:
@@ -673,6 +740,8 @@ def _build_citations(posts_analyzed: list[dict], external: dict) -> list[dict]:
                 "source": "post",
                 "post_id": post.get("post_id"),
                 "platform": post.get("platform"),
+                "title": post.get("title"),
+                "url": post.get("post_url"),
                 "key_metrics": {
                     "comment_count": post.get("comment_count"),
                     "sentiment_score": post.get("sentiment_score"),
@@ -680,13 +749,18 @@ def _build_citations(posts_analyzed: list[dict], external: dict) -> list[dict]:
                 },
             })
 
-    if external.get("search_visibility"):
+    if external.get("search_visibility") and has_data:
         urls: list[str] = []
         for result_list in external["search_visibility"].get("queries", {}).values():
             if isinstance(result_list, list):
                 for item in result_list:
                     if isinstance(item, dict) and item.get("url"):
-                        urls.append(item["url"])
+                        url_value = str(item["url"])
+                        if any(domain in url_value.lower() for domain in _PROFILE_DOMAINS):
+                            continue
+                        if "search_query=" in url_value.lower():
+                            continue
+                        urls.append(url_value)
         if urls:
             citations.append({
                 "source": "search_visibility",
@@ -711,16 +785,68 @@ def _flag_brand_risk(snippet: dict) -> bool:
     return any(keyword in text for keyword in _BRAND_RISK_KEYWORDS)
 
 
-def _brand_safety_summary(external: dict) -> str:
-    web_sentiment = external.get("web_sentiment")
-    snippets = (web_sentiment or {}).get("snippets") or []
-    if not snippets:
+def _brand_safety_summary(external: dict, *, has_data: bool) -> str:
+    if not has_data:
+        return _INSUFFICIENT_BRAND_SAFETY
+    substantive = _substantive_mentions(external)
+    if not substantive:
         return "No additional brand-safety issues beyond campaign scoring."
-    total = len(snippets)
-    flagged = sum(1 for snippet in snippets if _flag_brand_risk(snippet))
+    total = len(substantive)
+    flagged = sum(1 for snippet in substantive if _flag_brand_risk(snippet))
     if flagged == 0:
         return f"Found {total} external mentions; none flagged for review."
     return f"Found {total} external mentions ({flagged} flagged for review); review for brand-risk signals."
+
+
+_PROFILE_DOMAINS = (
+    "collabstr.com",
+    "linkedin.com",
+    "facebook.com/groups",
+    "instagram.com",
+    "vercel.app",
+    "github.com",
+)
+
+
+def _substantive_mentions(external: dict) -> list[dict]:
+    web_sentiment = external.get("web_sentiment") or {}
+    snippets = web_sentiment.get("snippets") or []
+    return [snippet for snippet in snippets if _is_substantive_mention(snippet)]
+
+
+def _brand_mention_count(external: dict, *, has_data: bool) -> int:
+    if not has_data:
+        return 0
+    return len(_substantive_mentions(external))
+
+
+def _brand_flagged_count(external: dict, *, has_data: bool) -> int:
+    if not has_data:
+        return 0
+    return sum(1 for snippet in _substantive_mentions(external) if _flag_brand_risk(snippet))
+
+
+def _is_substantive_mention(snippet: dict) -> bool:
+    """Drop profile/marketplace pages and search-result pages.
+
+    SERP API returns a mix of real articles, social profile pages, and
+    search-result pages that echo the query (e.g. YouTube search for
+    "<name> controversy"). Counting those as "mentions" and keyword-
+    scanning their titles inflates the brand-safety count and produces
+    false positives.
+    """
+    url = str(snippet.get("url") or "").lower()
+    title = str(snippet.get("title") or "").strip()
+    snippet_text = str(snippet.get("snippet") or "").strip()
+    if not url or not title or not snippet_text:
+        return False
+    if any(domain in url for domain in _PROFILE_DOMAINS):
+        return False
+    if "/results?search_query=" in url or "search_query=" in url:
+        return False
+    if "search results for" in title.lower() or "results related to" in title.lower():
+        return False
+    return True
 
 
 _NO_GRADE = "N/A"

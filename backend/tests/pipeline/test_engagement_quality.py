@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from backend.pipeline.analysis.engagement_quality import engagement_quality_score
 from backend.pipeline.analysis.source_confidence import source_confidence_score
+from backend.pipeline.tasks.deep import _engagement_quality_features
 
 
 def test_engagement_quality_decreases_with_fake_risk() -> None:
@@ -61,3 +62,45 @@ def test_source_confidence_penalises_repetition() -> None:
     repeated = source_confidence_score({"data_source_count": 4, "same_source_repetition": 1.0})
     assert repeated["source_confidence_score"] < baseline["source_confidence_score"]
     assert repeated["components"]["repetition_penalty"] == 15.0
+
+
+def test_engagement_quality_features_projects_recognised_keys() -> None:
+    """Regression: ``_synthesize_report`` feeds ``engagement_quality_score``
+    via the helper. The wrong call signature (dict first, ``fake_comment_risk``
+    kwarg) used to crash deep_analyze with a TypeError.
+    """
+    candidate = {
+        "canonical_name": "Test",
+        "diverse_comments_score": 0.5,
+        "context_relevant_comments_score": 0.7,
+        "followers": 10000,
+    }
+    features = _engagement_quality_features(candidate)
+    assert features == {
+        "diverse_comments_score": 0.5,
+        "context_relevant_comments_score": 0.7,
+        "stable_engagement_rate_score": 0.0,
+        "realistic_like_comment_ratio_score": 0.0,
+        "organic_source_diversity_score": 0.0,
+    }
+
+
+def test_engagement_quality_features_empty_when_candidate_is_not_a_dict() -> None:
+    assert _engagement_quality_features(None) == {}
+    assert _engagement_quality_features("not a dict") == {}
+
+
+def test_engagement_quality_score_deep_call_signature() -> None:
+    """The fixed call site invokes ``engagement_quality_score`` with a number
+    first and a features dict second. Confirm both call shapes used by the
+    codebase work against the current signature.
+    """
+    result = engagement_quality_score(
+        50.0,
+        features={
+            "diverse_comments_score": 0.6,
+            "context_relevant_comments_score": 0.4,
+        },
+    )
+    assert "engagement_quality_score" in result
+    assert "authentic_engagement_bonus" in result

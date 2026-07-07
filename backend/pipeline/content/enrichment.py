@@ -162,13 +162,53 @@ def persist_platform_profile(
                 platform_post_id=post_id,
             )
             session.add(post_row)
-        post_row.post_url = str(post_data.get("url") or post_data.get("post_url") or "")
-        post_row.title = str(post_data.get("title") or "")
-        post_row.caption = str(post_data.get("caption") or post_data.get("description") or post_data.get("text") or "")
-        post_row.view_count = _int_or_none(post_data.get("view_count") or post_data.get("views"))
-        post_row.like_count = _int_or_none(post_data.get("like_count") or post_data.get("likes"))
-        post_row.comment_count = _int_or_none(post_data.get("comment_count") or post_data.get("comments"))
-        post_row.share_count = _int_or_none(post_data.get("share_count"))
+        post_row.post_url = str(
+            post_data.get("url")
+            or post_data.get("post_url")
+            or (post_row.raw or {}).get("url")
+            or (post_row.raw or {}).get("post_url")
+            or (post_row.raw or {}).get("link")
+            or post_row.post_url
+            or ""
+        )
+        post_row.title = str(
+            post_data.get("title")
+            or (post_row.raw or {}).get("title")
+            or post_row.title
+            or ""
+        )
+        post_row.caption = str(
+            post_data.get("caption")
+            or post_data.get("description")
+            or post_data.get("text")
+            or (post_row.raw or {}).get("caption")
+            or (post_row.raw or {}).get("description")
+            or (post_row.raw or {}).get("text")
+            or post_row.caption
+            or ""
+        )
+        post_row.view_count = _int_or_none(
+            post_data.get("view_count")
+            or post_data.get("views")
+            or (post_row.raw or {}).get("view_count")
+            or (post_row.raw or {}).get("views")
+        ) or post_row.view_count
+        post_row.like_count = _int_or_none(
+            post_data.get("like_count")
+            or post_data.get("likes")
+            or (post_row.raw or {}).get("like_count")
+            or (post_row.raw or {}).get("likes")
+        ) or post_row.like_count
+        post_row.comment_count = _int_or_none(
+            post_data.get("comment_count")
+            or post_data.get("comments")
+            or (post_row.raw or {}).get("comment_count")
+            or (post_row.raw or {}).get("comments")
+        ) or post_row.comment_count
+        post_row.share_count = _int_or_none(
+            post_data.get("share_count")
+            or (post_row.raw or {}).get("share_count")
+        ) or post_row.share_count
         post_row.fetch_provider = profile.provider
         post_row.raw = post_data
         post_row.fetched_at = now

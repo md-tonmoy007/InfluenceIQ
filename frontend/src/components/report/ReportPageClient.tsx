@@ -24,11 +24,11 @@ function CoverageBadge({ status }: { status: string }) {
   const tone =
     status === "ok"
       ? "ok"
-      : status === "partial" || status === "no_data" || status === "no_results" || status === "unavailable"
+      : status === "partial" || status === "no_data" || status === "no_results" || status === "unavailable" || status === "no_posts"
         ? "warn"
         : "bad";
 
-  return <span className={`report-badge ${tone}`}>{status === "no_data" || status === "no_results" ? "unavailable" : status}</span>;
+  return <span className={`report-badge ${tone}`}>{status === "no_data" || status === "no_results" || status === "no_posts" ? "unavailable" : status}</span>;
 }
 
 type TriggerStage = "starting" | "social" | "comments" | "trends" | "synthesizing" | "done" | "failed";
@@ -347,7 +347,17 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
           <Section title="Brand safety & controversy">
             <p>{safeStr(report.brand_safety_summary, "No additional issues flagged.")}</p>
             <div className="report-badge-row">
-              {brandSafety.web_sentiment ? <CoverageBadge status="ok" /> : <CoverageBadge status="unavailable" />}
+              {hasData ? (
+                brandSafety.flagged_count && Number(brandSafety.flagged_count) > 0 ? (
+                  <CoverageBadge status="warn" />
+                ) : brandSafety.web_sentiment ? (
+                  <CoverageBadge status="ok" />
+                ) : (
+                  <CoverageBadge status="unavailable" />
+                )
+              ) : (
+                <CoverageBadge status="unavailable" />
+              )}
             </div>
           </Section>
 
@@ -369,19 +379,26 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
           {postsAnalyzed.length > 0 && (
             <Section title="Evidence by post" meta={`${postsAnalyzed.length} analyzed`}>
               <div className="report-stack">
-                {postsAnalyzed.map((post, i) => (
-                  <article key={i} className="report-card report-post">
-                    <div className="report-post-head">
-                      <strong>{safeStr(post.platform, "Unknown platform")}</strong>
-                      <span>
-                        {post.status === "no_comments"
-                          ? "No comments available"
-                          : `${safeStr(post.like_count, "0")} likes · ${safeStr(post.comment_count, "0")} comments`}
-                      </span>
-                    </div>
-                    <p>{safeStr(post.summary)}</p>
-                  </article>
-                ))}
+                {postsAnalyzed.map((post, i) => {
+                  const postTitle = safeStr(
+                    post.title,
+                    safeStr(post.caption, safeStr(post.post_url, "Untitled post"))
+                  );
+                  const postBody = safeStr(post.caption, safeStr(post.title, safeStr(post.post_url)));
+                  return (
+                    <article key={i} className="report-card report-post">
+                      <div className="report-post-head">
+                        <strong>{postTitle}</strong>
+                        <span>
+                          {post.status === "no_comments"
+                            ? "No comments available"
+                            : `${safeStr(post.like_count, "0")} likes · ${safeStr(post.comment_count, "0")} comments`}
+                        </span>
+                      </div>
+                      {postBody ? <p>{postBody}</p> : null}
+                    </article>
+                  );
+                })}
               </div>
             </Section>
           )}
@@ -389,11 +406,52 @@ export default function ReportPageClient({ influencerId, reportId, runId, campai
           {citations.length > 0 && (
             <Section title="Citations">
               <div className="report-stack">
-                {citations.map((citation, i) => (
-                  <article key={i} className="report-card report-citation">
-                    <a href={safeStr(citation.url, "#")} target="_blank" rel="noreferrer">{safeStr(citation.title, safeStr(citation.url))}</a>
-                  </article>
-                ))}
+                {citations.map((citation, i) => {
+                  const metrics = (citation.key_metrics as Record<string, unknown> | undefined) ?? {};
+                  const metricParts: string[] = [];
+                  if (metrics.sentiment_score !== undefined) {
+                    metricParts.push(`sentiment ${Math.round(Number(metrics.sentiment_score))}`);
+                  }
+                  if (metrics.fake_comment_risk !== undefined) {
+                    metricParts.push(`fake risk ${Math.round(Number(metrics.fake_comment_risk) * 100) / 100}`);
+                  }
+                  if (metrics.comment_count !== undefined) {
+                    metricParts.push(`${safeStr(metrics.comment_count, "0")} comments`);
+                  }
+                  const metricLine = metricParts.join(" · ");
+                  const source = safeStr(citation.source, "source");
+                  if (citation.source === "search_visibility") {
+                    const urls = Array.isArray(citation.urls)
+                      ? (citation.urls as unknown[]).filter((u): u is string => typeof u === "string" && u.length > 0)
+                      : [];
+                    if (urls.length === 0) return null;
+                    return (
+                      <article key={i} className="report-card report-citation">
+                        <div className="report-citation-source">{source}</div>
+                        <ul className="report-citation-list">
+                          {urls.map((u, j) => (
+                            <li key={j}>
+                              <a href={u} target="_blank" rel="noreferrer">{u}</a>
+                            </li>
+                          ))}
+                        </ul>
+                      </article>
+                    );
+                  }
+                  const title = safeStr(citation.title, "Untitled post");
+                  const url = safeStr(citation.url, "");
+                  return (
+                    <article key={i} className="report-card report-citation">
+                      <div className="report-citation-source">{source}</div>
+                      {url ? (
+                        <a className="report-citation-title" href={url} target="_blank" rel="noreferrer">{title}</a>
+                      ) : (
+                        <span className="report-citation-title">{title}</span>
+                      )}
+                      {metricLine ? <div className="report-citation-meta">{metricLine}</div> : null}
+                    </article>
+                  );
+                })}
               </div>
             </Section>
           )}

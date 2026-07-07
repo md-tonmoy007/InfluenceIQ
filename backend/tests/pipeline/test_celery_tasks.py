@@ -28,6 +28,7 @@ import os
 import unittest
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 # ---------------------------------------------------------------------------
 # Environment: must be set BEFORE the app modules are imported.
@@ -90,6 +91,7 @@ class _FakeSession:
         self.committed = False
         self.rolled_back = False
         self.closed = False
+        self.executed: list = []
 
     def add(self, obj):
         self.added.append(obj)
@@ -121,6 +123,7 @@ class _FakeSession:
         return _FakeQuery()
 
     def execute(self, *args, **kwargs):
+        self.executed.append((args, kwargs))
         return MagicMock()
 
 
@@ -368,6 +371,49 @@ class PipelineE2ETest(unittest.TestCase):
         self.assertLessEqual(result.sub_scores["role4_trust_score"], 100.0)
         self.assertIn(result.grade, {"A+", "A", "B", "C", "D", "F"})
         self.assertIn(result.confidence, {"Low", "Medium", "High"})
+
+    def test_advisory_lock_keys_are_stable_and_distinct(self) -> None:
+        """_advisory_lock_keys must produce (int, int) tuples in 32-bit
+        signed range, be deterministic, and differ for distinct pairs."""
+        from backend.pipeline.tasks.score import _advisory_lock_keys
+
+        modulus = 1 << 31
+        c1 = UUID("11111111-1111-1111-1111-111111111111")
+        c2 = UUID("22222222-2222-2222-2222-222222222222")
+        i1 = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        i2 = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+        a = _advisory_lock_keys(c1, i1)
+        b = _advisory_lock_keys(c1, i1)
+        self.assertEqual(a, b, "lock keys must be deterministic")
+
+        for value in a:
+            self.assertIsInstance(value, int)
+            self.assertGreaterEqual(value, 0)
+            self.assertLess(value, modulus)
+
+        self.assertNotEqual(a, _advisory_lock_keys(c2, i1))
+        self.assertNotEqual(a, _advisory_lock_keys(c1, i2))
+
+    def test_score_influencer_acquires_advisory_lock(self) -> None:
+        """The score write path must take a pg advisory lock before the
+        check-then-act on InfluencerScore. Without it, two concurrent
+        runs for the same (campaign, influencer) race the
+        uq_influencer_scores_current partial unique index.
+        """
+        import inspect
+
+        from backend.pipeline.tasks import score as score_mod
+
+        source = inspect.getsource(score_mod.score_influencer)
+        self.assertIn("pg_advisory_xact_lock", source)
+        # The lock must come before the existing_current query that
+        # would otherwise race the unique constraint.
+        lock_pos = source.find("pg_advisory_xact_lock")
+        read_pos = source.find("existing_current = (")
+        self.assertGreater(lock_pos, 0)
+        self.assertGreater(read_pos, lock_pos,
+                            "advisory lock must precede the existing_current read")
 
 
 if __name__ == "__main__":

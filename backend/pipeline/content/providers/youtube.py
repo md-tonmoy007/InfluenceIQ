@@ -64,10 +64,12 @@ def _rss_posts(channel_id: str) -> list[dict]:
     }
     posts = []
     for entry in root.findall("atom:entry", ns)[:12]:
+        link_el = entry.find("atom:link", ns)
+        link_url = (link_el.get("href") if link_el is not None else "") or ""
         posts.append({
             "id": (entry.findtext("yt:videoId", default="", namespaces=ns) or ""),
             "title": (entry.findtext("atom:title", default="", namespaces=ns) or ""),
-            "url": (entry.findtext("atom:link", default="", namespaces=ns) or ""),
+            "url": link_url,
             "published_at": (entry.findtext("atom:published", default="", namespaces=ns) or ""),
             "description": (entry.findtext("media:group/media:description", default="", namespaces=ns) or ""),
         })

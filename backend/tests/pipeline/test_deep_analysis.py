@@ -287,7 +287,7 @@ class CitationTests(unittest.TestCase):
             {"status": "no_comments", "post_id": "def", "platform": "youtube"},
         ]
         external = {}
-        citations = _build_citations(posts, external)
+        citations = _build_citations(posts, external, has_data=True)
         self.assertEqual(len(citations), 1)
         self.assertEqual(citations[0]["source"], "post")
         self.assertEqual(citations[0]["post_id"], "abc")
@@ -301,7 +301,7 @@ class CitationTests(unittest.TestCase):
                 }
             }
         }
-        citations = _build_citations([], external)
+        citations = _build_citations([], external, has_data=True)
         self.assertEqual(len(citations), 1)
         self.assertEqual(citations[0]["source"], "search_visibility")
 
@@ -344,7 +344,7 @@ class ReportPayloadSchemaTests(unittest.TestCase):
         confidence = _derive_confidence(total_comments=100, external=external, posts_analyzed=posts_analyzed)
         strengths, risks = _derive_strengths_risks(sentiment=70.0, fake_risk=15.0, external=external, has_data=True)
         recommendation = _build_recommendation(sentiment=70.0, fake_risk=15.0, total_comments=100, has_data=True)
-        citations = _build_citations(posts_analyzed, external)
+        citations = _build_citations(posts_analyzed, external, has_data=True)
 
         return {
             "creator_summary": {
@@ -459,29 +459,45 @@ class BrandSafetySummaryTests(unittest.TestCase):
     'N mentions (M flagged)' rather than a raw count of search results."""
 
     def test_no_snippets_yields_no_additional_issues(self) -> None:
-        self.assertIn("No additional", _brand_safety_summary({"web_sentiment": None}))
-        self.assertIn("No additional", _brand_safety_summary({"web_sentiment": {}}))
-        self.assertIn("No additional", _brand_safety_summary({}))
+        self.assertIn("No additional", _brand_safety_summary({"web_sentiment": None}, has_data=True))
+        self.assertIn("No additional", _brand_safety_summary({"web_sentiment": {}}, has_data=True))
+        self.assertIn("No additional", _brand_safety_summary({}, has_data=True))
+
+    def test_no_data_yields_insufficient_message(self) -> None:
+        external = {"web_sentiment": {"snippets": [
+            {"url": "https://example.com/a", "title": "Scandal", "snippet": "Big news"},
+        ]}}
+        self.assertIn("Insufficient", _brand_safety_summary(external, has_data=False))
 
     def test_snippets_with_no_flags_says_none_flagged(self) -> None:
         external = {"web_sentiment": {"snippets": [
-            {"title": "Cool creator bio", "snippet": "Behind the scenes"},
-            {"title": "Interview", "snippet": "Talks about craft"},
+            {"url": "https://news.example.com/a", "title": "Cool creator bio", "snippet": "Behind the scenes"},
+            {"url": "https://blog.example.com/b", "title": "Interview", "snippet": "Talks about craft"},
         ]}}
-        text = _brand_safety_summary(external)
+        text = _brand_safety_summary(external, has_data=True)
         self.assertIn("2 external mentions", text)
         self.assertIn("none flagged", text)
 
     def test_snippets_with_flags_separates_total_and_flagged(self) -> None:
         external = {"web_sentiment": {"snippets": [
-            {"title": "Cool creator bio", "snippet": "Behind the scenes"},
-            {"title": "Lawsuit update", "snippet": "Creators in the news"},
-            {"title": "Interview", "snippet": "Talks about craft"},
+            {"url": "https://news.example.com/a", "title": "Cool creator bio", "snippet": "Behind the scenes"},
+            {"url": "https://blog.example.com/b", "title": "Lawsuit update", "snippet": "Creators in the news"},
+            {"url": "https://blog.example.com/c", "title": "Interview", "snippet": "Talks about craft"},
         ]}}
-        text = _brand_safety_summary(external)
+        text = _brand_safety_summary(external, has_data=True)
         self.assertIn("3 external mentions", text)
         self.assertIn("1 flagged", text)
         self.assertIn("review for brand-risk signals", text)
+
+    def test_profile_and_search_pages_excluded_from_count(self) -> None:
+        external = {"web_sentiment": {"snippets": [
+            {"url": "https://collabstr.com/rupanta", "title": "Promote with Rupanta", "snippet": "Creator bio"},
+            {"url": "https://www.youtube.com/results?search_query=Rupanta+controversy", "title": "YouTube creators for Rupanta controversy", "snippet": "results related to controversy"},
+            {"url": "https://news.example.com/a", "title": "Interview", "snippet": "Talks about craft"},
+        ]}}
+        text = _brand_safety_summary(external, has_data=True)
+        self.assertIn("1 external mention", text)
+        self.assertIn("none flagged", text)
 
     def test_keyword_detects_lawsuit_controversy_scandal(self) -> None:
         for keyword in ("lawsuit", "scandal", "fraud", "controversy", "sued"):
