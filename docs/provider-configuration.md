@@ -193,11 +193,13 @@ Set these in the **host environment** (Railway, Render, etc.).
 
 | Service | Port | When needed |
 | --- | --- | --- |
-| `worker_scraping` | — | Restart after changing search/fetch env vars |
+| `worker_scraping` | — | Recreate after changing search/fetch env vars (see note below) |
 
-```bash
-docker compose restart worker_scraping worker_ai_agent backend-core
-```
+> **Note:** `docker compose restart` does **not** re-read `env_file`. After editing `backend/.env` (e.g. adding `APIFY_API_TOKEN`), the running containers keep their old (empty) values and silently fall back to the cheap providers. Use `up -d` so Compose recreates the containers and re-reads the file:
+>
+> ```bash
+> docker compose up -d worker_scraping worker_ai_agent worker_scoring backend-core
+> ```
 
 ## Tests
 
