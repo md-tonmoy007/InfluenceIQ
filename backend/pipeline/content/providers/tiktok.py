@@ -49,7 +49,6 @@ def _parse_apify_profile(data: dict[str, Any], url: str, handle: str) -> Platfor
         extra = raw_posts if isinstance(raw_posts, list) else []
         raw_posts = [data["video"], *extra]
     posts: list[dict[str, Any]] = []
-    comments: list[str] = []
     engagement_values: list[int] = []
     for raw in raw_posts[:12] if isinstance(raw_posts, list) else []:
         if not isinstance(raw, dict):
@@ -67,8 +66,6 @@ def _parse_apify_profile(data: dict[str, Any], url: str, handle: str) -> Platfor
             "url": raw.get("webVideoUrl") or raw.get("url"),
             "taken_at": raw.get("createTime") or raw.get("timestamp"),
         })
-        if caption:
-            comments.append(caption)
 
     avg_engagement = int(sum(engagement_values) / len(engagement_values)) if engagement_values else None
     if avg_engagement is None and isinstance(likes, int | float):
@@ -86,7 +83,6 @@ def _parse_apify_profile(data: dict[str, Any], url: str, handle: str) -> Platfor
         verified=verified,
         profile_urls=[profile_url],
         posts=posts,
-        comments=comments[:50],
         raw={"source": "apify", "input_url": url},
         provider="apify_tiktok",
     )
@@ -135,7 +131,6 @@ def fetch_tiktok_profile(url: str) -> PlatformProfile | None:
             average_engagement=likes,
             verified="verified" in html.lower(),
             profile_urls=[normalized],
-            comments=[description] if description else [],
             provider="tiktok_meta",
         )
     except Exception as exc:

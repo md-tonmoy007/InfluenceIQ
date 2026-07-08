@@ -6,11 +6,44 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from backend.core.database import models
 
 log = logging.getLogger(__name__)
+
+
+def _repoint_influencer_fk(
+    session: Session,
+    model: type,
+    *,
+    merged_id: UUID,
+    canonical_id: UUID,
+    sibling_cols: tuple[str, ...],
+) -> None:
+    """Move ``model.influencer_id`` from ``merged_id`` to ``canonical_id``.
+
+    ``model`` carries a unique constraint on ``(influencer_id, *sibling_cols)``,
+    so a blind bulk UPDATE collides when the canonical row already links the same
+    sibling values (e.g. the same crawl_source + mention). We first delete the
+    merged rows that would duplicate an existing canonical row, then re-point the
+    survivors. NULL sibling values compare as distinct — matching Postgres unique
+    semantics — so they never collide and are always re-pointed.
+    """
+    canon = aliased(model)
+    session.query(model).filter(
+        model.influencer_id == merged_id,
+        session.query(canon)
+        .filter(
+            canon.influencer_id == canonical_id,
+            *[getattr(canon, col) == getattr(model, col) for col in sibling_cols],
+        )
+        .exists(),
+    ).delete(synchronize_session=False)
+    session.flush()
+    session.query(model).filter(
+        model.influencer_id == merged_id
+    ).update({model.influencer_id: canonical_id}, synchronize_session=False)
 
 
 def apply_merge(
@@ -62,9 +95,15 @@ def apply_merge(
     merged.merged_into_id = canonical_id
     merged.is_canonical = False
 
-    session.query(models.CrawlSourceInfluencer).filter(
-        models.CrawlSourceInfluencer.influencer_id == merged_id
-    ).update({models.CrawlSourceInfluencer.influencer_id: canonical_id}, synchronize_session=False)
+    # (crawl_source_id, influencer_id, mention_id) is unique — drop merged links
+    # that already exist for the canonical influencer before re-pointing.
+    _repoint_influencer_fk(
+        session,
+        models.CrawlSourceInfluencer,
+        merged_id=merged_id,
+        canonical_id=canonical_id,
+        sibling_cols=("crawl_source_id", "mention_id"),
+    )
     session.query(models.CrawlSource).filter(
         models.CrawlSource.influencer_id == merged_id
     ).update({models.CrawlSource.influencer_id: canonical_id}, synchronize_session=False)
@@ -96,12 +135,22 @@ def apply_merge(
     session.query(models.BrandSafetyFlag).filter(
         models.BrandSafetyFlag.influencer_id == merged_id
     ).update({models.BrandSafetyFlag.influencer_id: canonical_id}, synchronize_session=False)
-    session.query(models.SavedListItem).filter(
-        models.SavedListItem.influencer_id == merged_id
-    ).update({models.SavedListItem.influencer_id: canonical_id}, synchronize_session=False)
-    session.query(models.CampaignContract).filter(
-        models.CampaignContract.influencer_id == merged_id
-    ).update({models.CampaignContract.influencer_id: canonical_id}, synchronize_session=False)
+    # Both tables carry a unique constraint that includes influencer_id, so the
+    # same delete-then-repoint dance avoids duplicate-key violations.
+    _repoint_influencer_fk(
+        session,
+        models.SavedListItem,
+        merged_id=merged_id,
+        canonical_id=canonical_id,
+        sibling_cols=("list_id", "source_campaign_id"),
+    )
+    _repoint_influencer_fk(
+        session,
+        models.CampaignContract,
+        merged_id=merged_id,
+        canonical_id=canonical_id,
+        sibling_cols=("campaign_id",),
+    )
 
     log.info(
         "identity merge persisted canonical=%s merged=%s confidence=%.2f",

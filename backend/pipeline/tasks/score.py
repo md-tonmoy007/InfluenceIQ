@@ -149,14 +149,20 @@ def score_influencer(self, campaign_id: str, influencer_id: str) -> dict:
                 "negative_reasons": result.negative_reasons,
                 "candidate_snapshot_id": str(snapshot_id),
             }
-            session.add(score_row)
             if existing_current is not None:
-                # superseded_by has no ORM relationship() (self-FK on a plain
-                # column), so the unit of work has no dependency edge telling it
-                # to insert score_row before this update — without the explicit
-                # flush the UPDATE can be emitted first and violate the FK.
-                session.flush()
+                # Only one is_current=true row is allowed per (campaign,
+                # influencer) by the uq_influencer_scores_current partial index.
+                # Demote the outgoing row BEFORE inserting the replacement —
+                # inserting first leaves two current rows and trips the
+                # constraint deterministically on every rescore.
                 existing_current.is_current = False
+                session.flush()
+            session.add(score_row)
+            session.flush()
+            if existing_current is not None:
+                # score_row is now persisted, so the superseded_by self-FK
+                # (a plain self-referential column with no ORM relationship())
+                # is satisfiable.
                 existing_current.superseded_by = score_row.id
             refresh_campaign_status(session, campaign_id)
             final_score = float(score_row.final_score or 0.0)

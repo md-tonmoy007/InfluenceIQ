@@ -15,13 +15,15 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from backend.core.celery.app import celery_app
+from backend.core.config import settings
 from backend.core.database import models
 from backend.pipeline.analysis.engagement_quality import engagement_quality_score
 from backend.pipeline.analysis.external_signals import collect_external_signals
 from backend.pipeline.analysis.fake_comment import score_fake_comments
 from backend.pipeline.analysis.sentiment import analyze_sentiment
 from backend.pipeline.candidate.builder import build_influencer_candidate
-from backend.pipeline.content.enrichment import enrich_influencer_platforms
+from backend.pipeline.content.enrichment import enrich_influencer_platforms, persist_post_comments
+from backend.pipeline.content.providers.comments.base import fetch_post_comments
 from backend.pipeline.tasks._common import db_session, publish_event
 
 log = logging.getLogger(__name__)
@@ -191,6 +193,15 @@ def deep_analyze(
         influencer_id=influencer_id,
         report_id=report_id,
     )
+
+    # Rescore so the richer comment set is reflected in the trust score.
+    from backend.pipeline.tasks.score import score_influencer
+
+    try:
+        score_influencer.delay(campaign_id, influencer_id)
+    except Exception as exc:
+        log.warning("deep_analyze rescore enqueue failed: %s", exc)
+
     return {
         "status": "completed",
         "run_id": run_id,
@@ -301,6 +312,49 @@ def _collect_post_comments(
         .limit(_POST_LIMIT)
         .all()
     )
+
+    comment_target = min(
+        run.requested_comment_target or settings.DEEP_ANALYSIS_COMMENT_TARGET,
+        settings.DEEP_ANALYSIS_COMMENT_TARGET,
+    )
+    remaining = comment_target
+    fetched: list[tuple[models.PlatformPost, list]] = []
+
+    for post in posts:
+        if remaining <= 0:
+            break
+        if post.platform not in {"youtube", "instagram", "tiktok"}:
+            continue
+        post_url = str(post.post_url or "")
+        external_id = str(post.platform_post_id or "")
+        if not post_url and not external_id:
+            continue
+        limit = min(_COMMENT_PER_POST_LIMIT, remaining)
+        try:
+            comments = fetch_post_comments(
+                post.platform,
+                post_url=post_url,
+                post_external_id=external_id,
+                limit=limit,
+            )
+        except Exception as exc:
+            log.warning(
+                "deep_analyze comment fetch skipped post=%s platform=%s: %s",
+                post.id,
+                post.platform,
+                exc,
+            )
+            continue
+        if comments:
+            fetched.append((post, comments))
+            remaining -= len(comments)
+
+    if fetched:
+        for post, comments in fetched:
+            try:
+                persist_post_comments(session, post, comments)
+            except Exception as exc:
+                log.warning("deep_analyze persist_post_comments failed post=%s: %s", post.id, exc)
 
     total_comments = 0
     per_platform: dict[str, int] = {}

@@ -7,7 +7,9 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from backend.core.database import models
+from backend.pipeline.analysis.comment_behavior import extract_behavior_features
 from backend.pipeline.extraction.handles import is_profile_url
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 
@@ -30,7 +32,7 @@ def build_influencer_candidate(
     sources = _sources_summary(session, influencer_id, campaign_id)
     source_urls = [row["url"] for row in sources]
 
-    comments: list[str] = []
+    comments: list[dict[str, Any]] = []
     followers = int(influencer.follower_count or 0)
     average_engagement = int(influencer.avg_views or 0)
     engagement_rate = float(influencer.engagement_rate or 0.0)
@@ -39,6 +41,7 @@ def build_influencer_candidate(
     titles: list[str] = []
     credentials = list(influencer.credentials or [])
     profiles: list[models.PlatformProfile] = []
+    post_rows: list[models.PlatformPost] = []
 
     if include_platform:
         profiles = (
@@ -64,16 +67,35 @@ def build_influencer_candidate(
                 .all()
             )
             for post in posts:
+                post_rows.append(post)
                 if post.caption:
                     bio_parts.append(post.caption)
                 post_comments = (
                     session.query(models.PlatformComment)
-                    .filter(models.PlatformComment.platform_post_id == post.id)
+                    .filter(
+                        models.PlatformComment.platform_post_id == post.id,
+                        and_(
+                            models.PlatformComment.author_handle_hash.isnot(None),
+                            models.PlatformComment.published_at.isnot(None),
+                        ),
+                    )
                     .order_by(models.PlatformComment.published_at.desc().nullslast())
                     .limit(200)
                     .all()
                 )
-                comments.extend(comment.text for comment in post_comments if comment.text)
+                for comment in post_comments:
+                    if not comment.text:
+                        continue
+                    comments.append({
+                        "text": comment.text,
+                        "author_hash": comment.author_handle_hash,
+                        # Stored verbatim in the CandidateSnapshot JSONB column, so
+                        # keep it JSON-serializable. extract_behavior_features parses
+                        # it back via _parse_dt, which accepts ISO strings.
+                        "published_at": comment.published_at.isoformat() if comment.published_at else None,
+                        "like_count": comment.like_count,
+                        "post_external_id": post.platform_post_id,
+                    })
 
     for mention in mentions:
         if not isinstance(mention, dict):
@@ -117,6 +139,18 @@ def build_influencer_candidate(
         "primary_location": influencer.primary_location,
         "embedding": influencer.embedding if isinstance(influencer.embedding, dict) else {},
     }
+
+    if include_platform:
+        feature_posts = [
+            {
+                "external_id": post.platform_post_id,
+                "published_at": post.published_at,
+            }
+            for post in post_rows
+        ]
+        behavior_features = extract_behavior_features(feature_posts, comments)
+        candidate.update(behavior_features)
+
     return candidate
 
 

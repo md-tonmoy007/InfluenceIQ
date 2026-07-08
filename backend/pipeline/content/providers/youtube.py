@@ -200,11 +200,6 @@ def _build_profile_from_channel(
         verified=verified,
         profile_urls=[normalized],
         posts=posts,
-        comments=[
-            post["description"][:220]
-            for post in posts
-            if post.get("description")
-        ][:20],
         raw=raw,
         provider="youtube",
     )
@@ -266,11 +261,6 @@ def fetch_youtube_profile(url: str) -> PlatformProfile | None:
         if subscribers is None:
             sub_match = re.search(r"([\d.,]+\s*[KMB]?)\s+subscribers", html, flags=re.IGNORECASE)
             subscribers = compact_number(sub_match.group(1)) if sub_match else None
-        comments = [
-            post["description"][:220]
-            for post in posts
-            if post.get("description")
-        ][:20]
         return PlatformProfile(
             platform="youtube",
             url=normalized,
@@ -281,7 +271,6 @@ def fetch_youtube_profile(url: str) -> PlatformProfile | None:
             verified="Verified" in html or '"BADGE_STYLE_TYPE_VERIFIED"' in html,
             profile_urls=[normalized],
             posts=posts,
-            comments=comments,
             raw={"channel_id": channel_id},
             provider="youtube_html_fallback" if settings.YOUTUBE_API_KEY else "youtube",
         )
