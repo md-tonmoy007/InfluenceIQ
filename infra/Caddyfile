@@ -1,8 +1,8 @@
 # Caddy reverse proxy for InfluenceIQ.
-# Edit `app.example.com` below to match your domain.
+# Edit `cuet.shafayetsadi.dev` below to match your domain.
 # Caddy auto-issues a Let's Encrypt cert on first request.
 
-app.example.com {
+cuet.shafayetsadi.dev {
     encode gzip zstd
 
     # Direct backend routes — useful for /health probes and to bypass
