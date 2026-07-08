@@ -1,4 +1,4 @@
-.PHONY: help up down restart ps logs migrate db-revision db-upgrade seed cleanup test test-api test-unit test-ml ml-install ml-run health lint sync
+.PHONY: help up down restart ps logs migrate db-revision db-upgrade seed cleanup test test-api test-unit test-ml ml-install ml-run health lint sync pdf-project-report
 
 # Host port mappings
 API_URL = http://localhost:8002
@@ -31,6 +31,7 @@ help:
 	@echo "  make sync         - Create/update the backend uv environment with dev deps"
 	@echo "  make health       - Check detailed system health and Celery queue statuses"
 	@echo "  make lint         - Run ruff over the whole tree"
+	@echo "  make pdf-project-report - Build docs/project-report.pdf from LaTeX"
 	@echo ""
 	@echo "Optional Backend:"
 	@echo "  make ml-install   - No-op: backend.ml is in-tree; sync runtime deps if needed"
@@ -111,6 +112,9 @@ test-ml:
 
 lint:
 	cd backend && uv run --project . ruff check --config ruff.toml . ../scripts
+
+pdf-project-report:
+	cd docs && xelatex -interaction=nonstopmode -halt-on-error project-report.tex && xelatex -interaction=nonstopmode -halt-on-error project-report.tex
 
 ml-install:
 	@echo "backend.ml is in-tree and has no separate package metadata."

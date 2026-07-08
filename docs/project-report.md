@@ -13,7 +13,7 @@ fontsize: 11pt
 
 **Team Lead:** MD Tonmoy Hossain Jifat (tonmoyhossainjifat313@gmail.com, 01987476056)
 
-**Members:** MD Tonmoy Hossain Jifat, Shafayetul Huda Sadi, Adib Hasan, Mahmudul Hasan
+**Members:** MD Tonmoy Hossain Jifat (`tonmoyhossainjifat313@gmail.com`), Shafayetul Huda Sadi (`shafayet.sadi@gmail.com`), Adib Hasan (`adib120775@gmail.com`), Mahmudul Hasan (`mahruet796@gmail.com`)
 
 **Live demo:** https://cuet.shafayetsadi.dev/ · **Repository:** https://github.com/md-tonmoy007/InfluenceIQ
 
@@ -190,10 +190,6 @@ This means the platform does not stop at “here are the top creators.” It als
 ## 4. Demo Screenshots
 
 The following screenshots illustrate the end-to-end product workflow, from campaign setup to trust-aware creator evaluation.
-
-![InfluenceIQ login and workspace access screen](./assets/login.png){ width=75% }
-
-_Figure: InfluenceIQ login screen used to access the campaign workspace._
 
 ![InfluenceIQ dashboard overview](./assets/dashboard.png){ width=85% }
 

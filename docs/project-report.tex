@@ -1,0 +1,446 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{fontspec}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xurl}
+\usepackage{caption}
+\usepackage{fancyvrb}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage{placeins}
+
+\setmainfont{TeX Gyre Termes}
+\setsansfont{TeX Gyre Heros}
+\setmonofont{DejaVu Sans Mono}
+\setstretch{1.03}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\setlist[itemize]{leftmargin=1.4em}
+\setlist[enumerate]{leftmargin=1.6em}
+\urlstyle{same}
+\setlength{\textfloatsep}{9pt plus 1pt minus 2pt}
+\setlength{\floatsep}{7pt plus 1pt minus 2pt}
+\setlength{\intextsep}{7pt plus 1pt minus 2pt}
+\captionsetup{font=footnotesize,skip=3pt}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  pdftitle={InfluenceIQ: A Trust-Aware AI Platform for Influencer Discovery},
+  pdfauthor={Team sudo make it work}
+}
+
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
+
+\newcommand{\reportfigure}[3][0.52\textwidth]{%
+  \begin{figure}[htbp]
+    \centering
+    \IfFileExists{#2}{%
+      \includegraphics[width=#1]{#2}%
+    }{%
+      \fbox{\parbox[c][0.11\textheight][c]{0.52\textwidth}{\centering Screenshot placeholder\\[0.2em]\texttt{#2}}}%
+    }%
+    \caption{#3}
+  \end{figure}
+}
+
+\newcommand{\reportimage}[2][\linewidth]{%
+  \IfFileExists{#2}{%
+    \includegraphics[width=#1]{#2}%
+  }{%
+    \fbox{\parbox[c][0.10\textheight][c]{0.95\linewidth}{\centering Screenshot placeholder\\[0.2em]\texttt{#2}}}%
+  }%
+}
+
+\newcommand{\reportfigurepair}[4]{%
+  \begin{figure}[htbp]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+      \centering
+      \reportimage{#1}
+      \caption*{#2}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\textwidth}
+      \centering
+      \reportimage{#3}
+      \caption*{#4}
+    \end{minipage}
+  \end{figure}
+}
+
+\begin{document}
+
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{center}
+\vspace*{0.12\textheight}
+{\fontsize{24}{30}\selectfont \textbf{InfluenceIQ: A Trust-Aware AI Platform for Influencer Discovery}\par}
+\vspace{0.9cm}
+{\Large SciBlitz AI Challenge 2026 --- Project Report\par}
+\vspace{1.5cm}
+
+{\large
+\textbf{Team:} sudo\_make\_it\_work\par
+\vspace{0.22cm}
+\textbf{Institution:} Rajshahi University of Engineering \& Technology (RUET)\par
+\vspace{0.22cm}
+\textbf{Track:} D --- Open Innovation\par
+}
+
+\vspace{1.0cm}
+
+{\large
+\textbf{Team Lead}\par
+MD Tonmoy Hossain Jifat\par
+\href{mailto:tonmoyhossainjifat313@gmail.com}{tonmoyhossainjifat313@gmail.com}\par
+01987476056\par
+}
+
+\vspace{0.9cm}
+
+{\large
+\textbf{Team Members}\par
+\vspace{0.18cm}
+Shafayetul Huda Sadi --- \href{mailto:shafayet.sadi@gmail.com}{shafayet.sadi@gmail.com}\par
+\vspace{0.08cm}
+Adib Hasan --- \href{mailto:adib120775@gmail.com}{adib120775@gmail.com}\par
+\vspace{0.08cm}
+Mahmudul Hasan --- \href{mailto:mahruet796@gmail.com}{mahruet796@gmail.com}\par
+}
+
+\vfill
+
+{\large
+\textbf{Repository:} \href{https://github.com/md-tonmoy007/InfluenceIQ}{github.com/md-tonmoy007/InfluenceIQ}\par
+\vspace{0.18cm}
+\textbf{Live Demo:} \href{https://cuet.shafayetsadi.dev/}{cuet.shafayetsadi.dev}\par
+\vspace{0.45cm}
+July 8, 2026\par
+}
+\end{center}
+\end{titlepage}
+
+\section{The Problem}
+
+Imagine a small brand preparing to launch a new skincare product. The marketing team has a limited budget, a short timeline, and a simple goal: find a few creators who can genuinely influence the right audience. They open Instagram, YouTube, TikTok, and X, search for ``top beauty creators,'' and quickly find dozens of promising profiles. On the surface, many of them look perfect: high follower counts, attractive engagement numbers, polished content, and active audiences.
+
+But after a few hours of manual checking, the real uncertainty begins.
+
+Are those followers genuine, or are they inflated by fake accounts? Are the comments authentic, or are they repetitive and spam-driven? Is the creator actually aligned with the campaign, or just broadly popular? Could there be brand-safety concerns hidden behind good-looking numbers? And if the team finally chooses someone, can they later explain \emph{why} that creator was the right pick?
+
+This is the core problem with modern influencer selection: brands often make expensive decisions using visibility metrics as a shortcut for trust.
+
+That creates four practical problems:
+
+\begin{enumerate}
+  \item \textbf{Inflated influence:} fake followers, spam comments, and bot-like engagement can make some creators appear stronger than they really are.
+  \item \textbf{Hidden risk:} a creator may have reach but still be brand-unsafe because of toxic, misleading, or low-trust content patterns.
+  \item \textbf{Slow research:} manually checking candidates across articles, YouTube, Instagram, TikTok, and X takes too much time and does not scale.
+  \item \textbf{Poor auditability:} teams often cannot clearly explain later why a creator was selected or rejected.
+\end{enumerate}
+
+InfluenceIQ was built to solve this gap by turning influencer discovery into a more evidence-based, trust-aware workflow.
+
+\section{Our Solution}
+
+\textbf{InfluenceIQ} is designed to help brands move from manual, intuition-driven influencer selection to a structured, trust-aware decision process.
+
+Instead of asking a marketing team to open dozens of tabs and judge creators by follower counts alone, InfluenceIQ allows a user to submit a campaign brief describing the product, target audience, preferred platforms, and campaign context. The system then runs an end-to-end discovery and scoring workflow, returning a ranked shortlist of creators who are not only relevant, but also more trustworthy and easier to justify as business decisions.
+
+In the current product, a user can:
+
+\begin{itemize}
+  \item create or save a campaign brief,
+  \item launch an asynchronous search-to-score pipeline,
+  \item follow live execution progress through REST state and WebSocket replay,
+  \item review ranked creator recommendations and creator profile views,
+  \item save shortlisted creators and track outreach or contract state,
+  \item trigger deeper report generation for shortlisted creators when more evidence is needed.
+\end{itemize}
+
+Rather than ranking creators by popularity alone, InfluenceIQ evaluates them across multiple trust-aware dimensions:
+
+\begin{itemize}
+  \item relevance to the campaign,
+  \item credibility,
+  \item engagement quality,
+  \item audience sentiment,
+  \item brand safety,
+  \item source confidence.
+\end{itemize}
+
+Each recommendation is tied to persisted source evidence and versioned scoring records. This makes the final output more explainable, more auditable, and more useful for real campaign decision-making than a simple follower-count comparison.
+
+\section{How the AI Works}
+
+InfluenceIQ combines a product-facing application layer with an asynchronous AI pipeline that turns a campaign brief into a ranked, evidence-backed creator shortlist.
+
+At system level, the current implementation is a modular monolith built with:
+
+\begin{itemize}
+  \item \texttt{Next.js} frontend,
+  \item \texttt{FastAPI} backend,
+  \item \texttt{PostgreSQL} for durable product data,
+  \item \texttt{Redis} for Celery brokering, pipeline state, and event replay,
+  \item three Celery worker roles for asynchronous execution.
+\end{itemize}
+
+This architecture matters because influencer discovery is not a single AI call. It is a multi-step workflow involving search, collection, extraction, enrichment, scoring, and result delivery.
+
+\subsection{AI pipeline flow}
+
+The current pipeline flow is:
+
+\begin{Verbatim}[fontsize=\small,frame=single,framesep=4mm]
+start_campaign
+  -> generate_queries
+  -> execute_search
+  -> fetch_page
+  -> extract_content
+  -> extract_influencers
+  -> enrich_influencer_platforms
+  -> score_influencer
+  -> optional classify_brand_safety
+\end{Verbatim}
+
+In practical terms, the platform does the following:
+
+\begin{enumerate}
+  \item generates campaign-specific search queries,
+  \item discovers URLs and creator references,
+  \item fetches and extracts content,
+  \item resolves creators into canonical influencer records,
+  \item enriches platform-specific profile or post signals,
+  \item computes a trust-aware score,
+  \item stores the results and streams progress back to the UI.
+\end{enumerate}
+
+End-to-end example: a skincare brand can submit a brief asking for Bangladesh-focused creators on Instagram and YouTube. InfluenceIQ then generates campaign-specific queries, discovers public sources and creator references, enriches candidate profiles, computes trust-aware scores, and returns a shortlist with grades, evidence, and deeper report options for shortlisted creators.
+
+\subsection{Trust-aware scoring}
+
+The core AI idea in InfluenceIQ is that creators should not be ranked only by visibility. They should be ranked by a combination of relevance, trust, and evidence quality.
+
+The final trust score is a \texttt{0--100} value with grade bands:
+
+\begin{itemize}
+  \item \texttt{A+} for \texttt{90--100}
+  \item \texttt{A} for \texttt{80--89}
+  \item \texttt{B} for \texttt{70--79}
+  \item \texttt{C} for \texttt{60--69}
+  \item \texttt{D} for \texttt{40--59}
+  \item \texttt{F} for \texttt{0--39}
+\end{itemize}
+
+The current positive-score weights are:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Sub-score} & \textbf{Weight} \\
+\midrule
+Relevance & 0.20 \\
+Credibility & 0.20 \\
+Engagement quality & 0.15 \\
+Sentiment & 0.15 \\
+Brand safety & 0.15 \\
+Source confidence & 0.15 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The score first combines the positive dimensions, then subtracts a fake-risk penalty:
+
+\begin{Verbatim}[fontsize=\small,frame=single,framesep=4mm]
+trust = positive_score - 0.5 * fake_risk
+\end{Verbatim}
+
+To avoid misleadingly high scores, the implementation also applies hard caps:
+
+\begin{itemize}
+  \item high fake-risk caps the score at \texttt{45},
+  \item severe brand-safety risk caps the score at \texttt{40},
+  \item sparse evidence caps the score at \texttt{70},
+  \item low source count also reduces confidence through a multiplier.
+\end{itemize}
+
+This is an important design choice. A creator with impressive surface metrics should still score poorly if the system sees suspicious engagement, weak evidence, or serious safety concerns.
+
+\subsection{Model usage}
+
+The codebase supports optional model-backed components for:
+
+\begin{itemize}
+  \item spam or low-quality text analysis,
+  \item toxicity detection,
+  \item AI-generated-text likelihood,
+  \item query planning and explanation,
+  \item embedding-backed relevance.
+\end{itemize}
+
+However, the product is intentionally \textbf{deterministic-first}. If model backends, API keys, or optional dependencies are unavailable, the platform falls back to deterministic heuristics instead of failing the campaign.
+
+This matters for three reasons:
+
+\begin{enumerate}
+  \item the product remains runnable in constrained environments,
+  \item the demo remains stable even without expensive model infrastructure,
+  \item the decision process remains easier to inspect and audit.
+\end{enumerate}
+
+The main innovation is therefore not simply that the project can call optional models. It is the combination of:
+
+\begin{itemize}
+  \item trust-aware multi-signal scoring,
+  \item durable evidence and provenance storage,
+  \item replayable live pipeline visibility,
+  \item optional model-enhanced layers on top of a stable deterministic base.
+\end{itemize}
+
+\subsection{Deep analysis}
+
+Beyond the main shortlist pipeline, the product also supports an on-demand deep-analysis workflow for a selected creator. This acts as a second layer of investigation after shortlist generation.
+
+That flow:
+
+\begin{enumerate}
+  \item reuses stored platform, profile, and post data,
+  \item gathers more comment and external-signal evidence,
+  \item synthesizes a report,
+  \item re-enqueues rescoring so richer evidence can feed back into trust output.
+\end{enumerate}
+
+This means the platform does not stop at ``here are the top creators.'' It also supports the next decision step: ``before we spend budget on this creator, can we inspect them more deeply?''
+
+\section{Demo Screenshots}
+
+The following screenshots illustrate the end-to-end product workflow, from campaign setup to trust-aware creator evaluation.
+
+\reportfigurepair
+  {assets/login.png}
+  {Login screen used to access the InfluenceIQ workspace.}
+  {assets/dashboard.png}
+  {Dashboard showing workspace summary and recent campaign activity.}
+
+\reportfigurepair
+  {assets/settings.png}
+  {Settings page for managing workspace preferences and account configuration.}
+  {assets/brief-form.png}
+  {Campaign brief form used to launch the influencer discovery pipeline.}
+
+\reportfigurepair
+  {assets/pipeline-progress.png}
+  {Live pipeline progress showing search, extraction, enrichment, and scoring stages.}
+  {assets/shortlist.png}
+  {Ranked shortlist of creators generated from trust-aware scoring.}
+
+\reportfigurepair
+  {assets/profile.png}
+  {Creator profile view with campaign-linked trust information and supporting evidence.}
+  {assets/deep-analysis.png}
+  {Deep-analysis report for a shortlisted creator with richer evidence and final assessment.}
+\FloatBarrier
+
+\section{Output}
+
+The main output of InfluenceIQ is a ranked shortlist of creators generated from a real campaign brief. Instead of returning only names or popularity metrics, the system returns a decision-ready view of each candidate: how relevant they are to the campaign, how trustworthy they appear, what risks were detected, and what evidence supports that conclusion.
+
+For each recommended creator, the platform can show:
+
+\begin{itemize}
+  \item a trust score and grade,
+  \item supporting evidence and source links,
+  \item creator profile details connected to the campaign,
+  \item risk signals such as fake-engagement or brand-safety concerns,
+  \item stored scoring records for later review,
+  \item a deeper second-pass analysis report when needed.
+\end{itemize}
+
+The product also outputs workflow-level information, including live pipeline progress, saved shortlist state, and outreach or contract tracking context. This makes the system useful not only for discovering creators, but also for managing the decision process after discovery.
+
+A simplified example output looks like this:
+
+\begin{figure}[htbp]
+\centering
+\fbox{%
+\begin{minipage}{0.92\textwidth}
+\small
+\begin{tabular}{@{}p{0.24\textwidth}p{0.68\textwidth}@{}}
+\texttt{Campaign:} & Skincare launch for Bangladesh market \\
+\texttt{Creator:} & Maya Rahman \\
+\texttt{Trust score:} & 84.6 \\
+\texttt{Grade:} & A \\
+\texttt{Confidence:} & Medium \\
+\texttt{Source count:} & 5 \\
+\texttt{Primary risks:} & low fake-engagement risk, no severe brand-safety flag \\
+\texttt{Why surfaced:} & strong relevance, credible profile signals, stable engagement quality \\
+\end{tabular}
+\end{minipage}%
+}
+\end{figure}
+
+This is more useful than raw follower counts because it gives the user both a recommendation and an explanation. In practice, the value of the system is not just that it ranks creators, but that it helps a team justify why a creator should be shortlisted, reviewed further, or rejected.
+
+\section{Impact and Use Cases}
+
+InfluenceIQ is valuable in situations where influencer selection needs to be faster, more defensible, and less dependent on guesswork. Its practical impact is not only that it helps teams discover creators more quickly, but that it improves the quality of the final decision.
+
+In a typical workflow, marketing teams spend a large amount of time manually searching across social platforms, checking public content, comparing profiles, and trying to decide whether a creator is genuinely suitable for a campaign. InfluenceIQ reduces that effort by turning the process into a guided search-to-score workflow. Instead of reviewing creators one by one with no consistent method, teams receive a structured shortlist backed by scoring logic and source evidence.
+
+This has several real advantages. It helps reduce the chance of paying for inflated or low-quality influence. It improves confidence by preserving the reasons behind each recommendation. It also makes creator evaluation more repeatable across campaigns, which is important for agencies, growing brands, and teams that need to explain their decisions later.
+
+The most immediate use cases are clear. A brand marketing team can use the platform to shortlist creators for a product launch. An agency can use it to compare candidates across multiple campaign briefs with a more consistent framework. Smaller businesses or startups can use it as a lightweight research workflow without needing a large manual review process. For high-value creators, the deep-analysis step provides an additional layer of review before outreach or budget commitment.
+
+\section{Limitations}
+
+The current system is functional and demonstrates the core idea well, but it still has important limitations.
+
+First, data depth depends heavily on external provider configuration. When the main Instagram, TikTok, or X enrichment providers are available, the system can gather stronger platform signals. When they are unavailable, fallback scraping still allows the pipeline to run, but the collected evidence is shallower and less consistent.
+
+Second, the product is still closer to a user-scoped workspace than a full team collaboration system. The core flows work, but organization-wide review, approval, and shared decision workflows are still limited.
+
+Third, the live replay layer is operational rather than archival. Redis-based event replay supports the current product experience, but it is TTL-based and not designed as a permanent historical event store.
+
+Fourth, the AI stack is intentionally conservative. The repository supports several optional model-backed components, but the default system still relies mainly on deterministic logic. This is useful for reliability and auditability, but it also means some intelligence layers are not always active in every deployment.
+
+Finally, human review tooling is still lightweight. The system stores evidence, flags, and scoring records, but it does not yet implement a full reviewer approval workflow. Similarly, deep analysis is currently targeted at one creator at a time rather than acting as a second-pass review layer for every shortlisted candidate.
+
+\section{Team and Contributions}
+
+\begin{center}
+\begin{tabular}{p{0.30\textwidth} p{0.16\textwidth} p{0.40\textwidth}}
+\toprule
+\textbf{Member} & \textbf{Institution} & \textbf{Role} \\
+\midrule
+MD Tonmoy Hossain Jifat (Team Lead) & RUET & Pipeline intelligence, scoring logic, trust or risk design \\
+Shafayetul Huda Sadi & RUET & Backend platform, orchestration, frontend integration, deployment \\
+Adib Hasan & RUET & Frontend implementation \\
+Mahmudul Hasan & RUET & Scraping and scoring implementation \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Conclusion}
+
+InfluenceIQ addresses a practical and increasingly important problem in digital marketing: brands do not simply need creators with reach, they need creators they can trust. Popularity metrics alone are not enough for that decision.
+
+This project turns that idea into a working software system. It accepts a campaign brief, runs an asynchronous discovery and scoring pipeline, stores evidence alongside results, streams live progress to the interface, and supports deeper analysis when a shortlisted creator needs closer inspection.
+
+As a result, InfluenceIQ is more than a prototype concept. It demonstrates a realistic product approach to trust-aware influencer discovery, with clear use cases, explainable outputs, and room for future expansion. In short, it helps shift influencer selection from popularity-based judgment to evidence-based evaluation.
+
+\smallskip
+{\footnotesize
+Repository: \href{https://github.com/md-tonmoy007/InfluenceIQ}{github.com/md-tonmoy007/InfluenceIQ}. \quad
+Live demo: \href{https://cuet.shafayetsadi.dev/}{cuet.shafayetsadi.dev}.
+}
+
+\end{document}
