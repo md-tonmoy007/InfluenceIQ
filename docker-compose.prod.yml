@@ -1,0 +1,185 @@
+# Standalone production stack for a single DigitalOcean Droplet.
+# No managed services — postgres, redis, qdrant, and Caddy all run in containers.
+# State lives in named volumes; back up the Droplet (snapshot) regularly.
+#
+# Usage:
+#   1. cp backend/.env.example backend/.env   # then edit secrets
+#   2. $EDITOR infra/Caddyfile                # set your domain
+#   3. docker compose -f docker-compose.prod.yml up -d --build
+#   4. docker compose -f docker-compose.prod.yml logs -f
+#
+# To rebuild after code changes:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# To destroy everything (including data):
+#   docker compose -f docker-compose.prod.yml down -v
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file: backend/.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-influenceiq}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: always
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
+  backend-core:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: >
+      sh -c "alembic -c backend/alembic.ini upgrade head &&
+             uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips='*'"
+    env_file: backend/.env
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=2).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: always
+
+  worker_ai_agent:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: celery -A backend.workers.ai_agent.worker:celery_app worker -Q ai_agent_queue -c 2 -n ai_agent@%h
+    env_file: backend/.env
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  worker_scraping:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: celery -A backend.workers.scraping.worker:celery_app worker -Q scraping_queue -c 8 -n scraping@%h
+    env_file: backend/.env
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  worker_scoring:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: celery -A backend.workers.scoring.worker:celery_app worker -Q scoring_queue -c 4 -n scoring@%h
+    env_file: backend/.env
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  flower:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: celery -A backend.workers.ai_agent.worker:celery_app flower --port=5555
+    env_file: backend/.env
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    # No published ports — internal only. Reach via SSH tunnel:
+    #   ssh -L 5555:localhost:5555 deploy@<host>
+    restart: always
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: runner
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+        NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+      NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL:-}
+    depends_on:
+      - backend-core
+    restart: always
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend-core
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "http://localhost:2019/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # backend/ml — optional. Uncomment the block below to enable.
+  # ml-service:
+  #   build:
+  #     context: .
+  #     dockerfile: backend/Dockerfile.ml
+  #   command: uvicorn backend.ml.api:app --host 0.0.0.0 --port 8080
+  #   env_file: backend/.env
+  #   environment:
+  #     PYTHONPATH: /workspace
+  #     QDRANT_URL: http://qdrant:6333
+  #     APP_ENV: production
+  #   depends_on:
+  #     qdrant:
+  #       condition: service_started
+  #   restart: always
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  caddy_data:
+  caddy_config:
