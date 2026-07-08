@@ -1,56 +1,228 @@
 # InfluenceIQ
 
-InfluenceIQ is an AI-powered trust-aware influencer discovery platform. The docs in [Docs/Architecture.md](Docs/Architecture.md) describe the product and pipeline goals; this repo packages that design as a multi-container, multi-service development stack.
+**InfluenceIQ** is a trust-aware AI platform for influencer discovery. It helps brands and agencies move beyond follower counts by discovering creators, gathering public evidence, scoring trust and relevance, and producing a ranked shortlist with explainable signals.
 
-## Service layout
+> SciBlitz AI Challenge 2026 submission  
+> **Team:** sudo_make_it_work  
+> **Institution:** Rajshahi University of Engineering & Technology (RUET)  
+> **Track:** D — Open Innovation
 
-- `backend-core`: FastAPI orchestration and health surface (entrypoint: `backend.api.main:app`).
-- `worker_ai_agent`: Celery worker for LLM-oriented tasks (entrypoint: `backend.workers.ai_agent.worker:celery_app`).
-- `worker_scraping`: Celery worker for search, crawling, and content extraction (entrypoint: `backend.workers.scraping.worker:celery_app`).
-- `worker_scoring`: Celery worker for extraction and scoring tasks (entrypoint: `backend.workers.scoring.worker:celery_app`).
-- `frontend`: lightweight Next.js UI that proxies `/api/*` to `backend-core`.
+## Live Submission Links
 
-All Python backend code is grouped under `backend/` with four layers:
+- **Live demo:** https://cuet.shafayetsadi.dev/
+- **Project report:** [`docs/project-report.md`](docs/project-report.md)
+- **Model & data card:** [`docs/model-data-card.md`](docs/model-data-card.md)
+- **Architecture:** [`docs/architecture.md`](docs/architecture.md)
+- **Pipeline flow:** [`docs/pipeline-flow-architecture.md`](docs/pipeline-flow-architecture.md)
+- **Deployment guide:** [`docs/deploy-digitalocean.md`](docs/deploy-digitalocean.md)
 
-- `backend.api/` — FastAPI surface (routers, schemas, middleware)
-- `backend.core/` — cross-cutting infrastructure (config, db, cache, celery setup)
-- `backend.pipeline/` — role-5 domain (orchestrator, tasks, analysis, detection, fusion, content)
-- `backend.workers/` — per-role Celery shims
-- `backend.ml/` — *optional* ML backend kept in-tree
+## Problem
 
-## Python environment
+Influencer selection is often driven by surface metrics such as follower count, likes, and visibility. That creates real risks:
+
+- inflated influence from fake followers or low-quality engagement,
+- hidden brand-safety concerns,
+- slow manual research across platforms,
+- weak justification for why a creator was selected.
+
+InfluenceIQ addresses this by turning creator discovery into an **evidence-backed, trust-aware AI workflow**.
+
+## What InfluenceIQ Does
+
+A user can:
+
+- create a campaign brief,
+- launch an asynchronous discovery pipeline,
+- monitor live progress through REST state and WebSocket events,
+- review ranked influencer recommendations,
+- inspect creator profiles and supporting evidence,
+- save creators to lists and track outreach/contract state,
+- run deep analysis on shortlisted creators.
+
+## Core AI Idea
+
+InfluenceIQ does **not** rank creators by popularity alone. It combines multiple signals into a trust-aware score:
+
+- relevance,
+- credibility,
+- engagement quality,
+- sentiment,
+- brand safety,
+- source confidence,
+- fake-risk penalties and evidence caps.
+
+The system is **deterministic-first** with optional model-backed components. If LLM or ML providers are unavailable, the platform falls back to heuristics instead of failing the pipeline.
+
+## Current Architecture
+
+InfluenceIQ is implemented as a **modular monolith** with multiple runtime roles:
+
+- **Frontend:** Next.js App Router (`frontend/`)
+- **Backend API:** FastAPI (`backend/api/`)
+- **Database:** PostgreSQL
+- **Broker / state / replay:** Redis
+- **Async workers:** Celery
+- **Optional services:** Qdrant and `backend/ml`
+
+### Worker queues
+
+- `ai_agent_queue` — query planning, LLM-assisted tasks, deep analysis
+- `scraping_queue` — search, crawling, content fetch/extraction, enrichment
+- `scoring_queue` — extraction, clustering, scoring, persistence
+
+For the full current-state system map, see [`docs/architecture.md`](docs/architecture.md).
+
+## Pipeline Overview
+
+Main campaign flow:
+
+```text
+Campaign brief
+  -> query generation
+  -> web discovery
+  -> page fetch
+  -> content extraction
+  -> influencer extraction
+  -> identity resolution
+  -> platform enrichment
+  -> trust-aware scoring
+  -> ranked shortlist + live progress events
+```
+
+Deep-analysis flow:
+
+```text
+Shortlisted influencer
+  -> collect social content
+  -> collect comments
+  -> collect external signals
+  -> synthesize report
+  -> re-score with richer evidence
+```
+
+Detailed behavior is documented in [`docs/pipeline-flow-architecture.md`](docs/pipeline-flow-architecture.md).
+
+## Repository Structure
+
+```text
+frontend/                  Next.js application
+backend/api/               FastAPI routes and schemas
+backend/core/              config, auth, DB, Redis, Celery, billing
+backend/pipeline/          discovery, extraction, enrichment, scoring, deep analysis
+backend/workers/           Celery worker entrypoints
+backend/ml/                optional ML adapters/services
+backend/tests/             tests
+docs/                      architecture, report, deployment, reference docs
+scripts/                   helpers and smoke scripts
+```
+
+## Local Development
+
+### Prerequisites
+
+- Docker + Docker Compose
+- Python 3.11+
+- Node.js 20+
+- `uv`
+
+### Setup
 
 ```bash
 cp backend/.env.example backend/.env
 uv sync --project backend --dev
 ```
 
-This repo now uses `backend/pyproject.toml` and `backend/uv.lock` as the Python source of truth.
-
-## Run
+### Run the full stack
 
 ```bash
 make up
 ```
 
-Endpoints:
+### Default local endpoints
 
 - Frontend: `http://localhost:3002`
-- Backend core: `http://localhost:8002` (mapped to `8000` inside the container)
-- Backend health: `http://localhost:8002/health`
+- Backend API: `http://localhost:8002`
+- Health: `http://localhost:8002/health`
+- Flower: `http://localhost:5555`
 
-## Tests
+### Common commands
 
 ```bash
-make sync        # create/update the backend uv environment
-make test-unit   # fast offline tests (no docker required)
-make test-ml     # optional backend.ml tests
+make ps
+make logs
+make health
+make down
+make test-unit
+make test
+make test-pipeline
+make lint
 ```
 
-## Notes
+More details: [`docs/development.md`](docs/development.md)
 
-- The task implementations are still placeholders from the hackathon scaffold; this refactor changes runtime boundaries, queue ownership, and container topology.
-- Queue routing is service-oriented: `ai_agent_queue`, `scraping_queue`, and `scoring_queue`.
-- `backend/ml` is optional at runtime. Its heavier ML dependencies are intentionally not part of the default backend sync, and adapters fall back to deterministic behaviour when unavailable.
-- Search and platform fetch providers (Brave, Apify, scrape.do): see [docs/provider-configuration.md](docs/provider-configuration.md).
-- Production deploy (single DigitalOcean Droplet, `docker compose -f docker-compose.prod.yml up`): see [docs/deploy-digitalocean.md](docs/deploy-digitalocean.md).
+## Deployment
+
+This repository includes a production deployment path for a **single DigitalOcean Droplet** using Docker Compose.
+
+Production guide:
+
+- [`docs/deploy-digitalocean.md`](docs/deploy-digitalocean.md)
+
+The deployment model runs:
+
+- frontend,
+- backend API,
+- Celery workers,
+- PostgreSQL,
+- Redis,
+- optional Qdrant,
+- Caddy for HTTPS.
+
+## AI / Model / Data Notes
+
+InfluenceIQ primarily works on **publicly available inference-time data** collected during campaign execution. It does not rely on a proprietary training dataset.
+
+Supported/used provider and model paths include:
+
+- Brave Search / SerpAPI,
+- Apify-backed platform enrichment,
+- scrape.do / direct HTTP fetch,
+- optional Hugging Face and OpenRouter-backed model adapters,
+- optional embeddings and semantic relevance support.
+
+See the submission data card:
+
+- [`docs/model-data-card.md`](docs/model-data-card.md)
+
+## Submission-Oriented Highlights
+
+This project was built to satisfy the SciBlitz AI Challenge expectations for:
+
+- **meaningful AI integration** in the core workflow,
+- **public live deployment**,
+- **clear architecture and technical implementation**,
+- **real-world impact** through trust-aware creator selection,
+- **documentation and explainability** through report, data card, and repository docs.
+
+## Team
+
+- **MD Tonmoy Hossain Jifat** — Pipeline intelligence, scoring logic, trust/risk design
+- **Shafayetul Huda Sadi** — Backend platform, orchestration, frontend integration, deployment
+- **Adib Hasan** — Frontend implementation
+- **Mahmudul Hasan** — Scraping and scoring implementation
+
+## License / Attribution
+
+This repository uses third-party libraries, APIs, and pretrained models where applicable. Relevant references, model details, and data-source notes are documented in:
+
+- [`docs/model-data-card.md`](docs/model-data-card.md)
+- [`docs/provider-configuration.md`](docs/provider-configuration.md)
+
+---
+
+For judges and reviewers, the best starting points are:
+
+1. the **live demo**,
+2. [`docs/project-report.md`](docs/project-report.md),
+3. [`docs/architecture.md`](docs/architecture.md),
+4. [`docs/model-data-card.md`](docs/model-data-card.md).
