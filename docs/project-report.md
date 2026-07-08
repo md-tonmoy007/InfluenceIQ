@@ -19,59 +19,56 @@ fontsize: 11pt
 
 ---
 
-## 1. Problem Statement
+## 1. The Problem
 
-Influencer selection is still dominated by vanity metrics: follower counts, likes, and headline reach. Those numbers are easy to compare, but they do not answer the business question that matters: **which creator is actually trustworthy for this campaign?**
+Brands often choose influencers by looking at follower counts, likes, and headline reach. That is fast, but it is a weak proxy for the real question: **which creator is trustworthy enough to represent a brand and deliver real campaign value?**
 
-In practice, brands face three recurring problems:
+This creates four common problems:
 
-1. **Inflated engagement.** Fake followers, spam comments, bot-like behavior, and coordinated engagement clusters can make a creator look more influential than they really are.
-2. **Weak auditability.** Even when a team makes a good pick, the decision is often based on screenshots, intuition, and scattered tabs rather than stored evidence that can be reviewed later.
-3. **Slow campaign research.** Manually checking creators across search results, articles, Instagram, TikTok, and YouTube is time-consuming and inconsistent from one reviewer to another.
+1. **Inflated influence:** fake followers, spam comments, and bot-like engagement make some creators appear stronger than they really are.
+2. **Hidden risk:** a creator may have reach but still be brand-unsafe because of toxic, misleading, or low-trust content patterns.
+3. **Slow research:** manually checking candidates across articles, YouTube, Instagram, TikTok, and X takes too much time.
+4. **Poor auditability:** teams often cannot clearly explain later why a creator was selected or rejected.
 
-The result is wasted spend, reputational risk, and a workflow that does not scale once a team needs to evaluate many candidates quickly.
+InfluenceIQ was built to turn influencer discovery into a more evidence-based, trust-aware workflow.
 
-## 2. Proposed Solution
+## 2. Our Solution
 
-**InfluenceIQ** is a trust-aware influencer discovery platform that turns a campaign brief into a ranked shortlist of creators, with source-backed scoring and live execution feedback.
+**InfluenceIQ** is a full-stack AI-assisted influencer discovery platform. A user signs in, submits a campaign brief, and receives a ranked shortlist of creators based on trust-aware scoring rather than vanity metrics alone.
 
-A user can:
+The current product supports:
 
-1. sign in and create a campaign brief,
-2. launch the matching pipeline,
-3. watch live progress as the system searches, crawls, extracts, enriches, and scores candidates,
-4. review the ranked shortlist, creator profiles, saved lists, and outreach state, and
-5. trigger a deeper per-creator analysis report when a shortlist candidate needs closer inspection.
+- campaign brief creation and draft submission,
+- asynchronous search-to-score pipeline execution,
+- live progress updates through REST state and WebSocket replay,
+- ranked creator shortlist and creator profile views,
+- saved lists and contract/outreach tracking,
+- on-demand deep-analysis reports for shortlisted creators.
 
-Instead of returning only popularity metrics, the system combines campaign relevance, credibility, engagement quality, sentiment, brand safety, and source confidence into an explainable trust score. Every result is tied back to persisted sources and scoring records so the output remains auditable after the pipeline completes.
+Instead of scoring only popularity, the system combines:
 
-## 3. Methodology
+- relevance to the campaign,
+- credibility,
+- engagement quality,
+- audience sentiment,
+- brand safety,
+- source confidence.
 
-### 3.1 Current system architecture
+Each result is linked to persisted source evidence and versioned scoring records, making the output more explainable and auditable.
+
+## 3. How the AI Works
 
 InfluenceIQ is implemented as a modular monolith with:
 
-- a `Next.js` frontend for the product UI,
-- a `FastAPI` backend for APIs and orchestration,
-- `PostgreSQL` as the durable data store,
+- `Next.js` frontend,
+- `FastAPI` backend,
+- `PostgreSQL` for durable product data,
 - `Redis` for Celery brokering, pipeline state, and event replay,
-- three Celery worker roles for asynchronous campaign execution, and
-- optional model/vector services for enhanced ML-backed behavior.
+- three Celery worker roles for async execution.
 
-At product level, the current workspace includes:
+### 3.1 AI pipeline flow
 
-- landing, signup, login, and onboarding,
-- dashboard and workspace summary,
-- campaign briefs and draft submission,
-- discover and shortlist flows,
-- saved lists,
-- creator profile pages,
-- deep-analysis report pages,
-- account settings, integrations, API keys, and billing surfaces.
-
-### 3.2 Pipeline flow
-
-The main pipeline starts when the backend dispatches `start_campaign(campaign_id)`. The current execution graph is:
+The current pipeline flow is:
 
 ```text
 start_campaign
@@ -85,69 +82,23 @@ start_campaign
   -> optional classify_brand_safety
 ```
 
-This flow is distributed across three queues:
+This means the platform:
 
-- `ai_agent_queue` for query planning, selected LLM-assisted tasks, and deep analysis
-- `scraping_queue` for search, page fetch, extraction, and provider I/O
-- `scoring_queue` for influencer extraction, identity clustering, and scoring
+1. generates campaign-specific search queries,
+2. discovers URLs and creator references,
+3. fetches and extracts content,
+4. resolves creators into canonical influencer records,
+5. enriches platform-specific profile/post signals,
+6. computes a trust-aware score,
+7. stores the results and streams progress back to the UI.
 
-The pipeline is observable in real time through:
+Example flow:
 
-- a Redis-backed pipeline-state hash for polling, and
-- a replayable WebSocket event stream keyed by `event_id`
+A skincare brand can submit a brief asking for Bangladesh-focused creators on Instagram and YouTube. InfluenceIQ then generates campaign-specific queries, discovers public sources and creator references, enriches candidate profiles, computes trust-aware scores, and returns a shortlist with grades, evidence, and deeper report options for shortlisted creators.
 
-This allows the frontend to reconnect and resume progress display without restarting the run.
+### 3.2 Trust-aware scoring
 
-### 3.3 Data model and evidence tracking
-
-The current codebase persists the pipeline into explicit product tables rather than transient in-memory payloads. The most important entities are:
-
-- `Campaign` for the brief, lifecycle status, and campaign context
-- `CrawlSource` for discovered and fetched URLs
-- `Influencer` for canonical creator identity
-- `CrawlSourceInfluencer` for durable source-to-creator attribution
-- `InfluencerScore` for versioned campaign-specific scoring outputs
-- `BrandSafetyFlag` and `CredentialVerification` for risk and authority evidence
-- `PlatformProfile`, `PlatformPost`, and `PlatformComment` for structured platform enrichment
-- `DeepAnalysisRun` and `DeepAnalysisReport` for on-demand deeper review
-
-This structure is central to the product claim: InfluenceIQ does not simply output a score, it stores the evidence path that led to that score.
-
-### 3.4 Discovery and provider strategy
-
-Discovery and enrichment use a provider stack with deterministic fallbacks:
-
-- Brave Search is the primary search provider
-- SerpAPI is a fallback search provider
-- Instagram, TikTok, and X can use Apify-backed collection when tokens are configured
-- YouTube uses its own public-page/RSS provider path, with optional upgrade paths documented in the repo
-- Generic article fetching can use scrape.do or direct HTTP fetch
-
-This design keeps the system usable in low-cost or partially configured environments while still improving quality when external provider credentials are available.
-
-### 3.5 Deterministic-first AI/ML design
-
-A core design choice in the current repository is **deterministic-first, ML-optional** behavior.
-
-The product includes optional model-backed adapters for:
-
-- spam/low-quality text classification,
-- toxicity detection,
-- AI-generated-text likelihood,
-- LLM-based query planning and explanation,
-- embedding-backed relevance,
-- optional graph/model backends in `backend/ml`
-
-However, the main scoring pipeline is designed to degrade gracefully when those adapters are unavailable. If a model backend cannot load or an external API is missing, the system falls back to deterministic heuristics rather than failing the campaign.
-
-This is important for two reasons:
-
-1. it keeps the live product operational in constrained environments, and
-2. it makes the platform more auditable, because the baseline path is understandable and reproducible even without heavyweight model infrastructure.
-
-### 3.6 Trust score formulation
-
-The final trust score is implemented as a `0–100` score with grade bands:
+The final trust score is a `0–100` score with grade bands:
 
 - `A+` for `90–100`
 - `A` for `80–89`
@@ -171,97 +122,125 @@ The pipeline then subtracts a fake-risk penalty:
 
 `trust = positive_score - 0.5 × fake_risk`
 
-The implementation also applies explicit caps so the system does not overstate trust when evidence quality is weak:
+To avoid misleadingly high scores, the implementation applies caps:
 
-- overall fake-risk above `80` caps trust at `45`
-- severe brand-safety risk caps trust at `40`
-- fewer than `3` sources caps trust at `70`
-- sparse evidence also applies a confidence multiplier based on source count
+- high fake-risk caps the score at `45`
+- severe brand-safety risk caps the score at `40`
+- sparse evidence caps the score at `70`
+- low source count also reduces confidence through a multiplier
 
-This means a creator cannot receive a high score purely from thin or suspicious evidence.
+### 3.3 Model usage
 
-### 3.7 Deep analysis workflow
+The codebase supports optional model-backed components for:
 
-In addition to the main shortlist pipeline, the current product supports on-demand deep analysis for one creator within one campaign.
+- spam/low-quality text analysis,
+- toxicity detection,
+- AI-generated-text likelihood,
+- query planning and explanation,
+- embedding-backed relevance.
 
-That workflow:
+However, the product is intentionally **deterministic-first**. If model backends, API keys, or optional dependencies are unavailable, the system falls back to deterministic heuristics instead of failing the campaign. This makes the product easier to run, demo, and audit.
 
-1. collects structured platform data already stored for the creator,
-2. pulls recent posts and comment samples,
-3. gathers additional external signals,
-4. synthesizes a report, and
-5. re-enqueues a creator rescore so richer evidence can flow back into the main trust view.
+The main innovation is therefore not simply that the project can call optional models. It is the combination of trust-aware multi-signal scoring, durable evidence storage, replayable live pipeline visibility, and model-enhanced layers on top of a stable deterministic base.
 
-The current deep-analysis task is staged internally and emits its own progress events such as:
+### 3.4 Deep analysis
 
-- `deep_analysis.started`
-- `deep_analysis.social_collected`
-- `deep_analysis.comments_collected`
-- `deep_analysis.external_signals_collected`
-- `deep_analysis.report_ready`
+Beyond the main shortlist pipeline, the product also supports an on-demand deep-analysis workflow for a selected creator. That flow:
 
-This gives the product a second layer of analysis beyond initial ranking: shortlist first, then investigate more deeply when needed.
+1. reuses stored platform/profile/post data,
+2. gathers more comment and external-signal evidence,
+3. synthesizes a report,
+4. then re-enqueues rescoring so richer evidence can feed back into trust output.
 
-## 4. Current Implementation Results
+## 4. Demo Screenshots
 
-Based on the current repository state, InfluenceIQ now delivers the following implemented capabilities:
+Below are suggested screenshot slots from the current product flow. You can add or replace the image files manually.
 
-- A working full-stack product with authenticated workspace flows, campaign submission, dashboard views, shortlist views, creator profiles, and report pages.
-- A real asynchronous campaign pipeline with queue separation, persisted lifecycle state, and WebSocket replay support.
-- Canonical influencer records tied to durable crawl-source provenance.
-- Versioned per-campaign scoring rows rather than one mutable score field.
-- Saved lists and contract/outreach tracking that preserve user workflow after ranking.
-- On-demand deep analysis with persisted reports and report retrieval endpoints.
-- Optional ML-enhanced behavior without making the main product dependent on those models to function.
+![InfluenceIQ login and workspace access screen](./assets/login.png){ width=75% }
 
-From a software-engineering perspective, the strongest result is not one single model or heuristic. It is the fact that the repo now represents a coherent product system: UI, API, async orchestration, evidence persistence, ranking, and re-analysis all exist inside one runnable architecture.
+_Figure: InfluenceIQ login screen used to access the campaign workspace. Judges should notice that the project is presented as a usable product rather than a script-only demo._
 
-## 5. Limitations
+![InfluenceIQ dashboard overview](./assets/dashboard.png){ width=85% }
 
-The current codebase is functional, but several limitations remain clear.
+_Figure: Dashboard view showing workspace summary, recent searches, and campaign activity. This demonstrates that campaign work is persisted and organized across sessions._
 
-### 5.1 Provider-dependent data depth
+![InfluenceIQ campaign brief submission](./assets/brief-form.png){ width=85% }
 
-Search and platform quality depend on external provider availability. The system degrades gracefully, but the depth of Instagram/TikTok/X enrichment is significantly better when Apify-backed collection is configured than when only fallback scraping paths are available.
+_Figure: Campaign brief form where the user enters campaign context and launches the matching pipeline. Judges should notice that the system starts from a real business brief, not a hardcoded creator list._
 
-### 5.2 User-scoped product model
+![InfluenceIQ live pipeline progress](./assets/pipeline-progress.png){ width=85% }
 
-Most of the current workspace is user-scoped. Some data structures already contain placeholders such as `org_id`, but the implemented product model is not yet a full organization/team tenancy system with richer shared permissions.
+_Figure: Live pipeline progress view showing asynchronous search, extraction, enrichment, and scoring updates. This highlights that the product runs as a real orchestrated workflow._
 
-### 5.3 Redis replay/state is operational, not archival
+![InfluenceIQ ranked shortlist output](./assets/shortlist.png){ width=85% }
 
-Pipeline events and fast state are stored in Redis with TTL-backed replay windows. PostgreSQL remains the durable source of truth, but the live replay layer is intentionally transient rather than a permanent historical event store.
+_Figure: Ranked shortlist output with trust-aware creator recommendations for a campaign. This is the main product output judges should focus on._
 
-### 5.4 Optional model stack is uneven
+![InfluenceIQ creator profile view](./assets/profile.png){ width=85% }
 
-The repository includes optional ML and graph backends, but not every advanced path is equally mature. Some adapters are scaffolds or upgrade paths rather than the default execution path of the live product. The deterministic pipeline remains the authoritative baseline.
+_Figure: Creator profile page showing campaign-linked trust information, evidence, and supporting metrics. This shows how the platform explains why a creator is recommended._
 
-### 5.5 Human review is still limited
+![InfluenceIQ deep analysis report](./assets/deep-analysis.png){ width=85% }
 
-The platform persists evidence and flags, but it does not yet implement a full operator-facing human-review workflow for credential verification, brand-safety adjudication, or score override governance.
+_Figure: Deep-analysis report view for a shortlisted creator with richer evidence and report-level assessment. This demonstrates the second-layer review workflow beyond initial ranking._
 
-### 5.6 Deep analysis is targeted, not bulk
+## 5. Output
 
-Deep analysis is currently an on-demand workflow for one `(campaign, influencer)` pair at a time. That is appropriate for shortlist investigation, but it is not yet a bulk second-pass pipeline for every ranked creator.
+The current system produces several useful outputs:
 
-## 6. Future Work
+- **ranked creator shortlist** for a campaign,
+- **creator profile views** with campaign-linked trust information,
+- **versioned scoring records** tied to evidence,
+- **brand-safety and supporting signal outputs**,
+- **saved-list and outreach workflow state**,
+- **deep-analysis reports** for shortlisted creators,
+- **live execution progress** through state polling and replayable WebSocket events.
 
-The most valuable next steps suggested by the current codebase are:
+From a product perspective, the key output is not just a number. It is a shortlist with persisted evidence, explainable scores, and operational workflow support.
 
-1. Improve provider-backed data depth and consistency across platforms, especially when public fallbacks are shallow.
-2. Expand from current user-scoped ownership to a fuller organization/team collaboration model.
-3. Add stronger human-review tooling around flags, credentials, and final recommendations.
-4. Mature optional ML-backed paths so more of them can move from experimental/upgrade status into routine production use.
-5. Extend deep analysis from targeted report generation into richer campaign-level comparative workflows.
-6. Improve long-term observability and analytics around completed pipeline runs, not only live execution state.
+Example compact output:
 
-## 7. Conclusion
+```text
+Campaign: Skincare launch for Bangladesh market
+Creator: Maya Rahman
+Trust score: 84.6
+Grade: A
+Confidence: Medium
+Source count: 5
+Primary risks: low fake-engagement risk, no severe brand-safety flag
+Why surfaced: strong relevance, credible profile signals, stable engagement quality
+```
 
-InfluenceIQ addresses a real gap in influencer selection: brands need a system that judges creators on trustworthiness and evidence quality, not only audience size.
+This kind of output is more useful than raw follower counts because it gives the user both a ranking and a reason.
 
-The current repository now embodies that idea in a concrete product architecture. It accepts campaign briefs, runs an asynchronous search-to-score pipeline, persists evidence and scoring outputs, streams progress to the UI, and supports deeper creator investigation when a shortlist decision requires more confidence.
+## 6. Impact & Use Cases
 
-The project is not “finished” in a production sense, but it is no longer just a concept or slide-deck architecture. It is a working trust-aware influencer discovery system with clear extension points, auditable data flow, and a realistic path toward more advanced ML-assisted decision support.
+InfluenceIQ is useful anywhere influencer selection must be faster, safer, and more evidence-based.
+
+### 6.1 Practical impact
+
+- Reduces shortlist research effort from hours of manual browsing into a guided search-to-score workflow.
+- Helps teams avoid paying for inflated or low-quality influence.
+- Improves confidence in creator selection by storing the reasons behind the score.
+- Makes influencer evaluation more repeatable and auditable across campaigns.
+
+### 6.2 Example use cases
+
+- **Brand marketing teams:** shortlist creators for a new product launch.
+- **Agencies:** compare candidates across many campaigns with a consistent scoring approach.
+- **Startups or SMEs:** run a lightweight but more disciplined influencer research workflow.
+- **Manual review before outreach:** use deep analysis to inspect a high-value creator more carefully before committing budget.
+
+## 7. Limitations
+
+The current codebase is functional, but several limits remain clear.
+
+1. **Provider-dependent data depth:** Instagram, TikTok, and X enrichment quality improves significantly when the primary external providers are configured; fallback scraping is shallower.
+2. **User-scoped product model:** most current workspace flows are still user-scoped rather than full organization/team collaboration.
+3. **Transient replay layer:** Redis event replay is operational and TTL-based, not a permanent historical event archive.
+4. **Optional model stack:** several model-backed paths are available, but the default runtime still depends mainly on deterministic logic.
+5. **Limited human-review tooling:** the platform stores flags and evidence but does not yet provide a full reviewer/approver workflow.
+6. **Deep analysis is targeted, not bulk:** it is currently intended for one creator at a time rather than a second-pass analysis for every ranked result.
 
 ## 8. Team & Contributions
 
@@ -271,6 +250,14 @@ The project is not “finished” in a production sense, but it is no longer jus
 | Shafayetul Huda Sadi                | RUET        | Backend platform, orchestration, frontend integration, deployment |
 | Adib Hasan                          | RUET        | Frontend implementation                                           |
 | Mahmudul Hasan                      | RUET        | Scraping and scoring implementation                               |
+
+## 9. Conclusion
+
+InfluenceIQ addresses a real product gap: brands need help deciding **who to trust**, not only who looks popular.
+
+The current repository now implements that idea as a working software product. It accepts campaign briefs, runs an asynchronous search-to-score pipeline, stores evidence and versioned score outputs, streams progress live to the UI, and supports deeper creator investigation when needed.
+
+That makes it more than a concept. It is a practical trust-aware influencer discovery system with clear real-world use cases and a realistic path for future expansion. In short, InfluenceIQ helps brands move from popularity-based influencer selection to evidence-based creator trust evaluation.
 
 ---
 
