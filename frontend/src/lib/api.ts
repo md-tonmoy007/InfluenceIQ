@@ -8,6 +8,13 @@ import {
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
+const resolveApiBaseUrl = (): string => {
+  const configured = API_BASE_URL.trim().replace(/\/$/, "");
+  if (configured) return configured;
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
+};
+
 // Mirrors backend CampaignResponse (backend/api/schemas/campaign.py).
 type BackendCampaignResponse = {
   id: string;
@@ -330,10 +337,10 @@ export class RerunOutreachError extends Error {
   }
 }
 
-const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/$/, "")}${path}`;
+const apiUrl = (path: string) => `${resolveApiBaseUrl()}${path}`;
 
 const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  if (!API_BASE_URL) {
+  if (!resolveApiBaseUrl()) {
     throw new Error("NEXT_PUBLIC_API_BASE_URL is not configured");
   }
 
@@ -901,7 +908,7 @@ export const getMe = async (): Promise<CurrentUser> =>
 
 /** Like getMe, but returns null for unauthenticated users without redirecting. */
 export const getMeOptional = async (): Promise<CurrentUser | null> => {
-  if (!API_BASE_URL) return null;
+  if (!resolveApiBaseUrl()) return null;
 
   const fetchMe = async (token?: string | null): Promise<Response> => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };

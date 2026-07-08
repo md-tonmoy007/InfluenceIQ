@@ -53,3 +53,4 @@ make test-ml     # optional backend.ml tests
 - Queue routing is service-oriented: `ai_agent_queue`, `scraping_queue`, and `scoring_queue`.
 - `backend/ml` is optional at runtime. Its heavier ML dependencies are intentionally not part of the default backend sync, and adapters fall back to deterministic behaviour when unavailable.
 - Search and platform fetch providers (Brave, Apify, scrape.do): see [docs/provider-configuration.md](docs/provider-configuration.md).
+- Production deploy (single DigitalOcean Droplet, `docker compose -f docker-compose.prod.yml up`): see [docs/deploy-digitalocean.md](docs/deploy-digitalocean.md).

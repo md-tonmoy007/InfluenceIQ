@@ -80,6 +80,8 @@ type MatchRow = {
   tags: string[];
   verified: boolean;
   reason: string;
+  deepAnalysisReady?: boolean;
+  deepAnalysisBlockReason?: string | null;
 };
 
 const gradientByPlatform: Record<MatchRow['platform'], string> = {
@@ -222,6 +224,8 @@ const toMatchRows = (influencers: InfluencerListResult['items']): MatchRow[] =>
         item.citations,
         item.matchScore
       ),
+      deepAnalysisReady: item.deepAnalysisReady,
+      deepAnalysisBlockReason: item.deepAnalysisBlockReason,
     };
   });
 

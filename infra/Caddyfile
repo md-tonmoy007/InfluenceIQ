@@ -1,0 +1,31 @@
+# Caddy reverse proxy for InfluenceIQ.
+# Edit `cuet.shafayetsadi.dev` below to match your domain.
+# Caddy auto-issues a Let's Encrypt cert on first request.
+
+cuet.shafayetsadi.dev {
+    encode gzip zstd
+
+    # Direct backend routes — useful for /health probes and to bypass
+    # the Next.js proxy for low-latency API calls and WebSocket upgrades.
+    reverse_proxy /api/* backend-core:8000
+    reverse_proxy /ws/* backend-core:8000
+    reverse_proxy /health backend-core:8000
+    reverse_proxy /docs backend-core:8000
+    reverse_proxy /openapi.json backend-core:8000
+
+    # Everything else (the Next.js app + its asset bundles) goes to the
+    # frontend, which itself rewrites /api/* to the backend.
+    reverse_proxy frontend:3000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

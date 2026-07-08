@@ -4,6 +4,13 @@
  */
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
+const resolveApiBaseUrl = (): string => {
+  const configured = API_BASE_URL.trim().replace(/\/$/, "");
+  if (configured) return configured;
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
+};
+
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
 
@@ -30,7 +37,7 @@ export function isLoggedIn(): boolean {
 }
 
 const apiUrl = (path: string) =>
-  `${(API_BASE_URL ?? "").replace(/\/$/, "")}${path}`;
+  `${resolveApiBaseUrl()}${path}`;
 
 /**
  * Attempt to refresh the access token.
