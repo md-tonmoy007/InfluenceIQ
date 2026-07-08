@@ -43,7 +43,7 @@ apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 ## 4. Get the code and configure
 
 ```bash
-git clone <your-repo-url> /opt/influenceiq
+git clone https://github.com/md-tonmoy007/InfluenceIQ.git /opt/influenceiq
 cd /opt/influenceiq
 
 cp backend/.env.example backend/.env
@@ -52,6 +52,7 @@ $EDITOR infra/Caddyfile              # replace `app.example.com` with your domai
 ```
 
 Required edits in `backend/.env`:
+
 - `POSTGRES_PASSWORD` — strong random string; also update the same password inside `DATABASE_URL`
 - `JWT_SECRET_KEY` — `openssl rand -hex 32`
 - LLM / search / scraping API keys you actually use
@@ -101,13 +102,13 @@ docker builder prune -f --filter "until=24h"
 
 The entire state of the app lives in named volumes on the Droplet:
 
-| Volume         | Contents                       |
-| -------------- | ------------------------------ |
-| `postgres_data`| Postgres database              |
-| `redis_data`   | Redis snapshots                |
-| `qdrant_data`  | Qdrant vector index            |
-| `caddy_data`   | TLS certs + ACME account       |
-| `caddy_config` | Caddy runtime config           |
+| Volume          | Contents                 |
+| --------------- | ------------------------ |
+| `postgres_data` | Postgres database        |
+| `redis_data`    | Redis snapshots          |
+| `qdrant_data`   | Qdrant vector index      |
+| `caddy_data`    | TLS certs + ACME account |
+| `caddy_config`  | Caddy runtime config     |
 
 **Easiest**: turn on DO weekly Droplet snapshots (Dashboard → Droplet →
 Backups → Enable). One snapshot captures all of the above.
