@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { formatPlanName } from "../../lib/api";
 import { routes } from "../../lib/routes";
 import BrandMark from "./BrandMark";
 
@@ -18,12 +19,6 @@ type SidebarProps = {
   counts?: SidebarCounts | null;
 };
 
-const PLAN_LABEL: Record<string, string> = {
-  starter: "Starter",
-  pro: "Pro",
-  scale: "Scale",
-};
-
 export default function Sidebar({
   brandHref = routes.dashboard,
   onNavigate,
@@ -33,7 +28,7 @@ export default function Sidebar({
   const briefs = counts?.briefs ?? 0;
   const savedLists = counts?.savedLists ?? 0;
   const plan = counts?.plan ?? "starter";
-  const planLabel = PLAN_LABEL[plan] ?? "Starter";
+  const planLabel = formatPlanName(plan);
 
   const navItems = [
     {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/shell/AppShell";
-import { getWorkspaceSummary, type WorkspaceSummary } from "@/lib/api";
+import { formatPlanName, getWorkspaceSummary, type WorkspaceSummary } from "@/lib/api";
 import { campaignHref } from "@/lib/routes";
 import { useToast } from "@/components/ui/ToastProvider";
 import "../dashboard.css";
@@ -340,12 +340,7 @@ function DashboardContent() {
 }
 
 function UpgradeCard({ usage }: { usage: WorkspaceSummary["upgrade_usage"] }) {
-  const planLabels: Record<string, string> = {
-    starter: "Starter",
-    pro: "Pro",
-    scale: "Scale",
-  };
-  const planLabel = planLabels[usage.plan] ?? "Starter";
+  const planLabel = formatPlanName(usage.plan);
   const isStarter = usage.plan === "starter";
   const pct = Math.min(
     100,

@@ -1087,6 +1087,17 @@ export const revokeApiKey = async (id: string): Promise<void> => {
 export type PlanId = "starter" | "pro" | "scale";
 export type BillingInterval = "month" | "year";
 
+export const PLAN_LABEL: Record<PlanId, string> = {
+  starter: "Starter",
+  pro: "Pro",
+  scale: "Scale",
+};
+
+export const formatPlanName = (plan: string | null | undefined): string => {
+  if (!plan) return PLAN_LABEL.starter;
+  return PLAN_LABEL[plan as PlanId] ?? plan;
+};
+
 export type Subscription = {
   plan: string;
   status: string | null;

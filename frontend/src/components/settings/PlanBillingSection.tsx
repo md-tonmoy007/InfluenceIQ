@@ -5,7 +5,9 @@ import { useSearchParams } from "next/navigation";
 import {
   createBillingPortalSession,
   createCheckoutSession,
+  formatPlanName,
   getSubscription,
+  PLAN_LABEL,
   type BillingInterval,
   type PlanId,
   type Subscription,
@@ -21,7 +23,7 @@ const PLANS: Array<{
 }> = [
   {
     id: "starter",
-    name: "Explorer",
+    name: PLAN_LABEL.starter,
     monthlyPrice: 0,
     yearlyPrice: 0,
     bullets: ["5 active briefs", "Up to 200 matches", "CSV export"],
@@ -29,7 +31,7 @@ const PLANS: Array<{
   },
   {
     id: "pro",
-    name: "Growth",
+    name: PLAN_LABEL.pro,
     monthlyPrice: 29,
     yearlyPrice: 23,
     bullets: [
@@ -42,11 +44,11 @@ const PLANS: Array<{
   },
   {
     id: "scale",
-    name: "Scale",
+    name: PLAN_LABEL.scale,
     monthlyPrice: 0,
     yearlyPrice: 0,
     bullets: [
-      "Everything in Growth",
+      "Everything in Pro",
       "5 seats included",
       "API access",
       "Priority support",
@@ -194,8 +196,8 @@ export default function PlanBillingSection() {
         {loading
           ? "Loading your current plan…"
           : isPaid
-            ? `You're on ${capitalize(currentPlan)}. Manage billing or change your plan below.`
-            : `You're on ${capitalize(currentPlan)}. Upgrade for unlimited briefs and direct outreach.`}
+            ? `You're on ${formatPlanName(currentPlan)}. Manage billing or change your plan below.`
+            : `You're on ${formatPlanName(currentPlan)}. Upgrade for unlimited briefs and direct outreach.`}
       </p>
 
       <div className="billing-toggle" style={{ marginBottom: "16px" }}>
@@ -266,7 +268,7 @@ export default function PlanBillingSection() {
           flexWrap: "wrap",
         }}
       >
-        {currentPlan === "starter" && (
+        {currentPlan === "starter" && !isPaid && (
           <button
             className="btn btn-primary btn-sm"
             type="button"
@@ -334,7 +336,7 @@ export default function PlanBillingSection() {
                 : subscription?.status === "trialing"
                   ? "Trial active"
                   : subscription?.has_payment_method
-                    ? "Growth subscription active"
+                    ? "Pro subscription active"
                     : "No payment method on file"}
             </div>
             <div
@@ -356,7 +358,7 @@ export default function PlanBillingSection() {
                             ? " (monthly)"
                             : ""
                       }.`
-                    : "Upgrade to Growth for a 14-day trial with card on file."}
+                    : "Upgrade to Pro for a 14-day trial with card on file."}
             </div>
           </div>
           {(isPaid || subscription?.has_payment_method) && (
@@ -373,14 +375,4 @@ export default function PlanBillingSection() {
       </div>
     </section>
   );
-}
-
-function capitalize(value: string): string {
-  if (!value) return "Explorer";
-  const labels: Record<string, string> = {
-    starter: "Explorer",
-    pro: "Growth",
-    scale: "Scale",
-  };
-  return labels[value] ?? value.charAt(0).toUpperCase() + value.slice(1);
 }

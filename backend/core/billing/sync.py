@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -13,7 +14,14 @@ from backend.core.billing.stripe_client import retrieve_subscription
 from backend.core.config import settings
 from backend.core.database.models import Subscription
 
+logger = logging.getLogger(__name__)
+
 ACTIVE_STATUSES = {"active", "trialing", "past_due"}
+
+GROWTH_PRICE_IDS = (
+    "STRIPE_PRICE_GROWTH_MONTHLY",
+    "STRIPE_PRICE_GROWTH_ANNUAL",
+)
 
 
 def plan_from_price_id(price_id: str | None) -> str:
@@ -23,6 +31,31 @@ def plan_from_price_id(price_id: str | None) -> str:
     }:
         return "pro"
     return "starter"
+
+
+def resolve_plan_for_active_status(price_id: str | None) -> str:
+    """Pick the local plan name for a paid (active/trialing/past_due) subscription.
+
+    The only self-serve paid plan today is Growth, so any subscription in an
+    active Stripe status should resolve to ``"pro"`` regardless of which price
+    id landed on the subscription. We still consult :func:`plan_from_price_id`
+    first so that any future non-pro paid price ids can be added without a
+    schema migration; the fallback only fires when the price id is missing or
+    not in the configured set (e.g. an env-var drift or a dashboard price
+    rotation). In that case we log a warning so the mismatch is visible.
+    """
+    if price_id is not None:
+        mapped = plan_from_price_id(price_id)
+        if mapped != "starter":
+            return mapped
+        configured = {getattr(settings, name) for name in GROWTH_PRICE_IDS}
+        if price_id not in configured:
+            logger.warning(
+                "stripe subscription has active status but unrecognised price id %r; "
+                "defaulting to plan='pro'",
+                price_id,
+            )
+    return "pro"
 
 
 def interval_from_price_id(price_id: str | None) -> str | None:
@@ -87,7 +120,7 @@ def apply_stripe_subscription(
     row.updated_at = datetime.now(UTC).replace(tzinfo=None)
 
     if status in ACTIVE_STATUSES:
-        row.plan = plan_from_price_id(price_id)
+        row.plan = resolve_plan_for_active_status(price_id)
     elif status == "canceled":
         row.plan = "starter"
         row.stripe_subscription_id = None

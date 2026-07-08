@@ -227,6 +227,32 @@ class BillingSyncTest(unittest.TestCase):
         self.assertEqual(row.status, "trialing")
         self.assertEqual(row.billing_interval, "month")
 
+    def test_apply_stripe_subscription_defaults_to_pro_when_price_unknown(self):
+        """Active/trialing subs must resolve to plan='pro' even if the Stripe
+        price id does not match a configured Growth price — otherwise the
+        billing UI shows the free plan while the user is paying."""
+        from backend.core.billing.sync import apply_stripe_subscription
+
+        stripe_sub = SimpleNamespace(
+            id="sub_trial_drift",
+            status="trialing",
+            customer="cus_test",
+            trial_end=int(datetime.now(UTC).timestamp()) + 86400,
+            current_period_end=int(datetime.now(UTC).timestamp()) + 86400 * 30,
+            items=SimpleNamespace(
+                data=[SimpleNamespace(price=SimpleNamespace(id="price_rotated"))]
+            ),
+        )
+        row = apply_stripe_subscription(
+            self.session,
+            user_id=self.user_id,
+            stripe_customer_id="cus_test",
+            stripe_subscription=stripe_sub,
+        )
+        self.assertEqual(row.plan, "pro")
+        self.assertEqual(row.status, "trialing")
+        self.assertIsNone(row.billing_interval)
+
 
 if __name__ == "__main__":
     unittest.main()
