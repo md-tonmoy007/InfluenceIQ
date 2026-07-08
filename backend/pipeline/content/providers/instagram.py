@@ -16,7 +16,6 @@ INSTAGRAM_APP_ID = "936619743392459"
 def _parse_apify_profile(data: dict[str, Any], url: str, username: str) -> PlatformProfile:
     raw_posts = data.get("latestPosts") or data.get("posts") or data.get("edge_owner_to_timeline_media", [])
     posts: list[dict[str, Any]] = []
-    comments: list[str] = []
     engagement_values: list[int] = []
     if isinstance(raw_posts, dict):
         raw_posts = raw_posts.get("edges", [])
@@ -37,8 +36,6 @@ def _parse_apify_profile(data: dict[str, Any], url: str, username: str) -> Platf
             "taken_at": post.get("timestamp") or post.get("takenAt") or post.get("taken_at_timestamp"),
             "url": post.get("url"),
         })
-        if caption:
-            comments.append(caption)
     followers = data.get("followersCount") or data.get("followers") or data.get("edge_followed_by", {}).get("count")
     following = data.get("followsCount") or data.get("followingCount") or data.get("following") or data.get("edge_follow", {}).get("count")
     avg_engagement = int(sum(engagement_values) / len(engagement_values)) if engagement_values else None
@@ -56,7 +53,6 @@ def _parse_apify_profile(data: dict[str, Any], url: str, username: str) -> Platf
         verified=bool(data.get("verified") or data.get("isVerified") or data.get("is_verified")),
         profile_urls=[value for value in [profile_url, external_url] if value],
         posts=posts,
-        comments=comments[:50],
         raw={"source": "apify", "id": data.get("id"), "input_url": url},
         provider="apify_instagram",
     )
@@ -78,7 +74,6 @@ def _parse_user(data: dict[str, Any]) -> PlatformProfile:
     videos = data.get("edge_felix_video_timeline", {}).get("edges", []) or []
     images = data.get("edge_owner_to_timeline_media", {}).get("edges", []) or []
     posts: list[dict[str, Any]] = []
-    comments: list[str] = []
     engagement_values: list[int] = []
     for edge in [*videos, *images][:12]:
         node = edge.get("node", {}) if isinstance(edge, dict) else {}
@@ -100,7 +95,6 @@ def _parse_user(data: dict[str, Any]) -> PlatformProfile:
             "views": node.get("video_view_count"),
             "taken_at": node.get("taken_at_timestamp"),
         })
-        comments.extend(captions)
     avg_engagement = int(sum(engagement_values) / len(engagement_values)) if engagement_values else None
     profile_url = f"https://instagram.com/{username}" if username else ""
     bio_links = [
@@ -120,7 +114,6 @@ def _parse_user(data: dict[str, Any]) -> PlatformProfile:
         verified=bool(data.get("is_verified")),
         profile_urls=[url for url in [profile_url, *bio_links] if url],
         posts=posts,
-        comments=[comment for comment in comments if comment][:50],
         raw={"id": data.get("id"), "category": data.get("category_name")},
         provider="instagram_web_profile",
     )

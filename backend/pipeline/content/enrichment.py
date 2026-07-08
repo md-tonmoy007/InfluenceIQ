@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import inspect
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -13,6 +14,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.core.config import settings
 from backend.core.database import models
 from backend.pipeline.content.contracts import normalize_url
 from backend.pipeline.content.engagement_rollup import compute_recent_engagement
@@ -215,46 +217,122 @@ def persist_platform_profile(
 
         comments = post_data.get("comments")
         if isinstance(comments, list) and comments:
-            comment_texts = comments
-        elif profile.comments:
-            comment_texts = profile.comments
-        else:
-            comment_texts = []
-        for index, comment in enumerate(comment_texts[:MAX_COMMENTS_PER_POST]):
-            if isinstance(comment, dict):
-                text = str(comment.get("text") or comment.get("body") or "")
-                author = str(comment.get("author") or comment.get("author_handle") or "")
-                like_count = _int_or_none(comment.get("like_count"))
-                external_id = str(comment.get("id") or f"{post_id}:{index}")
-            else:
-                text = str(comment)
-                author = ""
-                like_count = None
-                external_id = f"{post_id}:{index}"
-            if not text.strip():
-                continue
-            existing_comment = (
-                session.query(models.PlatformComment)
-                .filter(
-                    models.PlatformComment.platform_post_id == post_row.id,
-                    models.PlatformComment.platform_comment_id == external_id,
-                )
-                .first()
-            )
-            if existing_comment is None:
-                existing_comment = models.PlatformComment(
-                    id=uuid4(),
-                    platform_post_id=post_row.id,
-                    platform_comment_id=external_id,
-                    text=text,
-                )
-                session.add(existing_comment)
-            existing_comment.author_handle_hash = _hash_author(author) if author else None
-            existing_comment.like_count = like_count
-            existing_comment.fetched_at = now
-            existing_comment.raw = comment if isinstance(comment, dict) else {"text": text}
+            _persist_raw_comments(session, post_row, comments, now, source=profile.provider)
 
     return row
+
+
+def _is_legacy_caption_comment(row: models.PlatformComment) -> bool:
+    """Detect caption-as-comment rows written before real comment fetching.
+
+    Legacy rows were synthesized from post captions with no timestamp and
+    no author hash, and their ``raw`` only contained ``{"text": ...}``.
+    """
+    return row.published_at is None and row.author_handle_hash is None
+
+
+def persist_post_comments(
+    session: Session,
+    post_row: models.PlatformPost,
+    raw_comments: list,
+    *,
+    source: str = "",
+) -> int:
+    """Persist real audience comments for a post, replacing legacy rows.
+
+    ``raw_comments`` may be a list of :class:`RawComment` objects or plain
+    dicts with the same fields. Author keys are hashed before storage and
+    are not written to ``raw``.
+    """
+    if not raw_comments:
+        return 0
+
+    now = datetime.now(UTC)
+    source_name = source or post_row.fetch_provider or "unknown"
+
+    # Lazy migration: delete legacy caption-as-comment rows for this post.
+    session.query(models.PlatformComment).filter(
+        models.PlatformComment.platform_post_id == post_row.id,
+        models.PlatformComment.published_at.is_(None),
+        models.PlatformComment.author_handle_hash.is_(None),
+    ).delete(synchronize_session=False)
+
+    inserted = 0
+    for comment in raw_comments[:MAX_COMMENTS_PER_POST]:
+        if isinstance(comment, dict):
+            text = str(comment.get("text") or comment.get("body") or "").strip()
+            author = str(comment.get("author_key") or comment.get("author") or comment.get("author_handle") or "")
+            like_count = _int_or_none(comment.get("like_count"))
+            published_at = _parse_dt(comment.get("published_at"))
+            external_id = str(comment.get("external_id") or comment.get("id") or "")
+            reply_count = _int_or_none(comment.get("reply_count"))
+        else:
+            from backend.pipeline.content.providers.comments.base import RawComment
+
+            if isinstance(comment, RawComment):
+                text = comment.text.strip()
+                author = comment.author_key
+                like_count = comment.like_count
+                published_at = comment.published_at
+                external_id = comment.external_id
+                reply_count = comment.reply_count
+            else:
+                continue
+
+        if not text:
+            continue
+        if not external_id:
+            external_id = f"{post_row.platform_post_id}:{inserted}"
+
+        existing_comment = (
+            session.query(models.PlatformComment)
+            .filter(
+                models.PlatformComment.platform_post_id == post_row.id,
+                models.PlatformComment.platform_comment_id == external_id,
+            )
+            .first()
+        )
+        if existing_comment is None:
+            existing_comment = models.PlatformComment(
+                id=uuid4(),
+                platform_post_id=post_row.id,
+                platform_comment_id=external_id,
+                text=text,
+            )
+            session.add(existing_comment)
+        existing_comment.author_handle_hash = _hash_author(author) if author else None
+        existing_comment.like_count = like_count
+        existing_comment.published_at = published_at
+        existing_comment.fetched_at = now
+        existing_comment.raw = {
+            "source": source_name,
+            "reply_count": reply_count,
+        }
+        inserted += 1
+
+    return inserted
+
+
+def _persist_raw_comments(
+    session: Session,
+    post_row: models.PlatformPost,
+    comments: list,
+    now: datetime,
+    source: str,
+) -> None:
+    """Backward-compatible helper used when a provider supplies comments inline."""
+    persist_post_comments(session, post_row, comments, source=source)
+
+
+def _parse_dt(value) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
 
 
 _GENERIC_GARBAGE_FRAGMENTS = (
@@ -295,9 +373,20 @@ def collect_platform_urls_for_influencer(
 
 
 def fetch_profiles_for_urls(urls: list[str]) -> list[tuple[str, PlatformProfile | None]]:
-    """Fetch platform profiles via HTTP — call this OUTSIDE any DB session."""
-    results = []
+    """Fetch platform profiles via HTTP — call this OUTSIDE any DB session.
+
+    Bounded by ``ENRICH_PROFILE_FETCH_BUDGET_SEC`` total wall-clock: once the
+    budget is spent, remaining URLs are skipped (returned with no profile)
+    rather than fetched, so a single influencer with many URLs cannot pin a
+    worker slot and stall the scraping queue.
+    """
+    results: list[tuple[str, PlatformProfile | None]] = []
+    deadline = time.monotonic() + settings.ENRICH_PROFILE_FETCH_BUDGET_SEC
     for url in urls:
+        if time.monotonic() >= deadline:
+            log.warning("fetch_profiles_for_urls: budget exhausted, skipping url=%s", url)
+            results.append((url, None))
+            continue
         profile = fetch_platform_profile_data(url)
         results.append((url, profile))
     return results

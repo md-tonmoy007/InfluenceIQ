@@ -415,6 +415,69 @@ class PipelineE2ETest(unittest.TestCase):
         self.assertGreater(read_pos, lock_pos,
                             "advisory lock must precede the existing_current read")
 
+    def test_score_influencer_demotes_before_insert(self) -> None:
+        """On rescore the outgoing current row must be demoted and flushed
+        BEFORE the replacement row is inserted. uq_influencer_scores_current
+        is a partial unique index permitting one is_current=true row per
+        (campaign, influencer); inserting the new row first leaves two current
+        rows momentarily and trips the constraint on every rescore.
+        """
+        import inspect
+
+        from backend.pipeline.tasks import score as score_mod
+
+        source = inspect.getsource(score_mod.score_influencer)
+        demote_pos = source.find("existing_current.is_current = False")
+        add_pos = source.find("session.add(score_row)")
+        supersede_pos = source.find("existing_current.superseded_by = score_row.id")
+
+        self.assertGreater(demote_pos, 0)
+        self.assertGreater(add_pos, 0)
+        self.assertGreater(supersede_pos, 0)
+        # Demote the old current row before inserting the new one...
+        self.assertLess(demote_pos, add_pos,
+                        "existing row must be demoted before the new row is inserted")
+        # ...and only set the self-FK once the new row exists.
+        self.assertGreater(supersede_pos, add_pos,
+                           "superseded_by must be set after score_row is added")
+        # A flush must sit between the demotion and the insert so the UPDATE
+        # is emitted first and no two is_current=true rows coexist.
+        flush_between = source.find("session.flush()", demote_pos, add_pos)
+        self.assertGreater(flush_between, demote_pos,
+                           "demotion must be flushed before inserting the new row")
+
+    def test_enrich_dispatches_scoring_even_when_enrichment_fails(self) -> None:
+        """A hard enrichment failure must NOT strand scoring.
+
+        Enrichment is the only trigger for scoring, and scoring degrades
+        gracefully without platform data. If the platform fetch (e.g. Apify)
+        blows up, the influencer must still be handed off to scoring — otherwise
+        one failed enrichment leaves the campaign stuck below 100%.
+        """
+        from backend.pipeline.tasks import enrich as enrich_mod
+
+        campaign_id = "11111111-1111-1111-1111-111111111111"
+        influencer_id = "22222222-2222-2222-2222-222222222222"
+
+        fake_campaign = MagicMock()
+        fake_campaign.status = "running"
+
+        with _patched_db_session(), \
+             patch.object(_FakeSession, "get", return_value=fake_campaign), \
+             patch.object(enrich_mod, "db_session", lambda: _session_ctx(_FakeSession)), \
+             patch("backend.pipeline.tasks.enrich.collect_platform_urls_for_influencer",
+                   return_value=["https://instagram.com/creator"]), \
+             patch("backend.pipeline.tasks.enrich.fetch_profiles_for_urls",
+                   side_effect=RuntimeError("apify exploded")), \
+             patch("backend.pipeline.tasks.enrich.set_phase"), \
+             patch("backend.pipeline.tasks.score.score_influencer.delay") as score_delay:
+            result = enrich_mod.enrich_influencer_platforms_task.apply(
+                args=[campaign_id, influencer_id]
+            ).get()
+
+        self.assertEqual(result["status"], "enrich_error")
+        score_delay.assert_called_once_with(campaign_id, influencer_id)
+
 
 if __name__ == "__main__":
     unittest.main()
