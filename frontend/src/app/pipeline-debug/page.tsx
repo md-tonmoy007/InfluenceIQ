@@ -94,8 +94,12 @@ const titleize = (s?: string) =>
 const n = (v: unknown): number => (typeof v === "number" ? v : 0);
 
 const buildWsUrl = (campaignId: string, lastEventId = 0) => {
-  if (!API_BASE_URL) return null;
-  const base = API_BASE_URL.replace(/^http/, "ws").replace(/\/$/, "");
+  const base = API_BASE_URL
+    ? API_BASE_URL.replace(/^http/, "ws").replace(/\/$/, "")
+    : typeof window !== "undefined"
+      ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`
+      : "";
+  if (!base) return null;
   return `${base}/ws/campaign/${encodeURIComponent(campaignId)}?last_event_id=${lastEventId}`;
 };
 

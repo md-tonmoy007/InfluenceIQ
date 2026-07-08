@@ -8,6 +8,7 @@ app.example.com {
     # Direct backend routes — useful for /health probes and to bypass
     # the Next.js proxy for low-latency API calls and WebSocket upgrades.
     reverse_proxy /api/* backend-core:8000
+    reverse_proxy /ws/* backend-core:8000
     reverse_proxy /health backend-core:8000
     reverse_proxy /docs backend-core:8000
     reverse_proxy /openapi.json backend-core:8000
