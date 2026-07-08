@@ -1,324 +1,356 @@
 # InfluenceIQ Architecture
 
-InfluenceIQ is an AI-powered, trust-aware influencer discovery platform. A brand submits a campaign brief, the system discovers public creator signals, resolves candidate influencer identities, scores each candidate for fit and risk, and returns ranked recommendations with explainable evidence.
+This document describes the architecture that exists in the current repository. It is a current-state reference for the checked-in codebase, not a target-state wishlist.
 
-This document is the canonical architecture reference for the docs folder. It describes the target architecture and the contracts the application should converge on.
+## System Overview
 
-## Product Purpose
+InfluenceIQ is a full-stack influencer discovery application built as a modular monolith:
 
-Influencer discovery should answer "who should this brand trust?" rather than only "who is popular?" The platform therefore optimizes for:
+- a `Next.js` App Router frontend in `frontend/`
+- a `FastAPI` backend in `backend/api/`
+- a `PostgreSQL` database for durable product data
+- `Redis` for Celery brokering, transient pipeline state, replayable event logs, and idempotency/cache helpers
+- three Celery worker roles for async campaign processing
+- optional `Qdrant` and `backend/ml` services for heavier semantic or model-backed workflows
 
-- campaign-specific relevance instead of generic popularity
-- source-backed credibility and credential signals
-- organic engagement quality over raw follower counts
-- sentiment and audience trust indicators
-- explicit brand-safety risk flags
-- explainable recommendations that cite source provenance
+The main product flow is:
 
-## Architecture Principles
+1. A user signs up or logs in.
+2. They create a campaign brief or run a natural-language discover search.
+3. The backend creates a campaign row and dispatches async pipeline work.
+4. Workers discover sources, extract creator signals, resolve identities, score candidates, and persist results.
+5. The frontend polls REST endpoints and subscribes to a campaign WebSocket stream for live progress.
+6. Users review matches, save creators to lists, mark contracts, and optionally trigger deeper report generation for a shortlisted influencer.
 
-- Build as a modular monolith: one backend codebase with clear module boundaries, not premature microservices.
-- Keep the frontend and backend on one canonical contract. Derive client and server types from that contract where possible.
-- Treat source provenance as first-class data. One source can mention multiple influencers, and one influencer can be supported by many sources.
-- Store scoring runs as versioned, auditable records instead of transient UI payloads.
-- Prefer deterministic fallbacks for query generation, search parsing, extraction, safety checks, and scoring. LLM and ML adapters are optional replaceable engines.
-- Update pipeline state atomically and use explicit terminal campaign states.
-- Keep worker separation at three operational queues until measured load proves that a fourth extraction queue is needed.
+## Repository Layout
+
+```text
+frontend/                  Next.js application
+backend/api/               FastAPI routes, schemas, middleware
+backend/core/              config, auth, database, Redis, Celery, billing, lifecycle
+backend/pipeline/          discovery, extraction, enrichment, scoring, deep analysis
+backend/workers/           Celery worker entrypoints per queue
+backend/ml/                optional model-serving and ML adapters
+backend/tests/             API, pipeline, ML, and integration tests
+docs/                      architecture and role-specific documentation
+scripts/                   smoke and seed helpers
+```
 
 ## Runtime Topology
 
 ```text
-Browser dashboard
-      |
-      | REST + WebSocket
-      v
+Browser
+  |
+  v
 Next.js frontend
-      |
-      | /api proxy or direct API calls
-      v
-FastAPI backend
-      |
-      +-- PostgreSQL: durable campaigns, influencers, provenance, scores, flags
-      +-- Redis: Celery broker, pipeline state, event replay, caches, rate limits
-      +-- Celery workers
-      |     +-- ai_agent_queue: query generation and optional LLM decisions
-      |     +-- scraping_queue: search, fetch, crawl, and content extraction
-      |     +-- scoring_queue: identity extraction, scoring, and safety persistence
-      +-- Flower: Celery operations dashboard
-      +-- Optional engines
-            +-- Qdrant or pgvector for embeddings and semantic retrieval
-            +-- ML or LLM adapters for advanced risk, identity, and explanation work
+  |
+  +-- REST -> FastAPI backend
+  +-- WebSocket -> /ws/campaign/{campaign_id}
+           |
+           v
+       FastAPI app
+           |
+           +-- PostgreSQL
+           +-- Redis
+           +-- Celery dispatch
+                  +-- ai_agent_queue
+                  +-- scraping_queue
+                  +-- scoring_queue
+           +-- optional Stripe integration
+           +-- optional Qdrant + ML service
 ```
 
-The FastAPI app owns synchronous API contracts and campaign orchestration. Celery owns long-running work. Redis connects the API and workers through queueing, low-latency state, and replayable event streams. PostgreSQL is the source of truth for all durable business data.
+In local Docker Compose, the stack runs as:
 
-## Campaign Flow
+- `frontend` on port `3002`
+- `backend-core` on port `8002`
+- `postgres` on `5434`
+- `redis` on `6380`
+- `flower` on `5555`
+- optional `ml-service` on `8082`
+- optional `qdrant` on `6335` and `6336`
 
-```text
-POST /api/campaigns
-      |
-      +-- create campaign row with brief, weights, and lifecycle state
-      +-- initialize Redis pipeline state
-      +-- dispatch root pipeline task
-             |
-             v
-ai_agent_queue
-      generate campaign search queries
-             |
-             v
-scraping_queue
-      execute search, fetch pages, extract readable content,
-      record source provenance, and emit progress events
-             |
-             v
-scoring_queue
-      extract influencer mentions, resolve canonical identities,
-      run score computation, persist score runs and safety flags
-             |
-             v
-FastAPI + Redis event stream
-      expose state, replayable WebSocket events, and ranked recommendations
-```
+## Frontend Architecture
 
-Campaigns should move through explicit lifecycle states such as `queued`, `running`, `partial`, `completed`, `failed`, and `cancelled`. A failed task should not erase useful work already persisted; the API can return partial recommendations with a clear campaign state and error reason.
+The frontend is a single Next.js application using the App Router. It has two broad surface areas.
 
-## Backend Boundaries
+### Public and Auth Surfaces
+
+- `/` is the marketing landing page.
+- `/signup` and `/login` handle account creation and session entry.
+- `/onboarding` captures the brand profile through `OnboardingStepper`.
+
+Auth state is managed in the browser and backed by backend-issued JWT cookies and token responses. The frontend API client lives in `frontend/src/lib/api.ts`, and the WebSocket URL builder lives in `frontend/src/lib/websocket.ts`.
+
+### Authenticated Workspace
+
+Most signed-in pages render inside `frontend/src/components/shell/AppShell.tsx`, which provides:
+
+- `AuthGate` protection
+- shared sidebar and topbar chrome
+- workspace summary counts loaded from `/api/workspace/summary`
+
+Current workspace routes include:
+
+- `/dashboard` for workspace summary and recent activity
+- `/briefs` and `/briefs/new` for campaign creation and campaign history
+- `/discover` for search-first creator discovery
+- `/shortlist` for campaign-specific shortlisted creators
+- `/lists` for saved creator lists
+- `/settings` for profile, brand, notifications, integrations, API keys, and billing
+- `/profile/[id]` for an influencer profile in campaign context
+- `/report/[influencerId]` for deep-analysis reports
+- `/matching` and `/pipeline-debug` as workflow/debug surfaces
+
+The frontend is not just a thin renderer. It owns route composition, page-specific interaction logic, optimistic UI, and presentation adapters, but it treats backend responses as the source of truth for business state.
+
+## Backend Architecture
+
+The backend boots in `backend/api/main.py` and registers:
+
+- middleware for CORS, request logging, and error envelopes
+- routers for auth, billing, health, onboarding, settings, campaigns, influencers, lists, workspace, demo, and websocket
+- startup validation through `backend.core.lifecycle`
 
 ### API Layer
 
-The API layer exposes campaign creation, state polling, recommendation retrieval, influencer profile retrieval, health checks, and WebSocket streams. It validates requests, starts pipeline work, reads durable data from PostgreSQL, reads fast state from Redis, and translates backend models into public response contracts.
+The API layer is organized by resource:
+
+- `auth`: signup, login, logout, current-user profile, password change, refresh
+- `onboarding`: brand-profile create/read
+- `settings`: notifications, integrations, API keys, subscription reads/updates
+- `billing`: Stripe Checkout, Customer Portal, webhook ingestion
+- `campaigns`: create, list, retrieve, update, submit, rerun, cancel, duplicate, delete, facets, influencers, contracts, state
+- `influencers`: profile, score history, safety flags, credential verifications, deep analysis
+- `lists`: saved-list CRUD and list item management
+- `workspace`: dashboard summary and activity feed
+- `health`: liveness/readiness and queue visibility
+- `websocket`: replayable campaign event stream
+- `demo`: development/demo seed endpoints
 
 ### Core Infrastructure
 
-Core infrastructure owns configuration, logging, database sessions, migrations, Redis clients, Celery app construction, task routing, cache helpers, event logging, and pipeline-state primitives. Shared infrastructure should not depend on campaign-specific scoring logic.
+`backend/core/` contains the shared infrastructure:
 
-### Pipeline Domain
+- `config.py` for environment-driven settings
+- `auth.py` for JWT issuance and user auth helpers
+- `database/` for SQLAlchemy models, sessions, and Alembic migrations
+- `cache/` for Redis-backed pipeline state, event log, idempotency, and campaign cache helpers
+- `celery/` for queue definitions, routing, and app creation
+- `billing/` for Stripe integration and subscription sync
 
-The pipeline domain owns search query planning, search result normalization, URL fetching, content extraction, influencer mention extraction, identity resolution, score computation, safety classification, and recommendation ranking. Pipeline functions should keep deterministic implementations available even when optional LLM or ML adapters are enabled.
+This is a modular monolith. There is one backend codebase and one primary data model, with boundaries expressed as Python modules rather than separate deployable services.
 
-### Workers
+## Data Model
 
-Workers are thin Celery entrypoints that import task modules for their assigned queue. Queue ownership is operational:
+The durable model in `backend/core/database/models.py` has six major areas.
 
-| Queue            | Responsibility                                                                        | Scaling driver                         |
-| ---------------- | ------------------------------------------------------------------------------------- | -------------------------------------- |
-| `ai_agent_queue` | query planning, optional LLM identity decisions, optional LLM safety/explanation work | external model latency and rate limits |
-| `scraping_queue` | search calls, page fetches, crawl depth control, content extraction                   | network I/O and target-site throttling |
-| `scoring_queue`  | influencer extraction, identity persistence, scoring, safety flag persistence         | CPU-bound scoring and database writes  |
+### 1. Account and Brand Data
 
-### Optional ML
+- `User`
+- `BrandProfile`
+- `NotificationPreference`
+- `IntegrationConnection`
+- `ApiKey`
+- `Subscription`
 
-Optional ML modules can improve semantic matching, fake-engagement detection, graph features, or explanations. They must be adapter-driven so the deterministic pipeline still works when heavy dependencies or external providers are unavailable.
+The current product is fundamentally user-scoped. Some tables already have placeholders like `org_id`, but workspace and settings flows are implemented around the current authenticated user rather than a full multi-tenant org model.
 
-## Frontend Responsibilities
+### 2. Campaign Lifecycle
 
-The frontend is the brand-facing workflow surface. It should:
+- `Campaign`
+- `CampaignContract`
 
-- submit campaign briefs and scoring preferences
-- render campaign state from REST and WebSocket events
-- reconnect to the WebSocket stream using the last seen event id
-- display ranked recommendations, source-backed explanations, and brand-safety warnings
-- fetch canonical influencer profiles on demand
-- treat the API contract as the source of truth, avoiding duplicated business rules in the client
+Campaigns store the brief snapshot, search query, entry point, preferred platforms, budget range, scoring weights, and lifecycle timestamps. Contracts attach outreach state to `(campaign, influencer)` pairs.
 
-The frontend should be resilient to partial data. While a campaign is running, it can show progress and any recommendations already computed. Once a terminal state arrives, it should stop expecting further pipeline events unless the user explicitly reruns the campaign via `POST /api/campaigns/{id}/rerun`.
+### 3. Influencer Catalog and Provenance
 
-## Public API Contracts
+- `Influencer`
+- `PlatformProfile`
+- `PlatformPost`
+- `PlatformComment`
+- `CrawlSource`
+- `CrawlSourceInfluencer`
+- `IdentityMerge`
 
-### REST
+This split is important:
 
-`POST /api/campaigns`
+- canonical influencer identity lives on `Influencer`
+- discovered URLs and extracted content live on `CrawlSource`
+- many-to-many attribution between sources and influencers lives on `CrawlSourceInfluencer`
+- richer structured platform snapshots live on `PlatformProfile`, `PlatformPost`, and `PlatformComment`
 
-Starts a campaign and returns the campaign identity plus initial state.
+### 4. Scoring and Trust Signals
 
-```json
-{
-  "campaign_id": "uuid",
-  "state": "queued",
-  "created_at": "2026-06-21T00:00:00Z"
-}
-```
+- `InfluencerScore`
+- `BrandSafetyFlag`
+- `CredentialVerification`
+- `CandidateSnapshot`
 
-`GET /api/campaigns/{id}`
+Scores are versioned and carry sub-scores, reasons, provenance, and model metadata. Brand-safety and credential evidence are durable records, not frontend-only annotations.
 
-Returns campaign metadata, brief fields, scoring weights, lifecycle state, timestamps, and any terminal error summary.
+### 5. Deep Analysis
 
-`GET /api/campaigns/{id}/state`
+- `DeepAnalysisRun`
+- `DeepAnalysisPostResult`
+- `DeepAnalysisReport`
 
-Returns fast pipeline state from Redis or a database fallback. This endpoint is the REST fallback for clients that cannot maintain a WebSocket.
+Deep analysis is a separate on-demand workflow layered on top of the main campaign scoring flow. It reuses previously collected platform/profile/post/comment data where possible and caches completed reports for a bounded freshness window.
 
-```json
-{
-  "campaign_id": "uuid",
-  "state": "running",
-  "phase": "scoring",
-  "urls_discovered": 47,
-  "urls_processed": 31,
-  "influencers_found": 12,
-  "scores_computed": 8,
-  "last_event_id": 42
-}
-```
+### 6. Workspace Curation
 
-`POST /api/campaigns/{id}/rerun`
+- `SavedList`
+- `SavedListItem`
 
-Restarts matching on the same campaign id. Accepts terminal statuses (`completed`, `failed`, `cancelled`, `partial`). Query param `start_pipeline` defaults to `true`:
+Lists are user-owned collections of creators, optionally tied back to the campaign they were saved from through `source_campaign_id`.
 
-- `start_pipeline=true` — clears run artifacts, resets Redis pipeline state, sets status to `running`, and dispatches the pipeline immediately (quick rerun).
-- `start_pipeline=false` — clears run artifacts and Redis state, sets status to `draft`, and returns without dispatching so the client can edit the brief and call `POST /api/campaigns/{id}/submit`.
+## Async Campaign Pipeline
 
-**Cleared on rerun:** crawl sources, influencer scores, brand-safety flags, candidate snapshots, and deep-analysis runs for the campaign. **Preserved:** campaign contracts, saved-list items referencing the campaign, and global influencer records.
+The main async entrypoint is `backend.pipeline.tasks.orchestrator.start_campaign()`. `POST /api/campaigns` either:
 
-If the campaign has shortlisted or contracted creators, quick rerun requires the `X-Confirm-Rerun: true` header; otherwise the API returns `409` with code `rerun_has_outreach`.
+- creates a draft campaign and stops, or
+- creates a running campaign, initializes Redis pipeline state, and dispatches the worker pipeline
 
-For how rerun re-enters the Celery pipeline, cache behavior, and state diagram, see [pipeline-flow-architecture.md](./pipeline-flow-architecture.md#rerunning-a-campaign).
+### Queue Roles
 
-`GET /api/campaigns/{id}/influencers`
+Celery task routing is defined in `backend/core/celery/roles.py`:
 
-Returns ranked recommendations for a campaign. Results should be sortable and filterable by platform, niche, region, grade, and follower band.
+- `ai_agent_queue`
+  - query generation
+  - LLM-assisted identity resolution
+  - LLM-assisted brand-safety classification
+  - deep analysis
+- `scraping_queue`
+  - search execution
+  - page fetch and extraction
+  - influencer platform enrichment
+- `scoring_queue`
+  - influencer extraction
+  - identity clustering
+  - candidate scoring
 
-`GET /api/influencers/{id}`
+### Pipeline Stages
 
-Returns the canonical influencer profile: identity, platform handles, source provenance, latest campaign-specific scores, score history summary, credential evidence, and safety flags.
+The pipeline code under `backend/pipeline/tasks/` and `backend/pipeline/` currently breaks down into these functional phases:
 
-### WebSocket
+1. query generation
+2. search execution and URL discovery
+3. page fetch and content extraction
+4. influencer extraction from content
+5. identity resolution and canonicalization
+6. platform enrichment
+7. score computation and safety analysis
+8. persistence of campaign results and progress events
 
-`/ws/campaign/{campaign_id}?last_event_id=N`
+The supporting domain code is grouped by concern:
 
-The server replays events with `event_id > N` from `pipeline_events:{campaign_id}`, then attaches the connection to the live stream.
+- `content/` for discovery, fetch, parsing, provider access, and enrichment
+- `extraction/` for social handles, entities, and contact information
+- `identity/` for canonical identity resolution
+- `analysis/` for trust, sentiment, fake engagement, and related heuristics
+- `detection/` for specific detector modules
+- `fusion/` for scoring and weighted aggregation
+- `candidate/` for building richer per-influencer candidate objects
 
-All events use a stable envelope:
+## Campaign State and Realtime Events
 
-```json
-{
-  "event_id": 42,
-  "type": "score.calculated",
-  "campaign_id": "uuid",
-  "timestamp": "2026-06-21T00:00:00Z",
-  "payload": {
-    "influencer_id": "uuid",
-    "final_score": 87.5,
-    "grade": "A",
-    "confidence": "high"
-  }
-}
-```
+Campaign progress is represented in two Redis-backed forms:
 
-Common event types include `campaign.started`, `query.generated`, `search.executed`, `source.fetched`, `content.extracted`, `influencer.found`, `identity.resolved`, `score.calculated`, `brand_safety.flagged`, `campaign.completed`, and `campaign.failed`.
+- a pipeline-state hash for cheap polling
+- an ordered event log for WebSocket replay
 
-## Data Architecture
+The live stream is `ws://.../ws/campaign/{campaign_id}?last_event_id=N`.
 
-### Campaigns
+Current behavior:
 
-Campaigns own the brand brief, industry, audience, platform preferences, scoring weights, lifecycle state, timestamps, and terminal error information. They are the root for pipeline state and campaign-specific recommendation views.
+- the server replays missed events when `last_event_id` is supplied
+- it then subscribes the client to the live Redis pub/sub channel
+- it emits heartbeat frames every 20 seconds
+- it enforces a bounded send queue and disconnects slow consumers
 
-### Influencers
+This is the canonical realtime path for campaign execution progress. The frontend can recover from disconnects by reconnecting with the last seen event id.
 
-Influencers are canonical creator identities. They store normalized names, known handles, profile URLs, topic metadata, and merge metadata. They should not duplicate every source mention inline; provenance belongs in dedicated source and attribution tables.
+## Deep Analysis Workflow
 
-### Sources And Provenance
+Deep analysis is a second asynchronous workflow exposed from `backend/api/routers/influencers.py`:
 
-Sources represent discovered URLs, search results, fetched pages, extracted text, snippets, metadata, fetch status, and cache information. Source-to-influencer attribution is many-to-many because one article can mention multiple creators and one creator can appear across many sources. Attribution records should preserve what was observed, where it was observed, and which extraction method produced it.
+- `POST /api/influencers/{id}/deep-analysis`
+- `GET /api/influencers/{id}/deep-analysis/latest`
+- `GET /api/influencers/{id}/deep-analysis/{run_id}`
+- `GET /api/influencers/{id}/reports/{report_id}`
 
-### Score Runs
+The Celery task in `backend/pipeline/tasks/deep.py` runs four stages inside one job:
 
-Score runs are append-only records linked to a campaign and influencer. Each run stores sub-scores, final score, grade, confidence, score version, scoring weights, source counts, explanation payloads, and `computed_at`. New formulas create new score versions rather than overwriting history.
+1. collect social content
+2. collect post comments
+3. collect external signals
+4. synthesize the final report
 
-### Brand-Safety Flags
+It emits progress events such as:
 
-Brand-safety flags preserve campaign linkage, influencer linkage, source URL, risk type, severity, reason, detection method, and timestamp. The platform should warn and explain; business rules decide whether a flag excludes a recommendation.
+- `deep_analysis.started`
+- `deep_analysis.social_collected`
+- `deep_analysis.comments_collected`
+- `deep_analysis.external_signals_collected`
+- `deep_analysis.report_ready`
+- `deep_analysis.failed`
 
-### Credential Verification
+After a successful report, the backend re-enqueues a creator rescore so the richer evidence can influence trust output in the main campaign view.
 
-Credential evidence should be stored separately from influencer identity. Evidence can include source URL, credential type, extracted claim, verifier, confidence, and review state. This keeps professional credibility auditable and allows future human review.
+## External Integrations
 
-## Scoring Architecture
+### Search and Scraping
 
-The recommendation score combines normalized sub-scores:
+The repository currently supports a mix of providers:
 
-- relevance: fit between campaign brief and influencer topics
-- credibility: professional authority, credentials, and authoritative mentions
-- engagement quality: organic interaction quality and fake-engagement risk
-- sentiment: audience trust, toxicity, and positive/negative response patterns
-- brand safety: risk-adjusted safety score where higher is safer
-- confidence: data coverage, provenance quality, and agreement between signals
+- Brave Search and SerpAPI for web discovery
+- Apify-backed profile/comment collection for Instagram, TikTok, and X
+- scrape.do or plain HTTP fetch for article pages
+- YouTube-specific collection using its own provider path
 
-Default weighting can start with relevance and credibility as the strongest components, followed by engagement quality, sentiment, and brand safety. Campaigns may override weights, but every score run must persist the exact weights used.
+The provider surface is environment-driven and documented further in [provider-configuration.md](./provider-configuration.md).
 
-Low-data candidates should be capped or penalized through confidence rules instead of receiving extreme scores from sparse evidence. Explanations should cite the source records and scoring version that produced them.
+### Billing
 
-## Async Processing Model
+Stripe is wired for:
 
-Celery tasks should be idempotent at the campaign/source/influencer boundary. Re-running a task should update the same durable records or append a clearly versioned run, not create untraceable duplicates.
+- Checkout session creation
+- Customer Portal access
+- webhook-driven subscription synchronization
 
-Recommended queue routing:
+Billing is optional in development; endpoints return degraded behavior when Stripe secrets are not configured.
 
-- `ai_agent_queue`: deterministic query planning first, optional LLM query expansion, optional LLM identity resolution, optional LLM safety classification, optional explanation generation
-- `scraping_queue`: search-provider calls, URL deduplication, cache checks, fetches, crawl-depth control, content extraction, rate limiting
-- `scoring_queue`: mention extraction, canonical identity writes, source attribution writes, score runs, safety flag persistence, recommendation ranking updates
+### Optional ML and Vector Services
 
-The scraping queue remains broad by design. Add a separate extraction queue only if measured throughput shows content extraction blocking fetch work in production.
+`backend/ml/` and Qdrant are optional enhancements rather than required runtime dependencies for the core product flow. The main backend and worker pipeline still have deterministic fallbacks for many tasks.
 
-### External search and fetch providers
+## Deployment Model
 
-Search (URL discovery) and fetch (profile/page scraping) use separate provider stacks configured via `backend/.env`. `SEARCH_PROVIDER_MODE=auto` prefers Brave with SerpAPI as fallback. Instagram, TikTok, and X use Apify when `APIFY_API_TOKEN` is set; YouTube uses HTML + RSS; generic articles use scrape.do or httpx. See [provider-configuration.md](./provider-configuration.md).
+The checked-in deployment model is container-oriented:
 
-## Real-Time Events And Replay
+- one image for the API and worker processes
+- one Next.js frontend container
+- one PostgreSQL container
+- one Redis container
+- optional Flower, Qdrant, and ML containers
 
-Redis stores two related views of progress:
+The API and worker services share the same backend code and differ mainly by startup command and queue subscription.
 
-- `pipeline_state:{campaign_id}` as a hash for fast polling
-- `pipeline_events:{campaign_id}` as an ordered event log for WebSocket replay
+## Current Architectural Boundaries
 
-Each event receives a monotonically increasing `event_id` per campaign. Workers append events to the Redis replay log and publish them to the campaign live channel. The WebSocket handler first replays missed events, then streams new ones. Event logs can use a TTL, but durable business results must already be in PostgreSQL.
+These boundaries are true in the current codebase and should guide future updates to this document:
 
-Pipeline-state updates should be atomic. Counts, phase changes, and terminal states should not be emitted in conflicting order.
+- The product is one codebase with multiple process roles, not a microservice system.
+- The primary source of truth is PostgreSQL; Redis holds transient state, replay logs, and fast coordination data.
+- User ownership is enforced in most workspace flows; full org/team tenancy is not yet the main execution model.
+- Deep analysis is an extension of the existing campaign pipeline, not a separate subsystem with its own transport.
+- Saved lists, campaign contracts, settings, and billing are part of the same product backend, not external admin tooling.
 
-## Observability
+## Related Docs
 
-The target system should expose:
-
-- `GET /health` for database, Redis, and worker health
-- queue depth and worker count visibility through Flower and health checks
-- structured logs from API and task workers with campaign id and task id
-- task retry and failure counters
-- event replay diagnostics, including last event id and replay length
-- scoring version and adapter metadata for recommendation auditability
-
-## Security
-
-- Treat campaign input and crawled content as untrusted data.
-- Do not execute fetched HTML; parse and extract only.
-- Store provider keys and model credentials in environment-managed secrets.
-- Keep CORS restricted to known frontend origins.
-- Rate-limit external fetches by domain and respect provider quotas.
-- Avoid sending raw sensitive credentials or secret values through WebSocket payloads.
-- Preserve source URLs and detection reasons for auditability, but avoid exposing private operational metadata to public clients.
-
-## Deployment
-
-The production deployment can remain simple:
-
-- Next.js frontend on a static or Node-capable frontend host
-- FastAPI backend as the API service
-- separate Celery worker processes or containers for the three queues
-- managed PostgreSQL
-- managed Redis
-- Flower restricted to operators
-- optional Qdrant, pgvector, or ML services enabled only when needed
-
-The backend and workers can share the same application image. Runtime behavior should be selected by process command and environment variables rather than by building divergent images.
-
-## Future Expansion
-
-Future architecture can add:
-
-- multi-tenant organizations and role-based access
-- human review workflows for credential and safety evidence
-- influencer score trend history
-- graph-based relationship and citation analysis
-- richer vector search and semantic campaign matching
-- provider-specific social APIs where legally and operationally viable
-- model evaluation datasets for fake-engagement and credibility scoring
-
-These additions should preserve the same core boundaries: canonical API contracts, durable provenance, versioned score runs, deterministic fallbacks, and replayable campaign events.
+- [pipeline-flow-architecture.md](./pipeline-flow-architecture.md)
+- [provider-configuration.md](./provider-configuration.md)
+- [development.md](./development.md)
+- [Role-3-Backend.md](./Role-3-Backend.md)
+- [Role-2-Frontend.md](./Role-2-Frontend.md)
+- [Role-4-Pipeline-Intelligence.md](./Role-4-Pipeline-Intelligence.md)

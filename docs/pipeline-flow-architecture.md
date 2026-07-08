@@ -1,428 +1,532 @@
-# InfluenceIQ — AI Pipeline Architecture
+# InfluenceIQ Pipeline Flow Architecture
 
-This document captures the **execution flow** for influencer discovery and analysis: phases, Celery tasks, queues, and data movement through the pipeline.
+This document describes the pipeline that exists in the current repository: the async campaign execution flow, the Redis state/event model around it, and the separate deep-analysis flow that can be triggered after ranking.
 
-It covers two product flows:
+Use [architecture.md](./architecture.md) for the broader system map. Use this document when you need to understand what actually runs after a campaign is dispatched.
 
-1. **Normal search** — discover and rank influencers for a campaign brief.
-2. **Deep search** — perform comment-level AI analysis on a selected influencer and produce a report.
+## Scope
 
-**How this doc relates to others**
+This doc covers two related but separate flows:
 
-| Document | Scope |
-| --- | --- |
-| **[architecture.md](./architecture.md)** | System source of truth — REST/WebSocket contracts, campaign lifecycle (create, submit, **rerun**, cancel), data models |
-| **This doc** | What happens **once the pipeline is dispatched** — `generate_queries` through scoring and optional deep analysis |
-| [development.md](./development.md) | Local setup and day-to-day dev workflow |
+1. the main campaign discovery and scoring pipeline
+2. the on-demand deep-analysis pipeline for one influencer in one campaign
 
-**Running a campaign** spans both layers: the API persists the brief and chooses *when* to start (or restart); this document describes *what runs* after `start_campaign` enqueues `generate_queries`.
+It also covers:
 
----
+- Celery queue routing
+- Redis pipeline state and event replay
+- rerun/reset behavior
+- terminal status resolution
 
-## Overview
+## Main Campaign Pipeline
 
-```mermaid
-flowchart TB
-    subgraph discovery["Phase 1 — Discovery & Search"]
-        Campaign["Build a campaign"]
-        QueryAgent["Query agent<br/><i>query generation</i>"]
-        Cache1[("Cache")]
-        SearchAPI["Search API"]
-        Scraper["Scrape<br/><i>web crawl</i>"]
-    end
+The canonical async entrypoint is:
 
-    subgraph platforms["Platform enrichment"]
-        YT["YouTube"]
-        TT["TikTok"]
-        IG["Instagram"]
-    end
+- `backend.pipeline.tasks.orchestrator.start_campaign(campaign_id)`
 
-    subgraph scoring_phase["Phase 2 — Extraction & Scoring"]
-        ExtractAgent["Extract agent"]
-        Cache2[("Cache")]
-        Weights["Campaign parameters<br/><i>scoring weights</i>"]
-        Scoring["Scoring<br/><i>top-N list</i>"]
-    end
+That entrypoint is called by:
 
-    subgraph deep["Phase 3 — Deep analysis"]
-        Influencer["Selected influencer"]
-        Comments["Comment corpus<br/><i>~10k comments</i>"]
-        PerPost["Per-post comments"]
-        CommentAI["Comment analysis AI"]
-        Report["Report"]
-    end
+- `POST /api/campaigns` when `start_pipeline=true`
+- `POST /api/campaigns/{id}/submit`
+- `POST /api/campaigns/{id}/rerun?start_pipeline=true`
 
-    Campaign --> QueryAgent
-    Cache1 -.-> QueryAgent
-    QueryAgent -->|"each query"| SearchAPI
-    SearchAPI -->|"webpage links"| Scraper
+It does three things before any heavy work starts:
 
-    Scraper --> YT
-    Scraper --> TT
-    Scraper --> IG
-    Scraper -->|"engagement signals"| Scoring
-    Scraper --> ExtractAgent
-    Cache2 -.-> ExtractAgent
-    ExtractAgent --> Scoring
-    Weights --> Scoring
+1. computes and persists the campaign embedding when possible
+2. initializes Redis pipeline state
+3. emits `campaign.started` and dispatches `generate_queries`
 
-    Scoring --> Influencer
-    Influencer -->|"comments, likes, recent views"| Comments
-    YT --> Comments
-    TT --> Comments
-    IG --> Comments
-    Comments --> PerPost
-    PerPost --> CommentAI
-    CommentAI --> Report
-```
+## Queue Topology
 
----
+Queue routing is defined in `backend/core/celery/roles.py`.
 
-## Phase 1 — Discovery & Search
-
-The discovery phase turns a brand brief into search queries, finds public web pages, and crawls them for creator signals.
-
-```mermaid
-sequenceDiagram
-    actor Brand
-    participant API as FastAPI
-    participant QA as Query agent
-    participant Cache as Redis cache
-    participant Search as Search API
-    participant Crawl as Scraper
-
-    Brand->>API: POST /api/campaigns or POST /submit or POST /rerun
-    Note over API: Rerun clears campaign run artifacts first (see below)
-    API->>QA: start_campaign → generate_queries(campaign_id)
-    QA->>Cache: read query / page cache
-    QA-->>QA: plan queries<br/>e.g. "best influencer in Singapore for medical"
-    loop each query
-        QA->>Search: execute_search(campaign_id, query)
-        Search-->>Crawl: webpage URLs
-        Crawl->>Cache: cache fetched HTML / metadata
-    end
-```
-
-### Components
-
-| Component | Role | Example |
+| Queue | Current tasks | Why it exists |
 | --- | --- | --- |
-| **Build a campaign** | Capture brand brief, target audience, platforms, region, and scoring weights | Medical brand in Singapore, YouTube + Instagram |
-| **Pipeline dispatch** | Commit lifecycle state and enqueue the root task | `start_campaign` → `generate_queries.delay` |
-| **Query agent** | Generate campaign-specific search queries from the brief | `"best medical influencer Singapore site:youtube.com"` |
-| **Cache** | Avoid redundant LLM calls, search results, and page fetches | Redis URL cache (global), query dedup; campaign-scoped pipeline state |
-| **Search API** | Execute web search and return candidate URLs | Brave, SerpAPI (env-aware failover); see [provider-configuration.md](./provider-configuration.md) |
-| **Scrape** | Fetch pages, extract readable content, discover social profile links | httpx fetch + content extraction (Firecrawl-style crawl in the target design) |
+| `ai_agent_queue` | `generate_queries`, `resolve_identity_llm`, `classify_brand_safety`, `deep_analyze` | LLM-heavy or coordination-heavy work |
+| `scraping_queue` | `execute_search`, `fetch_page`, `extract_content`, `enrich_influencer_platforms` | HTTP and provider I/O |
+| `scoring_queue` | `extract_influencers`, `resolve_identity_cluster`, `score_influencer` | extraction, clustering, scoring, DB writes |
 
-### Pipeline entry points
+The backend and workers all share the same Celery app in `backend/core/celery/app.py`; the process command decides which queues a given worker consumes.
 
-All normal-search runs converge on the same execution graph after dispatch:
-
-| Trigger | API | When to use |
-| --- | --- | --- |
-| **Create + start** | `POST /api/campaigns` (`start_pipeline=true`) | New brief, run immediately |
-| **Submit draft** | `POST /api/campaigns/{id}/submit` | Saved draft, first run |
-| **Quick rerun** | `POST /api/campaigns/{id}/rerun?start_pipeline=true` | Terminal campaign (`completed`, `failed`, `cancelled`, `partial`); same brief, fresh pipeline on same `campaign_id` |
-| **Edit & rerun** | `POST /api/campaigns/{id}/rerun?start_pipeline=false` then `PATCH` + `submit` | Change brief before the next run |
-
-Rerun does **not** create a new campaign row. It clears the previous run's outputs and re-enters at **Query generation** (see [Rerunning a campaign](#rerunning-a-campaign)).
-
-### Data flow
+## End-to-End Execution Flow
 
 ```mermaid
 flowchart LR
-    Brief["Campaign brief"] --> Params["Parameters<br/>industry · region · platforms · weights"]
-    Params --> Queries["Search queries"]
-    Queries --> URLs["Discovered URLs"]
-    URLs --> Pages["Fetched pages + HTML"]
-    Pages --> Links["Social profile links<br/>YouTube · TikTok · Instagram"]
+    A[start_campaign] --> B[generate_queries]
+    B --> C[execute_search per query]
+    C --> D[fetch_page per result URL]
+    D --> E[extract_content]
+    E --> F[extract_influencers]
+    F --> G[resolve_identity_cluster]
+    F --> H[enrich_influencer_platforms per influencer]
+    H --> I[score_influencer per influencer]
+    I --> J[classify_brand_safety for severe flags]
+    I --> K[ranked campaign results in DB]
 ```
 
----
+Two details matter here:
 
-## Phase 2 — Extraction & Scoring
+- identity clustering is campaign-wide side work triggered after extraction, not a blocking gate before enrichment
+- scoring is triggered from enrichment, and enrichment intentionally enqueues scoring even when provider collection fails or times out
 
-Once pages are crawled, the system extracts influencer mentions, resolves identities, enriches platform engagement, and produces a weighted trust score.
+## Stage-by-Stage Detail
 
-```mermaid
-flowchart TB
-    Pages["Crawled pages"]
+### 1. Query Generation
 
-    subgraph extract["Extract agent"]
-        Mentions["Influencer mentions<br/>names · handles · credentials"]
-        Identity["Identity resolution<br/>canonical profiles"]
-    end
+Task:
 
-    subgraph signals["Signal inputs"]
-        Engagement["Engagement<br/>views · likes · comments"]
-        Params["Campaign weights<br/>relevance · credibility · engagement · sentiment · safety"]
-    end
+- `backend.pipeline.tasks.search.generate_queries`
 
-    subgraph score["Scoring engine"]
-        SubScores["Sub-scores"]
-        Fusion["Weighted fusion"]
-        TopN["Ranked top-N list"]
-    end
+Inputs:
 
-    Pages --> Mentions
-    Mentions --> Identity
-    Identity --> SubScores
-    Engagement --> SubScores
-    Params --> Fusion
-    SubScores --> Fusion
-    Fusion --> TopN
-```
+- `Campaign.search_query`
+- `Campaign.preferred_platforms`
+- `Campaign.brief_snapshot.locations`
 
-### Scoring inputs
+Behavior:
 
-The scoring module combines three upstream paths shown in the diagram:
+- marks the campaign as running if needed
+- builds a query payload from the campaign row
+- tries LLM-based planning when `AI_AGENT_LLM_QUERY_PLANNING` is enabled
+- otherwise falls back to deterministic query construction
+- deduplicates near-identical queries
+- forces location coverage when a target location exists
+- forces platform coverage for preferred platforms
+- dispatches one `execute_search` task per generated query
 
-1. **Extract agent output** — names, handles, credentials, and source provenance from crawled content.
-2. **Engagement data** — platform-specific metrics from YouTube, TikTok, and Instagram providers.
-3. **Campaign parameters** — per-campaign weight overrides for relevance, credibility, engagement quality, sentiment, and brand safety.
+Current constraints:
 
-```mermaid
-flowchart LR
-    subgraph inputs["Scoring inputs"]
-        A["Extract agent"]
-        B["Engagement from platforms"]
-        C["Campaign weights"]
-    end
+- query count is capped at `5`
+- location targeting is treated as a hard constraint when present
+- platform hints are injected into queries if missing
 
-    S["Scoring<br/>top 20 list"]
-    A --> S
-    B --> S
-    C --> S
-    S --> R["Ranked recommendations"]
-```
+Events and state:
 
-### Platform providers
+- sets Redis phase to `query_generation`
+- emits `query.generation.completed`
 
-After scraping discovers social URLs, platform-specific fetchers enrich each candidate:
+## 2. Search Execution
 
-```mermaid
-flowchart TB
-    Scraper["Scraper / fetcher"]
-    Scraper --> YT["YouTube provider<br/>channel · posts · comments"]
-    Scraper --> TT["TikTok provider<br/>profile metadata"]
-    Scraper --> IG["Instagram provider<br/>profile metadata"]
+Task:
 
-    YT --> Eng["Engagement signals"]
-    TT --> Eng
-    IG --> Eng
-    Eng --> Scoring["Scoring"]
-```
+- `backend.pipeline.tasks.search.execute_search`
 
----
+Behavior:
 
-## Phase 3 — Deep Analysis
+- calls `search_web(...)`
+- stores each result URL as a `CrawlSource` row for the campaign
+- deduplicates URLs per `(campaign_id, url)`
+- updates durable campaign status via `refresh_campaign_status`
+- dispatches `fetch_page` for each crawl source
 
-Deep analysis runs on one or more shortlisted influencers. It collects a large comment corpus (the diagram targets ~10,000 comments), analyzes engagement quality per post, and produces an AI-generated report.
+Important implementation detail:
 
-```mermaid
-flowchart TB
-    Shortlist["Top influencer from scoring"]
+- the Redis `urls_discovered` field starts as query count during query generation, then is overwritten with total `CrawlSource` count once search results are materialized
 
-    subgraph collect["Comment collection"]
-        Posts["Recent posts"]
-        Metrics["Views · likes · comment counts"]
-        Corpus["Comment corpus<br/>up to ~10k comments"]
-    end
+Events and state:
 
-    subgraph analyze["Comment analysis AI"]
-        PerPost["Per-post comment analysis"]
-        Sentiment["Sentiment & trust signals"]
-        Fake["Fake / bot engagement detection"]
-        Safety["Brand-safety screening"]
-    end
+- emits `search.executed`
+- emits `search.failed` on provider failure
+- updates `urls_discovered`
 
-    Report["Influencer report"]
+## 3. Page Fetch
 
-    Shortlist --> Posts
-    Posts --> Metrics
-    Posts --> Corpus
-    Corpus --> PerPost
-    PerPost --> Sentiment
-    PerPost --> Fake
-    PerPost --> Safety
-    Sentiment --> Report
-    Fake --> Report
-    Safety --> Report
-```
+Task:
 
-### Deep analysis sequence
+- `backend.pipeline.tasks.crawl.fetch_page`
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant API as FastAPI
-    participant Deep as Deep analysis task
-    participant YT as YouTube
-    participant TT as TikTok
-    participant IG as Instagram
-    participant AI as Comment analysis AI
+Behavior:
 
-    User->>API: Select influencer for deep analysis
-    API->>Deep: deep_analyze(influencer_id)
+- loads the `CrawlSource`
+- fetches raw page HTML through `backend.pipeline.content.fetcher.fetch_url`
+- retries transient failures up to the task retry limit
+- stores HTML and fetch metadata on the source row
+- marks the source `scraped`
+- dispatches `extract_content`
 
-    par platform fetch
-        Deep->>YT: recent posts + comments
-        Deep->>TT: recent posts + comments
-        Deep->>IG: recent posts + comments
-    end
+Failure handling:
 
-    Deep->>Deep: aggregate comment corpus (~10k)
-    loop each post
-        Deep->>AI: analyze comments, likes, views
-        AI-->>Deep: sentiment, fake signals, safety flags
-    end
-    Deep-->>API: report payload
-    API-->>User: influencer analysis report
-```
+- persistent fetch failures mark the source `failed`
+- source failures increment `urls_failed`
+- crawl failures can contribute to a terminal campaign `failed` or `partial` status later
 
-### Report outputs
+Events and state:
 
-The comment analysis AI produces explainable outputs per influencer:
+- emits `page.fetched`
+- increments `urls_scraped`
+- increments `urls_processed` alongside `urls_scraped`
 
-- Audience sentiment and trust indicators
-- Fake or low-quality engagement risk
-- Brand-safety concerns with cited evidence
-- Per-post breakdowns (views, likes, comment quality)
-- Overall recommendation grade with confidence
+## 4. Content Extraction
 
----
+Task:
 
-## End-to-end pipeline (both flows)
+- `backend.pipeline.tasks.crawl.extract_content`
+
+Behavior:
+
+- parses the fetched page with `extract_role4_content`
+- stores extracted text, title, and lightweight metrics back on the `CrawlSource`
+- marks the source `extracted`
+- dispatches `extract_influencers`
+
+Events:
+
+- emits `content.extracted`
+
+## 5. Influencer Extraction
+
+Task:
+
+- `backend.pipeline.tasks.extract.extract_influencers`
+
+Behavior:
+
+- extracts mentions from page content
+- optionally uses the LLM path for handle extraction
+- optionally verifies candidate social profile links with an LLM gate
+- canonicalizes extracted candidates
+- creates or updates `Influencer` rows
+- writes `CrawlSourceInfluencer` attribution rows
+- persists credential evidence when present
+- updates the legacy `CrawlSource.influencer_id` shortcut when possible
+
+What happens next:
+
+- triggers campaign-wide `resolve_identity_cluster`
+- dispatches `enrich_influencer_platforms` once per discovered influencer for that source
+
+State semantics:
+
+- `influencers_found` is incremented by the count of newly created canonical influencers, not by raw mention count
+
+Events:
+
+- emits `influencer.found`
+- emits `influencers.none` when a page yields no creator mentions
+- emits `extract.failed` on extraction failure
+
+## 6. Identity Clustering
+
+Task:
+
+- `backend.pipeline.tasks.extract.resolve_identity_cluster`
+
+Behavior:
+
+- loads all campaign-linked influencers
+- runs cluster resolution over the current campaign set
+- auto-merges high-confidence matches
+- persists merge records through the identity persistence layer
+- can dispatch `resolve_identity_llm` for ambiguous cases when the flag is enabled
+
+This is a cleanup/consolidation pass. It is not the root driver of the pipeline and does not replace the per-page extraction flow.
+
+## 7. Platform Enrichment
+
+Task:
+
+- `backend.pipeline.tasks.enrich.enrich_influencer_platforms`
+
+Behavior:
+
+- gathers platform URLs for one influencer
+- fetches structured profile data for supported platforms
+- persists `PlatformProfile` and `PlatformPost` data
+- computes and persists embeddings when profile enrichment succeeds
+- optionally fetches recent post comments when `COMMENT_FETCH_ON_ENRICH=true`
+
+Current failure policy:
+
+- enrichment has a `soft_time_limit` of `300` seconds
+- even on provider failure, DB error, or timeout, the task still dispatches scoring
+- this is intentional so one bad provider call cannot strand an influencer and freeze a whole campaign
+
+Current counters:
+
+- increments `platforms_enriched`
+- increments `enrichment_failed` when some provider work fails
+
+Events:
+
+- emits `platform.enriched`
+
+## 8. Scoring
+
+Task:
+
+- `backend.pipeline.tasks.score.score_influencer`
+
+Behavior:
+
+- builds a campaign-contextual candidate object
+- persists a `CandidateSnapshot`
+- runs `run_role4_pipeline(...)`
+- persists a versioned `InfluencerScore`
+- marks previous current score rows non-current on rescore
+- emits the main ranking event
+
+Important implementation details:
+
+- scoring uses a PostgreSQL advisory lock keyed by `(campaign_id, influencer_id)` to prevent concurrent “current score” races
+- scoring is allowed to run with incomplete platform data; it degrades to other evidence rather than aborting
+- only severe brand-safety findings enqueue downstream classification tasks
+
+Events and state:
+
+- emits `score.calculated`
+- increments `scores_computed`
+- can enqueue `classify_brand_safety`
+
+## 9. Brand Safety Classification
+
+Task:
+
+- `backend.pipeline.tasks.score.classify_brand_safety`
+
+Behavior:
+
+- scans text using the deterministic brand-safety blocklist path
+- persists `BrandSafetyFlag` rows
+- marks whether LLM review would be useful, but deterministic persistence happens first
+
+Events:
+
+- emits `brand_safety.flagged`
+
+## Campaign Status Resolution
+
+Redis state tracks live counters and phase, but durable lifecycle status is derived from the database by `refresh_campaign_status(...)`.
+
+Current terminal rules are:
+
+- `running`
+  - sources still pending or only partially processed
+  - no influencers yet but not all sources failed
+  - not all discovered influencers have been scored
+- `failed`
+  - all sources failed and no scoring was produced
+- `partial`
+  - some sources failed, but scoring completed for at least part of the campaign
+- `completed`
+  - all required sources and influencer scores are complete without failed-source partiality
+
+Lifecycle events emitted from this resolution path include:
+
+- `campaign.completed`
+- `campaign.partial`
+- `campaign.failed`
+
+Cancellation is handled separately by `cancel_campaign(...)`, which emits:
+
+- `campaign.cancelled`
+
+## Redis State Model
+
+Pipeline state is stored as a Redis hash under:
+
+- `pipeline_state:{campaign_id}` via the `STATE_KEY_PREFIX`
+
+Current documented fields include:
+
+- `campaign_id`
+- `status`
+- `phase`
+- `urls_discovered`
+- `urls_scraped`
+- `urls_processed`
+- `urls_failed`
+- `influencers_found`
+- `scores_computed`
+- `platforms_enriched`
+- `enrichment_failed`
+
+Current TTL:
+
+- `7200` seconds for pipeline state
+
+The API `GET /api/campaigns/{id}/state` does not blindly trust Redis. It reconciles Redis counters with DB-derived counts so reruns or partial cache clears do not leave the UI showing stale zeros while results still exist in PostgreSQL.
+
+It also adds:
+
+- `last_event_id`
+
+That value comes from the Redis event counter and is used by WebSocket clients to resume from a known event boundary.
+
+## Event Replay Model
+
+Workflow events are stored in Redis in two forms:
+
+- replay log list: `pipeline_events:{campaign_id}`
+- monotonically increasing counter: `event_id_counter:{campaign_id}`
+
+Each event has:
+
+- `event_id`
+- `type`
+- `campaign_id`
+- `timestamp`
+- `payload`
+
+Current event TTL:
+
+- `3600` seconds
+
+The WebSocket flow is:
+
+1. client connects to `/ws/campaign/{campaign_id}?last_event_id=N`
+2. server replays every stored event with `event_id > N`
+3. server subscribes to the live pub/sub channel `campaign:{campaign_id}`
+4. server emits periodic `heartbeat` frames with the latest pipeline state snapshot
+
+This means the replay window is transient and Redis-backed; durable business results still live in PostgreSQL.
+
+## Rerunning a Campaign
+
+Rerun behavior is implemented through:
+
+- `backend.api.routers.campaigns.rerun_campaign`
+- `backend.pipeline.campaign_reset.clear_campaign_run_artifacts`
+- `backend.pipeline.campaign_reset.reset_campaign_lifecycle`
+
+### What rerun deletes
+
+For the target campaign only, rerun clears:
+
+- `BrandSafetyFlag`
+- `DeepAnalysisRun`
+- `CandidateSnapshot`
+- `InfluencerScore`
+- `CrawlSourceInfluencer`
+- `CrawlSource`
+
+### What rerun preserves
+
+Rerun does not delete:
+
+- the `Campaign` row itself
+- canonical global `Influencer` rows
+- `SavedListItem` rows
+- `CampaignContract` rows
+
+### Rerun modes
+
+`POST /api/campaigns/{id}/rerun?start_pipeline=true`
+
+- clears run artifacts
+- resets lifecycle to `running`
+- clears Redis campaign pipeline cache
+- dispatches the full pipeline again on the same `campaign_id`
+
+`POST /api/campaigns/{id}/rerun?start_pipeline=false`
+
+- clears run artifacts
+- resets lifecycle to `draft`
+- clears Redis campaign pipeline cache
+- does not dispatch work until a later `PATCH` plus `POST /submit`
+
+If the campaign has shortlisted or contracted creators, quick rerun requires explicit confirmation at the API level.
+
+## Deep Analysis Pipeline
+
+Deep analysis is not part of the automatic main campaign pipeline. It is a user-triggered async workflow for one `(campaign_id, influencer_id)` pair.
+
+API surface:
+
+- `POST /api/influencers/{id}/deep-analysis`
+- `GET /api/influencers/{id}/deep-analysis/latest`
+- `GET /api/influencers/{id}/deep-analysis/{run_id}`
+- `GET /api/influencers/{id}/reports/{report_id}`
+
+Task:
+
+- `backend.pipeline.tasks.deep.deep_analyze`
+
+Queue:
+
+- `ai_agent_queue`
+
+### Deep-analysis stages
+
+The current task runs these internal stages:
+
+1. `collect_social_content`
+2. `collect_post_comments`
+3. `collect_external_signals`
+4. `synthesize_report`
+
+### Current defaults
+
+- default `comment_target`: `2000`
+- allowed `comment_target` range: `100` to `10000`
+- requested post limit: `20`
+- requested per-post comment limit: `200`
+- cache freshness window for successful reports: `30` minutes
+
+### Persistence model
+
+Deep analysis writes:
+
+- `DeepAnalysisRun`
+- `DeepAnalysisPostResult`
+- `DeepAnalysisReport`
+
+It also updates:
+
+- `DeepAnalysisRun.current_stage`
+- `DeepAnalysisRun.collected_comment_count`
+- `DeepAnalysisRun.coverage_summary`
+
+### Events
+
+Deep analysis emits:
+
+- `deep_analysis.started`
+- `deep_analysis.social_collected`
+- `deep_analysis.comments_collected`
+- `deep_analysis.external_signals_collected`
+- `deep_analysis.report_ready`
+- `deep_analysis.failed`
+
+After a successful report, the backend enqueues a normal `score_influencer` rescore so richer evidence can affect the main campaign ranking data.
+
+## State Diagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CampaignCreated: POST /api/campaigns
-    CampaignCreated --> QueryGeneration: start_campaign → generate_queries
-    QueryGeneration --> Searching: execute_search (per query)
-    Searching --> Crawling: fetch_page (per URL)
-    Crawling --> Extracting: extract_content → extract_influencers
-    Extracting --> Enriching: enrich_influencer_platforms
-    Enriching --> Scoring: score_influencer (per candidate)
-    Scoring --> Ranked: top-N recommendations
-    Ranked --> Terminal: completed / partial / failed / cancelled
+    [*] --> Draft: campaign created with start_pipeline=false
+    [*] --> Running: campaign created with start_pipeline=true
+    Draft --> Running: submit
 
-    Terminal --> QueryGeneration: POST /rerun (reset artifacts, start_pipeline=true)
-    Terminal --> DraftForEdit: POST /rerun (start_pipeline=false)
-    DraftForEdit --> QueryGeneration: PATCH brief + POST /submit
+    Running --> QueryGeneration
+    QueryGeneration --> Searching
+    Searching --> Fetching
+    Fetching --> Extracting
+    Extracting --> Enriching
+    Enriching --> Scoring
+    Scoring --> Running
 
-    Ranked --> DeepAnalysis: user selects influencer
-    DeepAnalysis --> ReportReady: comment analysis complete
-    ReportReady --> [*]
+    Running --> Completed
+    Running --> Partial
+    Running --> Failed
+    Running --> Cancelled
+
+    Completed --> Running: rerun start_pipeline=true
+    Partial --> Running: rerun start_pipeline=true
+    Failed --> Running: rerun start_pipeline=true
+    Cancelled --> Running: rerun start_pipeline=true
+
+    Completed --> Draft: rerun start_pipeline=false
+    Partial --> Draft: rerun start_pipeline=false
+    Failed --> Draft: rerun start_pipeline=false
+    Cancelled --> Draft: rerun start_pipeline=false
+
+    Completed --> DeepAnalysis: user triggers deep analysis
+    Partial --> DeepAnalysis: user triggers deep analysis
+    DeepAnalysis --> ReportReady
 ```
 
-Phase 1–2 (normal search) ends at **Terminal**. **Rerun** loops back to **QueryGeneration** on the same `campaign_id` after clearing run-scoped data. Phase 3 (deep analysis) remains user-triggered and is not started automatically by rerun.
+## Related Docs
 
----
-
-## Rerunning a campaign
-
-Rerun replays the **same execution graph** as a first run. The lifecycle layer (`POST /rerun` in [architecture.md](./architecture.md)) handles reset and dispatch; the pipeline layer is unchanged after `generate_queries` starts.
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant API as FastAPI
-    participant Reset as campaign_reset
-    participant Redis as Redis
-    participant Start as start_campaign
-    participant QA as generate_queries
-
-    User->>API: POST /api/campaigns/{id}/rerun
-    API->>Reset: clear_campaign_run_artifacts (Postgres)
-    Note over Reset: scores, crawl_sources, flags, snapshots, deep_analysis_runs
-    API->>Redis: clear pipeline_state, pipeline_events, event_id_counter
-    alt start_pipeline=true (quick rerun)
-        API->>Start: _dispatch_pipeline → start_campaign
-        Start->>QA: generate_queries.delay
-    else start_pipeline=false (edit & rerun)
-        API-->>User: status=draft (edit brief, then submit)
-    end
-```
-
-### What rerun clears vs preserves
-
-| Layer | Cleared on rerun | Preserved |
-| --- | --- | --- |
-| **Postgres (run artifacts)** | `crawl_sources`, `influencer_scores`, `brand_safety_flags`, `candidate_snapshots`, `deep_analysis_runs` | `campaigns` row (brief, weights), `campaign_contracts`, `saved_list_items`, global `influencers` |
-| **Redis (campaign-scoped)** | `pipeline_state:{id}`, `pipeline_events:{id}`, `event_id_counter:{id}` | — |
-| **Redis (global)** | — | URL/page cache (`url_cache:*`) — reruns may skip re-fetching unchanged pages |
-
-Clearing run artifacts is required: `refresh_campaign_status` derives completion from Postgres. Re-dispatching without deleting old scores and extracted sources can mark the campaign **completed** before new work finishes.
-
-Global URL cache is **intentionally kept** for faster reruns. If a bad run was caused by stale cached pages, operators may need cache eviction separately; that is not part of the default rerun path.
-
-### Outreach guard
-
-If the campaign has shortlisted or contracted creators, quick rerun (`start_pipeline=true`) returns `409 rerun_has_outreach` unless the client sends `X-Confirm-Rerun: true`. Contracts and saved-list items are kept; only match results are replaced.
-
----
-
-## Worker queue mapping
-
-The pipeline maps onto three Celery queues:
-
-```mermaid
-flowchart LR
-    subgraph ai["ai_agent_queue"]
-        GQ["generate_queries"]
-        LLM["optional LLM decisions"]
-    end
-
-    subgraph scrape["scraping_queue"]
-        ES["execute_search"]
-        FP["fetch_page"]
-        EC["extract_content"]
-    end
-
-    subgraph score_q["scoring_queue"]
-        EI["extract_influencers"]
-        RI["resolve_identity"]
-        EN["enrich_influencer_platforms"]
-        SI["score_influencer"]
-    end
-
-    GQ --> ES
-    ES --> FP
-    FP --> EC
-    EC --> EI
-    EI --> RI
-    RI --> EN
-    EN --> SI
-```
-
-| Diagram component | Celery task / module | Queue |
-| --- | --- | --- |
-| Query agent | `generate_queries` | `ai_agent_queue` |
-| Search API | `execute_search` | `scraping_queue` |
-| Scrape | `fetch_page`, `extract_content` | `scraping_queue` |
-| Extract agent | `extract_influencers`, `resolve_identity_cluster` | `scoring_queue` |
-| Platform enrichment | `enrich_influencer_platforms` | `scoring_queue` |
-| Scoring | `score_influencer` | `scoring_queue` |
-| Campaign rerun | `POST /rerun` → reset + `start_campaign` | API / orchestrator |
-| Comment analysis AI | `deep_analyze` *(planned)* | TBD |
-
----
-
-## Implementation status
-
-| Phase | Component | Status |
-| --- | --- | --- |
-| 1 | Campaign intake | Implemented — `POST /api/campaigns` |
-| 1 | Campaign rerun | Implemented — `POST /api/campaigns/{id}/rerun` (see [Rerunning a campaign](#rerunning-a-campaign)) |
-| 1 | Query agent + cache | Implemented — deterministic queries + optional LLM; Redis cache |
-| 1 | Search API | Implemented — env-aware failover (Brave → SerpAPI); synthetic fallback |
-| 1 | Scrape / crawl | Implemented — per-platform providers + scrape.do/httpx for articles |
-| 2 | Extract agent | Implemented — spaCy/regex + optional LLM extraction |
-| 2 | Platform providers | YouTube (RSS); IG/TikTok/X via Apify when configured, else meta/fallback |
-| 2 | Weighted scoring | Implemented — fusion engine with campaign weights |
-| 3 | Deep analysis (10k comments) | **Not yet implemented** — analyzers exist but are not wired to real comment data |
-| 3 | Report generation | **Not yet implemented** |
-
-See [Status-Report.md](./Status-Report.md) for a detailed gap analysis.
-
----
+- [architecture.md](./architecture.md)
+- [provider-configuration.md](./provider-configuration.md)
+- [development.md](./development.md)
