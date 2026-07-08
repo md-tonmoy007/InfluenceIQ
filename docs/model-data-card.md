@@ -30,14 +30,14 @@ InfluenceIQ does **not** use a proprietary training dataset collected by the tea
 | Model                                                    | Provider                 | License                                 | Used for                                |
 | -------------------------------------------------------- | ------------------------ | --------------------------------------- | --------------------------------------- |
 | `mrm8488/bert-tiny-finetuned-sms-spam-detection`         | Hugging Face             | Apache-2.0                              | Optional spam / low-quality text backend |
-| `microsoft/deberta-v3-base`                              | Microsoft / Hugging Face | MIT                                     | Optional heavier spam-text backend      |
+| `microsoft/deberta-v3-base`                              | Microsoft / Hugging Face | MIT                                     | Optional heavier spam-text adapter available in the codebase      |
 | `unitary/toxic-bert`                                     | Hugging Face             | Apache-2.0                              | Optional toxicity backend               |
 | `roberta-base-openai-detector`                           | Hugging Face / OpenAI    | MIT                                     | Optional AI-generated-text likelihood backend |
-| `llama3.1:8b-instruct`                                   | Meta                     | Llama 3.1 Community License             | Optional natural-language explanation backend |
+| `llama3.1:8b-instruct`                                   | Meta                     | Llama 3.1 Community License             | Optional Llama-based explanation adapter available in the codebase |
 | `openai/gpt-oss-20b:free` or configured OpenRouter model | OpenRouter               | Apache-2.0 for the listed default model | Query planning / optional LLM tasks     |
 | `text-embedding-3-small`                                 | OpenAI via OpenRouter    | Proprietary API model                   | Optional semantic relevance embeddings  |
 
-All model usage is **adapter-based and optional**. In the current repository, the default execution path is deterministic-first; model-backed paths are only used when the relevant flags, dependencies, and external keys are configured. When a model backend is unavailable, the system falls back to deterministic heuristics instead of failing the pipeline.
+All model usage is **adapter-based and optional**. In the current repository, the default execution path is deterministic-first; model-backed paths are only used when the relevant flags, dependencies, and external keys are configured. This also means some listed models are better understood as **available adapters** rather than always-on runtime defaults — for example, the heavier DeBERTa spam classifier and the Llama-based explainer both exist in the codebase, but are not implied runtime defaults, and the active LLM backend may instead be selected via environment configuration (for example an OpenRouter-backed model). When a model backend is unavailable, the system falls back to deterministic heuristics instead of failing the pipeline.
 
 ## 3. Non-Model AI Logic
 

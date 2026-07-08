@@ -1,0 +1,99 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[a4paper,top=0.85cm,bottom=0.9cm,left=1.0cm,right=1.0cm]{geometry}
+\usepackage{fontspec}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xurl}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{setspace}
+
+\setmainfont{TeX Gyre Termes}
+\setsansfont{TeX Gyre Heros}
+\setmonofont{DejaVu Sans Mono}
+\setstretch{1.0}
+\small
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\setlist[itemize]{leftmargin=1.1em,itemsep=2pt,topsep=3pt}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.1}
+\urlstyle{same}
+
+\titleformat{\section}{\normalsize\bfseries}{}{0pt}{}
+\titlespacing*{\section}{0pt}{12pt}{8pt}
+
+\newcommand{\modelid}[1]{{\ttfamily\scriptsize #1}}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  pdftitle={InfluenceIQ Model and Data Card},
+  pdfauthor={Team sudo make it work}
+}
+
+\begin{document}
+
+\begin{center}
+{\Large \textbf{InfluenceIQ: Model \& Data Card}}\\[2pt]
+SciBlitz AI Challenge 2026 --- Team sudo\_make\_it\_work (RUET)
+\end{center}
+
+\section{1. Datasets / Data Sources}
+InfluenceIQ does not use a proprietary team-collected training dataset. It works primarily on public inference-time data gathered during campaign execution and uses that data for scoring and reporting, not for model fine-tuning or retraining.
+
+\begin{tabularx}{\textwidth}{@{}p{0.26\textwidth}p{0.38\textwidth}X@{}}
+\toprule
+\textbf{Source} & \textbf{What it is used for} & \textbf{Access path} \\
+\midrule
+Instagram, TikTok, X & Creator discovery and enrichment & Apify actors when configured; public meta-tag fallback otherwise \\
+YouTube & Creator discovery and enrichment & Public channel pages and RSS-based collection \\
+Brave Search API & Campaign-relevant creator discovery & Primary search provider \\
+SerpAPI & Campaign-relevant creator discovery & Fallback search provider \\
+scrape.do / direct HTTP fetch & Article and web-page retrieval & Generic page fetching \\
+\bottomrule
+\end{tabularx}
+
+\section{2. Pre-trained Models Used}
+\begin{tabularx}{\textwidth}{@{}p{0.32\textwidth}p{0.17\textwidth}p{0.16\textwidth}X@{}}
+\toprule
+\textbf{Model} & \textbf{Provider} & \textbf{License} & \textbf{Used for} \\
+\midrule
+\modelid{mrm8488/\allowbreak bert-tiny-\allowbreak finetuned-\allowbreak sms-spam-\allowbreak detection} & Hugging Face & Apache-2.0 & Optional spam / low-quality text backend \\
+\modelid{microsoft/deberta-v3-base} & Microsoft / HF & MIT & Optional heavier spam-text adapter available in codebase \\
+\modelid{unitary/toxic-bert} & Hugging Face & Apache-2.0 & Optional toxicity backend \\
+\modelid{roberta-base-\allowbreak openai-\allowbreak detector} & Hugging Face / OpenAI & MIT & Optional AI-generated-text likelihood backend \\
+\modelid{llama3.1:8b-instruct} & Meta & Llama 3.1 Community License & Optional Llama-based explanation adapter available in codebase \\
+\modelid{openai/\allowbreak gpt-oss-20b:free} or configured OpenRouter model & OpenRouter & Apache-2.0 for listed default model & Query planning / optional LLM tasks \\
+\modelid{text-embedding-3-small} & OpenAI via OpenRouter & Proprietary API model & Optional semantic relevance embeddings \\
+\bottomrule
+\end{tabularx}
+
+All model usage is adapter-based and optional. The default repository path is deterministic-first, and model-backed paths run only when relevant flags, dependencies, and external keys are configured. Some listed models are therefore best understood as available adapters rather than always-on runtime defaults; for example, the heavier DeBERTa spam classifier and the Llama-based explainer both exist in the codebase, but are not implied runtime defaults, and the active LLM backend may instead be selected via environment configuration (such as an OpenRouter-backed model).
+
+\section{3. Known Limitations}
+\begin{itemize}
+\item \textbf{Language and domain bias:} general-purpose pretrained checkpoints may underperform on non-English, code-mixed, or niche creator content.
+\item \textbf{AIGC-detector uncertainty:} AI-generated-text detection is only a supporting signal, not a reliable standalone verdict.
+\item \textbf{Provider-depth variance:} creator-data quality depends on external provider availability; fallback scraping is shallower than primary provider paths.
+\item \textbf{Inference-only evidence limits:} the system only sees public data it can discover and fetch; private audience quality or hidden business context is outside scope.
+\item \textbf{Optional-model inconsistency:} several integrations exist in the codebase but are not part of the default runtime unless explicitly enabled.
+\end{itemize}
+
+\section{4. Ethical Considerations}
+\begin{itemize}
+\item \textbf{False positives:} spam, toxicity, or risk flags may incorrectly penalize creators, so the platform should be treated as decision support rather than an automatic exclusion engine.
+\item \textbf{Fairness:} pretrained models may reflect biases from their original training data and may not treat all dialects, communities, or creator styles equally.
+\item \textbf{Transparency:} scores should be interpreted alongside source evidence, provenance, and reasoning instead of as opaque rankings.
+\item \textbf{Privacy boundary:} the system is intended to work on public creator, profile, and content data only; it does not require private messages, passwords, or private audience records.
+\end{itemize}
+
+\smallskip
+\footnotesize Repository: \href{https://github.com/md-tonmoy007/InfluenceIQ}{github.com/md-tonmoy007/InfluenceIQ}
+
+\end{document}
