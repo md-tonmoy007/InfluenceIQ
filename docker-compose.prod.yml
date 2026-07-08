@@ -54,7 +54,7 @@ services:
              uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips='*'"
     env_file: backend/.env
     environment:
-      APP_ENV: production
+      APP_ENV: prod
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
@@ -76,7 +76,7 @@ services:
     command: celery -A backend.workers.ai_agent.worker:celery_app worker -Q ai_agent_queue -c 2 -n ai_agent@%h
     env_file: backend/.env
     environment:
-      APP_ENV: production
+      APP_ENV: prod
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       redis:
@@ -90,7 +90,7 @@ services:
     command: celery -A backend.workers.scraping.worker:celery_app worker -Q scraping_queue -c 8 -n scraping@%h
     env_file: backend/.env
     environment:
-      APP_ENV: production
+      APP_ENV: prod
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       redis:
@@ -104,7 +104,7 @@ services:
     command: celery -A backend.workers.scoring.worker:celery_app worker -Q scoring_queue -c 4 -n scoring@%h
     env_file: backend/.env
     environment:
-      APP_ENV: production
+      APP_ENV: prod
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       redis:
@@ -118,7 +118,7 @@ services:
     command: celery -A backend.workers.ai_agent.worker:celery_app flower --port=5555
     env_file: backend/.env
     environment:
-      APP_ENV: production
+      APP_ENV: prod
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       redis:
@@ -171,7 +171,7 @@ services:
   #   environment:
   #     PYTHONPATH: /workspace
   #     QDRANT_URL: http://qdrant:6333
-  #     APP_ENV: production
+  #     APP_ENV: prod
   #   depends_on:
   #     qdrant:
   #       condition: service_started
